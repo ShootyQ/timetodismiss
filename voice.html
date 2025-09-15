@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Voice Caller</title>
+  <style>
+    body {
+      margin: 0; font-family: Inter, sans-serif; background: #f9fafb; color: #111827;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 1rem; }
+    .btn {
+      display: inline-block; font-weight: 700; border-radius: 14px;
+      padding: .85rem 1.2rem; border: 1px solid #e5e7eb;
+      background: #fff; color: #111827; cursor: pointer;
+      transition: transform .06s ease, box-shadow .2s ease;
+      margin: .5rem;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: #2563eb; color: #fff; border-color: transparent; }
+    .btn-danger { background: #b91c1c; color: #fff; border-color: transparent; }
+    .status {
+      margin-top: 1rem; font-size: 1.2rem; font-weight: 600; color: #374151;
+    }
+    /* Confirmation overlay */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.65);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; visibility: hidden; opacity: 0;
+      transition: opacity .2s ease;
+    }
+    .overlay.active { visibility: visible; opacity: 1; }
+    .overlay-box {
+      background: #fff; border-radius: 16px; padding: 1.5rem; text-align: center;
+      max-width: 92%; box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .overlay-box h2 { margin: 0 0 1rem; font-size: 1.4rem; }
+    .overlay-actions { display: flex; gap: 1rem; justify-content: center; }
+  /* Choices list for disambiguation */
+  .choices{ display:grid; gap:14px; margin: 12px 0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .choice{ display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:1rem; border:1px solid #e5e7eb; border-radius:14px; background:#f8fafc; }
+  .choice .title{ font-weight:700; font-size:1.05rem; }
+  .choice .meta{ color:#64748b; font-size:.9rem; }
+  .choice .actions{ display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+  .choice .actions .btn{ margin:0; padding:.6rem .5rem; }
+  </style>
+</head>
+<body>
+  <h1>Voice Caller</h1>
+  <button id="btnStart" class="btn btn-primary">🎤 Start Listening</button>
+  <button id="btnMute" class="btn btn-danger" hidden>🔇 Mute</button>
+  <div id="status" class="status">Idle</div>
+
+  <!-- Confirmation overlay -->
+  <div id="confirmOverlay" class="overlay">
+    <div class="overlay-box">
+      <h2 id="confirmText">Did you mean ...?</h2>
+      <div id="choices" class="choices" role="list"></div>
+      <div class="overlay-actions">
+        <button id="btnNo" class="btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { init, onStudents, onCarGroups, setStudentStatus } from '/app.js?v=21';
+    await init();
+
+    const btnStart = document.getElementById("btnStart");
+    const btnMute  = document.getElementById("btnMute");
+    const statusEl = document.getElementById("status");
+  const overlay  = document.getElementById("confirmOverlay");
+  const confirmText = document.getElementById("confirmText");
+  const choicesEl = document.getElementById("choices");
+  const btnNo  = document.getElementById("btnNo");
+
+    let recog = null;
+    let listening = false;
+  // ------- Overlay helpers -------
+    function hideOverlay() {
+      overlay.classList.remove("active");
+    }
+    btnNo.addEventListener("click", hideOverlay);
+
+    function startListening() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        alert("Voice recognition not supported in this browser.");
+        return;
+      }
+      recog = new SpeechRecognition();
+      recog.continuous = true;
+      recog.lang = "en-US";
+      recog.onresult = (e) => {
+        const phrase = e.results[e.results.length - 1][0].transcript.trim().toLowerCase();
+        statusEl.textContent = "Heard: " + phrase;
+        parseCommand(phrase);
+      };
+  recog.onerror = (e) => statusEl.textContent = "Error: " + e.error;
+  recog.onend = () => { if (listening) { try { recog.start(); } catch(_){} } };
+      recog.start();
+      listening = true;
+      btnStart.hidden = true;
+      btnMute.hidden = false;
+      statusEl.textContent = "Listening...";
+    }
+
+    function stopListening() {
+      if (recog) recog.stop();
+      listening = false;
+      btnStart.hidden = false;
+      btnMute.hidden = true;
+      statusEl.textContent = "Muted";
+    }
+
+    btnStart.addEventListener("click", startListening);
+    btnMute.addEventListener("click", stopListening);
+
+    function cleanHeardName(s){
+      let v = s.trim();
+      // strip common trailing fillers: now, please, thanks, thank you
+      v = v.replace(/\b(thank you|thanks|please|now)\b\.?$/i,'').trim();
+      return v;
+    }
+    function parseCommand(text) {
+      const words = text.trim().split(/\s+/);
+      if (!words.length) return;
+      let action = null;
+      if (words[0] === 'call') action = 'called';
+      else if (words[0] === 'clear') action = 'waiting';
+      else if ((words[0] === 'picked' && words[1] === 'up') || words[0]==='pickup' || words[0]==='pick') action = 'picked_up';
+      if (!action) return;
+      const heard = (action==='picked_up') ? words.slice(2).join(' ') : words.slice(1).join(' ');
+      const name = cleanHeardName(heard);
+      if (!name) return;
+      statusEl.textContent = `Heard intent: ${action} → ${name}`;
+      // Always show confirmation candidates; user taps action on the correct tile
+      handleCandidates(action, name);
+    }
+
+    // ===== Data + fuzzy matching =====
+    function escapeHtml(s){ return (''+(s??''))
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  const store = { students: [], groupsByTag: {}, byFull: new Map(), byTag: new Map(), byToken: new Map() };
+    const numWords = new Map([['k','k'],['kindergarten','k'],['first','1'],['1st','1'],['second','2'],['2nd','2'],['third','3'],['3rd','3'],['fourth','4'],['4th','4'],['fifth','5'],['5th','5'],['sixth','6'],['6th','6']]);
+    const norm = (s) => String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ').trim();
+    const simplifyClass = (s) => norm(s).split(' ').map(w=>numWords.get(w)||w).join(' ');
+
+    // Simple Soundex for English names (handles odd spellings like Brentyn vs Brenton)
+    function soundex(s){
+      const str = String(s||'').toUpperCase().replace(/[^A-Z]/g,'');
+      if(!str) return '';
+      const first = str[0];
+      const map = {B:1,F:1,P:1,V:1,C:2,G:2,J:2,K:2,Q:2,S:2,X:2,Z:2,D:3,T:3,L:4,M:5,N:5,R:6};
+      let prev = map[first]||0, out = first, count=1;
+      for(let i=1;i<str.length && count<4;i++){
+        const ch = str[i];
+        const code = map[ch]||0;
+        if(code!==0 && code!==prev){ out += code; count++; }
+        prev = code;
+      }
+      while(out.length<4) out += '0';
+      return out.slice(0,4);
+    }
+
+    function prepStudent(s){
+    const derivedName = [s.firstName, s.lastName].filter(Boolean).join(' ');
+    const name = String(s.name || derivedName || '').trim();
+      const [first='', ...rest] = name.split(/\s+/);
+      const last = rest.join(' ');
+    const clsName = s.className || s.classId || s.grade || '';
+      const fullNorm = norm(name);
+      const tokens = new Set(fullNorm.split(' ').filter(Boolean));
+      return {
+        id: s.id,
+        name,
+        first: first.toLowerCase(),
+        last: last.toLowerCase(),
+        full: fullNorm,
+        tokens,
+        lastInitial: (last[0]||'').toLowerCase(),
+        className: clsName,
+        classKey: simplifyClass(clsName),
+  carTag: (s.carTag || s.tag) ? String(s.carTag || s.tag).toUpperCase() : '',
+  sxFirst: soundex(first),
+  sxLast: soundex(last)
+      };
+    }
+
+    function levenshtein(a,b){
+      a = norm(a); b = norm(b);
+      const m=a.length, n=b.length; if(!m||!n) return Math.max(m,n);
+      const dp = new Array(n+1); for(let j=0;j<=n;j++) dp[j]=j;
+      for(let i=1;i<=m;i++){
+        let prev=dp[0]++;
+        for(let j=1;j<=n;j++){
+          const tmp=dp[j];
+          dp[j] = Math.min(
+            dp[j]+1,
+            dp[j-1]+1,
+            prev + (a[i-1]===b[j-1]?0:1)
+          );
+          prev=tmp;
+        }
+      }
+      return dp[n];
+    }
+    function similarity(a,b){
+      const A=norm(a), B=norm(b); if(!A||!B) return 0;
+      const dist = levenshtein(A,B);
+      return 1 - (dist / Math.max(A.length,B.length));
+    }
+
+    function splitFrom(q){
+      const m = q.match(/^(.*?)(?:\s+from\s+)(.+)$/i);
+      return m ? { name:m[1].trim(), cls:m[2].trim() } : { name:q, cls:'' };
+    }
+
+    function matchCandidates(raw){
+      const { name:qNameRaw, cls:qClsRaw } = splitFrom(raw);
+      const qName = norm(qNameRaw);
+      const qCls = simplifyClass(qClsRaw);
+      if (!qName) return [];
+      // Exact full-name match first via index on the 'name' field
+      const exact = store.byFull.get(qName);
+      if (exact) {
+        const filtered = qCls ? exact.filter(s => s.classKey.includes(qCls)) : exact;
+        if (filtered.length) return filtered.map(s => ({ student:s, score: 1.0 })).slice(0,5);
+      }
+      const qParts = qName.split(' ');
+      const hasLastInitial = qParts.length>=2 && qParts[qParts.length-1].length===1 && /[a-z]/.test(qParts[qParts.length-1]);
+      const lastInit = hasLastInitial ? qParts[qParts.length-1] : '';
+      const qFirst = qParts[0]||'';
+      const qLast = qParts.length>1 && !hasLastInitial ? qParts[qParts.length-1] : '';
+      const sxFirst = soundex(qFirst);
+      const sxLast  = soundex(qLast);
+
+      const out = [];
+      for(const s of store.students){
+        if (qCls && !s.classKey.includes(qCls)) continue;
+        let score = 0;
+        // prioritize the name field
+        score = Math.max(score, similarity(qName, s.full));
+        if (s.full.startsWith(qName)) score = Math.max(score, 0.94);
+        if (qName.includes(s.first) && qName.includes(s.last)) score = Math.max(score, 0.93);
+        if (hasLastInitial){
+          if (s.first===qFirst && s.lastInitial===lastInit) score = Math.max(score, 0.92);
+          if (s.first.startsWith(qFirst) && s.lastInitial===lastInit) score = Math.max(score, 0.88);
+        } else {
+          if (s.first===qFirst) score = Math.max(score, 0.86);
+          else if (s.first.startsWith(qFirst)) score = Math.max(score, 0.78);
+        }
+        // Phonetic boosts for odd spellings (Brentyn ~ Brenton)
+        if (sxFirst && s.sxFirst && sxFirst===s.sxFirst) score = Math.max(score, 0.83);
+        if (sxLast && s.sxLast && sxLast===s.sxLast) score = Math.max(score, score + 0.04);
+        if (qCls && s.classKey===qCls) score += 0.03;
+        if (score>0) out.push({ student:s, score: Math.min(1, score) });
+      }
+      if (!out.length){
+        // Substring fallback on the name field
+        for(const s of store.students){
+          if (qCls && !s.classKey.includes(qCls)) continue;
+          if (s.full.includes(qName) || qName.includes(s.full)) out.push({ student:s, score: 0.91 });
+        }
+      }
+      out.sort((a,b)=> b.score - a.score);
+      return out.slice(0,5);
+    }
+
+    async function actOnStudent(action, s){
+      try{
+        await setStudentStatus(s.id, action);
+        statusEl.textContent = `${action} → ${s.name}`;
+      }catch(e){ console.error('update failed', e); statusEl.textContent = `Failed to update ${s.name}`; }
+    }
+
+    async function handleCandidates(action, name){
+  if (!store.students.length){ statusEl.textContent = `No roster loaded — can’t match "${name}"`; return; }
+      const top = matchCandidates(name);
+  if (!top.length){ statusEl.textContent = `No match among ${store.students.length} students for “${name}”`; return; }
+      confirmText.textContent = 'Which one?';
+      showChoices(top, action);
+    }
+
+    // Family / Ride Share helpers using local roster only (same TAG)
+    async function callByTagLocal(tag, action='called'){
+      const TAG = String(tag||'').toUpperCase();
+      const matches = store.students.filter(s => s.carTag === TAG);
+      if (!matches.length) return { ok:false, count:0 };
+      await Promise.allSettled(matches.map(s => setStudentStatus(s.id, action)));
+      return { ok:true, count:matches.length };
+    }
+
+    function renderChoiceActions(container, action, s){
+      const row = document.createElement('div');
+      row.className = 'choice';
+      row.innerHTML = `<div class="title">${escapeHtml(s.name||'Unnamed')}</div>
+        <div class="meta">${escapeHtml(s.className||s.classId||'')} ${s.carTag? ' • Tag '+escapeHtml(String(s.carTag).toUpperCase()):''}</div>`;
+      const actions = document.createElement('div');
+      actions.className = 'actions';
+      const mkBtn = (label, cls) => { const b=document.createElement('button'); b.className = 'btn '+(cls||''); b.textContent = label; return b; };
+      const bCall = mkBtn('Call','btn-primary');
+      const bFam  = mkBtn('Family');
+      const bRS   = mkBtn('Ride Share');
+      bCall.addEventListener('click', async ()=>{ await setStudentStatus(s.id,'called'); statusEl.textContent = `called → ${s.name}`; });
+      bFam.addEventListener('click', async ()=>{ if(s.carTag) { const r=await callByTagLocal(s.carTag,'called'); statusEl.textContent = r.ok? `family called (tag ${s.carTag}) → ${r.count} student(s)`: `no family found for tag ${s.carTag}`; } });
+      bRS.addEventListener('click', async ()=>{ if(s.carTag) { const r=await callByTagLocal(s.carTag,'called'); statusEl.textContent = r.ok? `ride share called (tag ${s.carTag}) → ${r.count} student(s)`: `no ride share found for tag ${s.carTag}`; } });
+      actions.append(bCall,bFam,bRS);
+      row.appendChild(actions);
+      container.appendChild(row);
+    }
+
+    function showChoices(items, action){
+      choicesEl.innerHTML = '';
+  for(const {student:s} of items){ renderChoiceActions(choicesEl, action, s); }
+      overlay.classList.add('active');
+    }
+
+    // Live data
+    onStudents(null, (list) => {
+      const rows = Array.isArray(list) ? list : [];
+      store.students = rows.map(prepStudent);
+      // Build indexes for exact full-name, tag, and tokens
+      store.byFull = new Map();
+      store.byTag = new Map();
+      store.byToken = new Map();
+      for(const s of store.students){
+        const key = s.full; // normalized full name (name field)
+        if (!store.byFull.has(key)) store.byFull.set(key, []);
+        store.byFull.get(key).push(s);
+        if (s.carTag){
+          const t = s.carTag;
+          if (!store.byTag.has(t)) store.byTag.set(t, []);
+          store.byTag.get(t).push(s);
+        }
+        for(const tok of s.tokens){
+          if (!store.byToken.has(tok)) store.byToken.set(tok, new Set());
+          store.byToken.get(tok).add(s);
+        }
+      }
+      statusEl.textContent = `Loaded ${store.students.length} students`;
+    });
+    onCarGroups((groups) => {
+      const m = {};
+      (groups||[]).forEach(g => (g.tags||[]).forEach(t => m[String(t||'').toUpperCase()] = g));
+      store.groupsByTag = m;
+    });
+  </script>
+</body>
+</html>

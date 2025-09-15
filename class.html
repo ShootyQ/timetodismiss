@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Class Board</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-05-MC3" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script>
+    (function(){
+      try{
+  const KEY='SD_SW_PURGE_2025-09-05-HDR3';
+        if(!localStorage.getItem(KEY)){
+          if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }
+          if(window.caches&&caches.keys){ caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{}); }
+          localStorage.setItem(KEY,'1');
+        }
+      }catch(e){}
+    try{ console.log('[TTD] Page BUILD','2025-09-05-HDR3'); }catch{}
+    })();
+  </script>
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <!-- Desktop class picker (sheet) styles -->
+  <style>
+    /* Hide inline controls on desktop, keep on mobile */
+    @media (min-width: 821px){
+      .class-controls{ display:none !important; }
+    }
+    @media (max-width: 820px){
+      .class-picker-toolbar{ display:none !important; }
+    }
+
+    /* If global sheet styles are missing, provide minimal fallback */
+    .sheet-scrim{ position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:60; }
+    .sheet{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-top-left-radius:12px; border-top-right-radius:12px; box-shadow:0 -14px 30px rgba(0,0,0,.25); z-index:61; width:100%; max-height:min(78vh,680px); overflow:auto; }
+    .sheet[aria-hidden="true"], .sheet-scrim[aria-hidden="true"]{ display:none !important; }
+    .icon-btn{ background:none; border:0; font-size:1.5rem; line-height:1; cursor:pointer; }
+
+    /* Local utilities */
+    .class-main{ padding:22px 0; }
+    .muted{ color: var(--muted); }
+    .mr-4{ margin-right:4px; }
+    .class-picker-toolbar{ display:flex; align-items:center; gap:.5rem; margin:.25rem 0 .5rem; }
+
+    /* Sheet pieces */
+    .sheet-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid #e5e7eb; }
+    .sheet-header h2{ margin:0; font-size:1.05rem; font-weight:800; }
+    .sheet-content{ padding:10px 12px; }
+    .sheet-footer{ display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:10px 12px; border-top:1px solid #e5e7eb; }
+
+    /* When controls are mounted inside the sheet on desktop, make them visible and inline */
+    @media (min-width: 821px){
+      .sheet .class-controls{ display:block !important; }
+      .sheet .class-controls > label.small,
+      .sheet .class-controls #filterBtn{ display:none !important; }
+      .sheet .class-controls #chipSheet{ display:block !important; position:static !important; inset:auto !important; box-shadow:none !important; border:0 !important; transform:none !important; background:transparent !important; padding:0 !important; }
+    }
+  </style>
+</head>
+<body class="sd-body">
+  <!-- Universal header injected by site-header.js -->
+
+  <!-- Toast host (for call notifications) -->
+  <div id="callToasts" class="call-toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <main class="container class-main">
+    <h1 id="className">Classes</h1>
+
+    <!-- Desktop toolbar: button + summary -->
+    <div class="class-picker-toolbar">
+  <button id="openClassSheet" type="button" class="btn btn-primary">Choose classes</button>
+  <span id="classPickerSummary" class="small muted">Select classes to begin</span>
+    </div>
+
+    <section class="controls class-controls">
+      <label class="small mr-4">Classes:</label>
+      <button id="filterBtn" class="btn btn-outline btn-sm" type="button" aria-haspopup="dialog" aria-expanded="false">Filter</button>
+      <div id="chipSheet" class="chip-sheet" role="dialog" aria-label="Class filter">
+        <div class="sheet-header">
+          <strong>Classes</strong>
+          <div class="_sp"></div>
+          <button id="sheetAll" class="btn btn-secondary btn-sm" type="button">All</button>
+          <button id="sheetClear" class="btn btn-outline btn-sm" type="button">Clear</button>
+          <button id="sheetDone" class="btn btn-primary btn-sm" type="button">Done</button>
+        </div>
+        <div id="classChips" class="chip-select" role="group" aria-label="Class filter"></div>
+  <div class="sheet-subhead">Preferences</div>
+  <label class="switch small buzz-switch in-sheet">
+          <input id="buzzToggle" type="checkbox" />
+          <span>Buzz on calls</span>
+        </label>
+      </div>
+      <button id="selectAllBtn" class="btn btn-secondary" type="button">All</button>
+      <button id="clearSelBtn" class="btn btn-outline" type="button">Clear</button>
+    </section>
+
+    <div id="multiHost"></div>
+  </main>
+
+  <!-- Bottom sheet (reuses your .class-controls DOM on desktop) -->
+  <div id="sheetScrim" class="sheet-scrim" aria-hidden="true"></div>
+  <section id="classSheet" class="sheet" aria-label="Class Filters" aria-hidden="true">
+    <header class="sheet-header">
+      <h2>Classes & Preferences</h2>
+      <button id="closeClassSheet" type="button" class="icon-btn" aria-label="Close">×</button>
+    </header>
+    <div id="classSheetMount" class="sheet-content"></div>
+    <footer class="sheet-footer">
+      <button id="cancelClassSheet" type="button" class="btn">Cancel</button>
+      <button id="applyClassSheet" type="button" class="btn btn-primary">Apply</button>
+    </footer>
+  </section>
+
+  <script type="module">
+  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus } from '/app.js?v=20';
+    await init();
+
+    // --- params ---
+    const params = new URLSearchParams(location.search);
+    const singleClassId = params.get('classId');
+    const multiParam    = params.get('classes'); // comma-separated list
+
+    // --- elements ---
+    const titleEl = document.getElementById('className');
+    const host    = document.getElementById('multiHost');
+    const chipsEl   = document.getElementById('classChips');
+    const btnAll    = document.getElementById('selectAllBtn');
+    const btnClr    = document.getElementById('clearSelBtn');
+    const filterBtn = document.getElementById('filterBtn');
+    const chipSheet = document.getElementById('chipSheet');
+    const sheetAll  = document.getElementById('sheetAll');
+    const sheetClr  = document.getElementById('sheetClear');
+    const sheetDone = document.getElementById('sheetDone');
+    const toastHost = document.getElementById('callToasts');
+    
+    // Lightweight celebratory overlay
+    function showEndOverlay(msg = 'Dismissal is over! Great job today 🎉'){
+      let el = document.getElementById('endOverlay');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'endOverlay';
+        el.innerHTML = `
+          <div class="eo-wrap" role="dialog" aria-label="Dismissal complete">
+            <div class="eo-card">
+              <div class="eo-title">${msg}</div>
+              <div class="eo-sub">You can close this message or it will fade shortly.</div>
+              <button id="eoClose" class="btn btn-primary" type="button">Close</button>
+            </div>
+            <div class="eo-confetti" aria-hidden="true"></div>
+          </div>`;
+        const css = document.createElement('style');
+        css.id = 'endOverlayStyles';
+        css.textContent = `
+          #endOverlay{ position:fixed; inset:0; background:rgba(2,6,23,.75); display:grid; place-items:center; z-index:9999; }
+          #endOverlay .eo-wrap{ position:relative; width:100%; height:100%; display:grid; place-items:center; }
+          #endOverlay .eo-card{ background:#fff; border-radius:14px; padding:18px 20px; text-align:center; width:min(560px, 90vw); box-shadow:0 10px 30px rgba(2,6,23,.25); }
+          #endOverlay .eo-title{ font-weight:900; font-size:1.4rem; margin:0 0 .4rem; }
+          #endOverlay .eo-sub{ color:#64748b; margin:0 0 12px; }
+          #endOverlay .eo-confetti{ position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+          #endOverlay .confetti{ position:absolute; width:10px; height:14px; transform:translate(-50%,-50%); opacity:.9; border-radius:3px; animation: fall 1.8s linear forwards; }
+          @keyframes fall{ from{ transform:translate(var(--x), -10%) rotate(0deg);} to{ transform:translate(var(--x2), 110%) rotate(360deg);} }
+        `;
+        document.head.appendChild(css);
+        document.body.appendChild(el);
+        el.querySelector('#eoClose')?.addEventListener('click', () => { el.remove(); });
+      } else {
+        el.querySelector('.eo-title').textContent = msg;
+      }
+      // sprinkle some simple confetti squares
+      const box = el.querySelector('.eo-confetti');
+      if (box) {
+        box.innerHTML = '';
+        const colors = ['#ef4444','#f59e0b','#10b981','#3b82f6','#8b5cf6'];
+        for (let i=0;i<80;i++){
+          const s = document.createElement('div'); s.className='confetti';
+          const x = Math.random()*100; const x2 = x + (-20 + Math.random()*40);
+          s.style.setProperty('--x', x+'vw');
+          s.style.setProperty('--x2', x2+'vw');
+          s.style.left = x+'vw'; s.style.top = (Math.random()*20)+'vh';
+          s.style.background = colors[i%colors.length];
+          box.appendChild(s);
+        }
+      }
+      // auto close
+      setTimeout(() => { try { document.getElementById('endOverlay')?.remove(); } catch{} }, 12000);
+    }
+
+    // Compat Firestore fetch for classes at orgs/{orgId}/schools/{schoolId}/classes
+    function awaitClaimsReady(timeoutMs = 4000){
+      return new Promise((resolve) => {
+        const has = () => (window.TTD?.claims || window.SD?.claims);
+        if (has()) return resolve();
+        let tId = null;
+        const onReady = () => { cleanup(); resolve(); };
+        const cleanup = () => {
+          try { document.removeEventListener('sd:claims-ready', onReady); } catch {}
+          if (tId) clearTimeout(tId);
+        };
+        document.addEventListener('sd:claims-ready', onReady, { once: true });
+        if (timeoutMs > 0){ tId = setTimeout(onReady, timeoutMs); }
+      });
+    }
+
+    // Subscribe to a school-wide dismissal-over signal
+    async function subscribeDismissalSignal(){
+      try {
+        if (!window.firebase || !firebase.apps?.length) return;
+        const db = firebase.firestore();
+        const ctx = window.SD || {};
+        const orgId = ctx.orgId || 'mn-conference';
+        const schoolId = ctx.schoolId; if (!schoolId) return;
+        const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('signals').doc('dismissal');
+        let lastSeq = null; let lastAt = null;
+        ref.onSnapshot((snap) => {
+          if (!snap.exists) return;
+          const d = snap.data() || {};
+          const seq = d.seq || 0; const at = d.lastAt?.toMillis?.() || 0;
+          if (lastSeq === null) { lastSeq = seq; lastAt = at; return; }
+          if (seq !== lastSeq || at !== lastAt) {
+            lastSeq = seq; lastAt = at;
+            showEndOverlay(d.message || 'Dismissal is over!');
+            try { ding(); } catch{}
+          }
+        });
+      } catch {}
+    }
+
+    async function fetchClassesCompat(){
+      // Wait for compat Firebase provided by site-header.js
+      if (!window.firebase || !firebase.apps || !firebase.apps.length){
+        throw new Error('Firebase not initialized');
+      }
+      const db = firebase.firestore();
+      const ctx = (window.TTD || window.SD || {});
+      const tenant = ctx.tenant || {};
+      const claims = ctx.claims || {};
+      const schoolId = tenant.schoolId || claims.schoolId;
+      const orgId = tenant.orgId || claims.orgId || 'mn-conference';
+      // Keep modular helpers in sync with the same tenant
+      try {
+        window.SD = window.SD || {};
+        if (orgId) window.SD.orgId = orgId;
+        if (schoolId) {
+          window.SD.schoolId = schoolId;
+          try { localStorage.setItem('SD_SCHOOL', schoolId); } catch {}
+        }
+        console.info('[TTD] tenant', { orgId: window.SD.orgId, schoolId: window.SD.schoolId });
+      } catch {}
+      if (!schoolId) throw new Error('No schoolId available');
+      const classesRef = db.collection('orgs')
+        .doc(orgId)
+        .collection('schools')
+        .doc(schoolId)
+        .collection('classes');
+      const snap = await classesRef.orderBy('name').get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    }
+
+    // Provide pulse styles (previously tied to an empty state card that we've removed)
+    function ensurePulseStyles(){
+      if (document.getElementById('emptyStateStyles')) return;
+      const style = document.createElement('style');
+      style.id = 'emptyStateStyles';
+      style.textContent = `
+        .attn-pulse{ position:relative; }
+        .attn-pulse::after{ content:""; position:absolute; inset:-4px; border-radius:14px; box-shadow:0 0 0 0 rgba(59,130,246,.55); animation:attnPulse 1.6s ease-in-out infinite; pointer-events:none; }
+        @keyframes attnPulse{ 0%{ box-shadow:0 0 0 0 rgba(59,130,246,.55); } 70%{ box-shadow:0 0 0 16px rgba(59,130,246,0); } 100%{ box-shadow:0 0 0 0 rgba(59,130,246,0); } }
+      `;
+      document.head.appendChild(style);
+    }
+
+    function getSelectedCount(){
+      if (!chipsEl) return 0;
+      return chipsEl.querySelectorAll('input[type="checkbox"]:checked').length;
+    }
+
+    function refreshEmptyState(){
+      ensurePulseStyles();
+      const count = getSelectedCount();
+      // Update filter button label if present
+      if (filterBtn){
+        filterBtn.textContent = count > 0 ? `Filter (${count})` : 'Select Classes';
+      }
+      // Highlight primary choose button(s) if nothing selected
+      const openBtn = document.getElementById('openClassSheet');
+      [filterBtn, openBtn].forEach(btn => btn && btn.classList.toggle('attn-pulse', count === 0));
+      // Adjust summary guidance inline next to button
+      try {
+        const summary = document.getElementById('classPickerSummary');
+        if (summary) summary.textContent = count === 0 ? 'Select classes to begin' : (summary.textContent || '');
+      } catch {}
+    }
+
+    // --- tiny sound ---
+    function ding() {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const ctx = ding._ctx || (ding._ctx = new AC());
+      if (ctx.state === 'suspended') ctx.resume();
+      const t = ctx.currentTime;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.2, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(880, t);
+      o.frequency.exponentialRampToValueAtTime(1320, t + 0.08);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 0.35);
+    }
+
+    // --- vibration ---
+    const BUZZ_KEY = 'TTD_BuzzOnCalls';
+    const buzzToggle = document.getElementById('buzzToggle');
+    let buzzOn = false;
+    try {
+      const saved = localStorage.getItem(BUZZ_KEY);
+      buzzOn = saved === '1';
+      if (buzzToggle) buzzToggle.checked = buzzOn;
+    } catch {}
+    function tryBuzz(pattern = [70, 40, 90]){
+      if (!buzzOn) return;
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate(pattern); } catch {}
+      }
+    }
+    buzzToggle?.addEventListener('change', () => {
+      buzzOn = !!buzzToggle.checked;
+      try { localStorage.setItem(BUZZ_KEY, buzzOn ? '1' : '0'); } catch {}
+      // Provide immediate tiny haptic preview on enable
+      if (buzzOn) tryBuzz([20, 40, 20]);
+    });
+
+    // --- toast banner ---
+    function showToast(text) {
+      if (!toastHost) return;
+      const el = document.createElement('div');
+      el.className = 'call-toast';
+      el.textContent = text;
+      toastHost.appendChild(el);
+      setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 260); }, 3000);
+    }
+
+  // Track previous statuses to detect transitions (studentId -> status)
+    const prevStatus = new Map();
+  // Track when a student entered 'called' to drive elapsed timers
+  const calledAt = new Map(); // id -> ms epoch
+  const overdueBeeped = new Set(); // to avoid spamming sound
+    // En-route pending timers per studentId
+    const enrouteTimers = new Map(); // id -> { tId, ivId, endAt }
+    // Short-lived mask to treat a student as en_route locally while waiting for Firestore
+    const enrouteMask = new Map(); // id -> expireAt
+    function maskEnroute(id, ms=8000){
+      const until = Date.now() + ms;
+      enrouteMask.set(id, until);
+      setTimeout(() => {
+        const at = enrouteMask.get(id);
+        if (typeof at === 'number' && at <= Date.now()) enrouteMask.delete(id);
+      }, ms + 1000);
+    }
+
+  function startEnrouteCountdown(id){
+      // Cancel any existing countdown and reset UI before starting a fresh one
+      cancelEnrouteCountdown(id, true);
+      const endAt = Date.now() + 5000;
+      // Ensure UI shows countdown immediately (no wait for snapshot)
+  try {
+        const li = host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`);
+        if (li) {
+          const actions = li.querySelector('.inline-actions');
+          if (actions) {
+            actions.innerHTML = `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${id}">Cancel (5)</button>`;
+          }
+          if (!li.querySelector('.enroute-bar')) {
+            const bar = document.createElement('div');
+            bar.className = 'enroute-bar';
+            bar.setAttribute('role','progressbar');
+            bar.setAttribute('aria-label','En route countdown');
+            bar.innerHTML = `<div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route (5)</span>`;
+            li.appendChild(bar);
+          }
+        }
+      } catch {}
+      const update = () => {
+        const li = host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`);
+        const btn = li?.querySelector('button[data-act="cancel-enroute"]');
+        const lbl = li?.querySelector('.enroute-bar .enroute-label');
+        if (btn) {
+          const remain = Math.max(0, Math.ceil((endAt - Date.now())/1000));
+          btn.textContent = `Cancel (${remain})`;
+        }
+        if (lbl) {
+          const remain = Math.max(0, Math.ceil((endAt - Date.now())/1000));
+          lbl.textContent = `En Route (${remain})`;
+        }
+      };
+      const ivId = setInterval(update, 250);
+      const tId = setTimeout(async () => {
+        // Important: only clear timers here; do NOT restore Called UI.
+        cancelEnrouteCountdown(id, false);
+        // Prevent flicker: locally treat as en_route until snapshot lands
+        maskEnroute(id, 8000);
+        // Optimistic move: shift the tile to the Waiting list as En Route (if a per-class waiting list exists)
+        try {
+          const li = host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`);
+          if (li) {
+            const sec = li.closest('section');
+            const waitList = sec?.querySelector('.waiting-list');
+            if (waitList) {
+              const nameHtml = li.querySelector('.name')?.outerHTML || '';
+              const tagHtml  = li.querySelector('.car-tag')?.outerHTML || '';
+              const newLi = document.createElement('li');
+              newLi.className = 'student waiting en_route';
+              newLi.setAttribute('data-id', id);
+              newLi.setAttribute('data-status', 'en_route');
+              newLi.innerHTML = `
+                ${nameHtml}
+                ${tagHtml}
+                <span class="status">En Route</span>
+              `;
+              waitList.appendChild(newLi);
+              li.remove();
+            } else {
+              // No waiting list (e.g., global aggregate shelf) — remove the called tile now; snapshot will re-render
+              li.remove();
+            }
+          }
+        } catch {}
+        // Persist
+        try { await setStudentStatus(id, 'en_route'); } catch {}
+      }, 5000);
+      enrouteTimers.set(id, { tId, ivId, endAt });
+      update();
+    }
+    function cancelEnrouteCountdown(id, restoreUi = true){
+      const t = enrouteTimers.get(id);
+      if (!t) return;
+      if (t.ivId) clearInterval(t.ivId);
+      if (t.tId) clearTimeout(t.tId);
+      enrouteTimers.delete(id);
+      enrouteMask.delete(id);
+      // Restore UI back to initial state if still on Called shelf
+      if (restoreUi) {
+        try {
+          const li = host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`);
+          if (li) {
+            const actions = li.querySelector('.inline-actions');
+            if (actions) {
+              actions.innerHTML = `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${id}">En Route</button>`;
+            }
+            li.querySelector('.enroute-bar')?.remove();
+          }
+        } catch {}
+      }
+    }
+    function pendingRemainSec(id){
+      const t = enrouteTimers.get(id);
+      if (!t) return 0;
+      return Math.max(0, Math.ceil((t.endAt - Date.now())/1000));
+    }
+
+    // Per-class unsubscribe and DOM section
+    const unsubs = new Map(); // classId -> () => void
+    const sections = new Map(); // classId -> {root, calledUl, waitUl}
+
+    // ===== Global "Now Calling" aggregate (multi-class) =====
+    let globalSec = null; // { root, titleEl, ul }
+    const globalCalledMap = new Map(); // studentId -> { id,name,carTag,classId,className }
+    let useGlobal = false; // true when 2+ classes selected
+
+    function ensureGlobalSection(){
+      if (globalSec) return globalSec;
+      const sec = document.createElement('section');
+      sec.id = 'globalCalledSection';
+      sec.style.margin = '12px 0 18px';
+      const h = document.createElement('h2');
+      h.textContent = 'Now Calling';
+      h.style.margin = '0 0 6px';
+      h.style.fontSize = '1.1rem';
+      h.style.fontWeight = '800';
+      const ul = document.createElement('ul');
+      ul.className = 'student-list called-shelf';
+      sec.appendChild(h);
+      sec.appendChild(ul);
+      host.prepend(sec);
+      globalSec = { root: sec, titleEl: h, ul };
+      return globalSec;
+    }
+
+    function setGlobalVisible(v){
+      ensureGlobalSection();
+      globalSec.root.style.display = v ? '' : 'none';
+    }
+
+    function renderGlobalCalled(){
+      if (!useGlobal) { setGlobalVisible(false); return; }
+      ensureGlobalSection();
+      const rows = Array.from(globalCalledMap.values())
+        .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      globalSec.ul.innerHTML = rows.map(s => {
+        const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
+        const isPending = enrouteTimers.has(s.id);
+        const actionHtml = isPending
+          ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button>`
+          : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button>`;
+        const barHtml = isPending
+          ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
+          : '';
+        // Include class label at end for context when multiple classes
+        const cls = s.className ? `<span class="status" style="margin-left:.75rem;opacity:.85">${s.className}</span>` : '';
+        return `
+          <li class="student called" data-id="${s.id}" data-status="called">
+            <span class="name">${s.name}</span>
+            ${tag}
+            <span class="status">Called</span>
+            ${cls}
+            <span class="inline-actions">${actionHtml}</span>
+            ${barHtml}
+          </li>`;
+      }).join('');
+      setGlobalVisible(rows.length > 0);
+    }
+
+    function createSection(classId, className){
+      const sec = document.createElement('section');
+      sec.setAttribute('data-class', classId);
+      sec.style.margin = '10px 0 16px';
+      const h = document.createElement('h2');
+      h.textContent = className || 'Class';
+      h.style.margin = '0 0 6px';
+      h.style.fontSize = '1.05rem';
+      h.style.fontWeight = '800';
+
+      // Two-shelf layout: Called shelf (top, bigger) + Waiting list (below, compact)
+      const board = document.createElement('div');
+      board.className = 'class-board';
+      const calledUl = document.createElement('ul');
+      calledUl.className = 'student-list called-shelf';
+      const waitUl = document.createElement('ul');
+      waitUl.className = 'student-list waiting-list';
+
+      board.appendChild(calledUl);
+      board.appendChild(waitUl);
+
+      sec.appendChild(h);
+      sec.appendChild(board);
+      host.appendChild(sec);
+
+      sections.set(classId, { root: sec, calledUl, waitUl });
+      return { root: sec, calledUl, waitUl };
+    }
+
+    function removeSection(classId){
+      const s = sections.get(classId);
+      if (s) { s.root.remove(); sections.delete(classId); }
+    }
+
+    onAuthChanged(async (user) => {
+      if (!user) {
+        location.replace('/master.html#login');
+        return;
+      }
+
+  // Load class list and build picker (compat path under orgs/{org}/schools/{school}/classes)
+  await awaitClaimsReady();
+      let classes = [];
+      try {
+        classes = await fetchClassesCompat();
+      } catch (e) {
+        console.error('[TTD] Failed to load classes via compat path:', e);
+        // Fallback to app.js helper if available
+        try { classes = await getClasses(); } catch {}
+      }
+      const byId = new Map(classes.map(c => [c.id, c]));
+
+  // Render compact checkbox chips
+      const sorted = [...classes].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      chipsEl.innerHTML = sorted.map(c => `
+        <label class="chip"><input type="checkbox" value="${c.id}" /> <span>${c.name || c.id}</span></label>
+      `).join('');
+
+  // Ensure empty state reflects current selection promptly
+  setTimeout(() => { refreshEmptyState(); }, 0);
+
+      // Keep empty state accurate as the user selects/deselects
+      chipsEl?.addEventListener('change', refreshEmptyState, { passive: true });
+      btnAll?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
+      btnClr?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
+
+      // Initial selection from URL; default to all if none specified
+      const initial = new Set();
+      if (multiParam) {
+        multiParam.split(',').map(s => s.trim()).filter(Boolean).forEach(id => initial.add(id));
+      } else if (singleClassId) {
+        initial.add(singleClassId);
+      } else {
+        classes.forEach(c => initial.add(c.id));
+      }
+
+  // Default: start with no classes checked in the UI
+  chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = false;
+    cb.removeAttribute('checked');
+  });
+  // Reflect initial state in the button label
+  try { filterBtn.textContent = 'Select Classes'; } catch {}
+
+      function currentSelection(){
+        return Array.from(chipsEl.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+      }
+      function setSelection(ids){
+        const set = new Set(ids);
+        chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = set.has(cb.value); });
+        onSelectionChange();
+      }
+      function updateSummary(ids){
+        try {
+          const sel = ids ?? currentSelection();
+          const n = sel.length;
+          let label = 'Filter';
+          if (n === 0) label = 'Filter (None)';
+          else if (n === classes.length) label = 'Filter (All)';
+          else if (n === 1) {
+            const only = classes.find(c => c.id === sel[0]);
+            label = `Filter (${only?.name || '1'})`;
+          } else label = `Filter (${n})`;
+          if (filterBtn) { filterBtn.textContent = label; filterBtn.setAttribute('aria-label', label); }
+        } catch {}
+      }
+      function updateUrl(ids){
+        const p = new URLSearchParams(location.search);
+        if (ids.length > 0) {
+          p.set('classes', ids.join(','));
+          p.delete('classId');
+        } else {
+          p.delete('classes');
+        }
+        const qs = p.toString();
+        const newUrl = location.pathname + (qs ? ('?' + qs) : '');
+        history.replaceState(null, '', newUrl);
+      }
+
+  function subscribeClass(id){
+        if (unsubs.has(id)) return;
+        const meta = byId.get(id);
+        const { calledUl, waitUl } = createSection(id, meta?.name || id);
+        let first = true;
+        const unsub = onClassStudents(id, (students) => {
+          try { console.debug('[TTD] class snapshot', { classId: id, count: (students||[]).length }); } catch {}
+          // prune expired masks
+          for (const [sid, at] of Array.from(enrouteMask.entries())){
+            if (typeof at === 'number' && at <= Date.now()) enrouteMask.delete(sid);
+          }
+          // Partition and stable-sort; keep 'absent' rows at the bottom with distinct style
+          const called = [];
+          const rest = [];
+          const absents = [];
+          for (const s of students) {
+            const masked = enrouteMask.has(s.id);
+            const effStatus = masked ? 'en_route' : s.status;
+            if (effStatus === 'absent') { absents.push({ ...s, status: effStatus }); continue; }
+            if (effStatus === 'called') called.push({ ...s, status: effStatus });
+            else rest.push({ ...s, status: effStatus });
+          }
+          const byName = (a,b) => (a.name||'').localeCompare(b.name||'');
+          called.sort(byName);
+      // Waiting, then Picked Up, then En Route at very bottom (free up space)
+          rest.sort((a,b) => {
+            const rank = (st) => {
+              if (st === 'called') return 0; // shouldn't be here, but keep safe
+              if (st === 'waiting') return 1;
+        if (st === 'picked_up') return 2;
+        if (st === 'en_route') return 99; // very bottom
+        return 98;
+            };
+            const ra = rank(a.status), rb = rank(b.status);
+            return ra === rb ? byName(a,b) : ra - rb;
+          });
+
+          // Render called shelf for per-class view OR add to global aggregate when multi-class
+          if (useGlobal) {
+            // Maintain aggregate map for this class
+            const currentIds = new Set(called.map(s => s.id));
+            for (const [sid, row] of Array.from(globalCalledMap.entries())){
+              if (row.classId === id && !currentIds.has(sid)) globalCalledMap.delete(sid);
+            }
+            called.forEach(s => {
+              globalCalledMap.set(s.id, { id: s.id, name: s.name, carTag: s.carTag, classId: id, className: meta?.name || id });
+            });
+            renderGlobalCalled();
+            // Hide per-class called shelf to save space
+            calledUl.innerHTML = '';
+          } else {
+            // Single-class mode: show called shelf within the section
+            calledUl.innerHTML = called.map(s => {
+            const before = prevStatus.get(s.id);
+            const enter = before && before !== 'called' ? ' enter' : '';
+            const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
+            const isPending = enrouteTimers.has(s.id);
+            const actionHtml = isPending
+              ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`
+              : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`;
+            const barHtml = isPending
+              ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
+              : '';
+            return `
+              <li class="student called${enter}" data-id="${s.id}" data-status="called">
+                <span class="name">${s.name}</span>
+                ${tag}
+                <span class="status">Called</span>
+                <span class="inline-actions">${actionHtml}</span>
+                ${barHtml}
+              </li>`;
+            }).join('');
+          }
+
+          // Render waiting/picked list (compact)
+          waitUl.innerHTML = rest.map(s => {
+            const statusClass =
+              s.status === 'picked_up' ? 'picked picked_up' : (s.status === 'en_route' ? 'waiting en_route' : (s.status === 'absent' ? 'waiting absent' : 'waiting'));
+            const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+            const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
+            return `
+              <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
+                <span class="name">${s.name}</span>
+                ${tag}
+                <span class="status">${statusLabel}</span>
+              </li>`;
+          }).join('');
+
+          // Append absents at bottom with distinct color and label
+          if (absents.length) {
+            absents.sort(byName);
+            const html = absents.map(s => {
+              const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+              return `
+                <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
+                  <span class=\"name\">${s.name}</span>
+                  ${tag}
+                  <span class=\"status\">Absent</span>
+                </li>`;
+            }).join('');
+            waitUl.insertAdjacentHTML('beforeend', html);
+          }
+
+  // Toast + ding + optional buzz for transitions to called, and clear any pending timers when leaving 'called'
+      students.forEach(s => {
+      const before = prevStatus.get(s.id);
+            const after = s.status;
+            if (before !== after) {
+              if (after === 'called') {
+                const label = s.carTag ? (s.name + ' — ' + s.carTag) : s.name;
+                showToast(label);
+        ding();
+        if (document.visibilityState === 'visible') tryBuzz();
+        calledAt.set(s.id, Date.now());
+        overdueBeeped.delete(s.id);
+              }
+    if (after !== 'called') { cancelEnrouteCountdown(s.id); calledAt.delete(s.id); overdueBeeped.delete(s.id); }
+        if (after === 'en_route') enrouteMask.delete(s.id);
+              prevStatus.set(s.id, after);
+            }
+          });
+        });
+        unsubs.set(id, unsub);
+      }
+
+      function unsubscribeClass(id){
+        const u = unsubs.get(id);
+        if (u) { try { u(); } catch {} unsubs.delete(id); }
+        removeSection(id);
+      }
+
+      function onSelectionChange(){
+        const ids = currentSelection();
+        titleEl.textContent = ids.length <= 1
+          ? (ids.length === 1 ? (byId.get(ids[0])?.name || 'Class') : 'Classes')
+          : `${ids.length} Classes`;
+        updateUrl(ids);
+        updateSummary(ids);
+
+        // Global aggregate enabled only when selecting 2+ classes
+        useGlobal = ids.length > 1;
+        if (!useGlobal) {
+          globalCalledMap.clear();
+          renderGlobalCalled();
+        } else {
+          ensureGlobalSection();
+        }
+
+        const keep = new Set(ids);
+        for (const id of Array.from(unsubs.keys())){
+          if (!keep.has(id)) unsubscribeClass(id);
+        }
+        ids.forEach(id => subscribeClass(id));
+
+        const ordered = ids
+          .map(id => ({ id, name: byId.get(id)?.name || id }))
+          .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+        ordered.forEach(({id}) => {
+          const sec = sections.get(id)?.root;
+          if (sec) host.appendChild(sec);
+        });
+        // Ensure the global section stays at the very top when visible
+        if (useGlobal && globalSec?.root) host.prepend(globalSec.root);
+      }
+
+      chipsEl.addEventListener('change', onSelectionChange);
+      // En Route actions (event delegation)
+      host.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const id = btn.getAttribute('data-id');
+        const act = btn.getAttribute('data-act');
+        if (!id || !act) return;
+        if (act === 'enroute') {
+          startEnrouteCountdown(id);
+        } else if (act === 'cancel-enroute') {
+          cancelEnrouteCountdown(id);
+        } else if (act === 'absent') {
+          (async () => {
+            try { cancelEnrouteCountdown(id, false); } catch{}
+            // Optimistically remove from UI immediately
+            try { host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`)?.remove(); } catch{}
+            try { await setStudentStatus(id, 'absent'); } catch{}
+          })();
+        }
+      });
+      btnAll.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+      btnClr.addEventListener('click', () => setSelection([]));
+      sheetAll?.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+      sheetClr?.addEventListener('click', () => setSelection([]));
+      sheetDone?.addEventListener('click', () => {
+        chipSheet?.classList.remove('open');
+        filterBtn?.setAttribute('aria-expanded', 'false');
+      });
+      filterBtn?.addEventListener('click', () => {
+        const isOpen = chipSheet?.classList.toggle('open');
+        filterBtn?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          chipSheet?.classList.remove('open');
+          filterBtn?.setAttribute('aria-expanded', 'false');
+        }
+      });
+
+      onSelectionChange();
+
+      // ===== Aging timer UI =====
+  const AGING1_MS = 10 * 1000; // start gentle pulse after 10s
+  const AGING2_MS = 20 * 1000; // escalate to shake after 20s
+  const BEEP_MS   = 40 * 1000; // single gentle alert at 40s
+
+      function renderAgingNow() {
+        // For each visible called tile, add/update an elapsed mm:ss and aging classes
+        const now = Date.now();
+        document.querySelectorAll('.student.called[data-id]').forEach(li => {
+          const id = li.getAttribute('data-id');
+          const since = calledAt.get(id);
+          if (!since) return; // only track since we saw the transition
+          const dt = Math.max(0, now - since);
+          // badge
+          let badge = li.querySelector('.elapsed');
+          if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'elapsed';
+            // Try to place next to status; else append at end
+            const status = li.querySelector('.status');
+            if (status?.parentElement === li) li.insertBefore(badge, status.nextSibling);
+            else li.appendChild(badge);
+          }
+          const mm = Math.floor(dt/60000).toString().padStart(2,'0');
+          const ss = Math.floor((dt%60000)/1000).toString().padStart(2,'0');
+          badge.textContent = `${mm}:${ss}`;
+
+          // classes
+          const a1 = dt >= AGING1_MS, a2 = dt >= AGING2_MS;
+          li.classList.toggle('aging1', a1 && !a2);
+          li.classList.toggle('aging2', a2);
+
+          // one-time gentle beep when significantly overdue
+          if (dt >= BEEP_MS && !overdueBeeped.has(id)) {
+            overdueBeeped.add(id);
+            try { ding(); } catch {}
+          }
+        });
+      }
+      // Update ~2x per second; respect reduced motion if desired (still show timer text)
+      setInterval(renderAgingNow, 500);
+      // Start listening for dismissal-over broadcast once auth & tenant known
+      subscribeDismissalSignal();
+    });
+  </script>
+
+  <!-- Desktop class picker wiring: moves .class-controls into sheet on wide screens -->
+  <script type="module">
+  (() => {
+    const scrim = document.getElementById('sheetScrim');
+    const sheet = document.getElementById('classSheet');
+    const mount = document.getElementById('classSheetMount');
+    const openBtn = document.getElementById('openClassSheet');
+    const closeBtn = document.getElementById('closeClassSheet');
+    const cancelBtn = document.getElementById('cancelClassSheet');
+    const applyBtn = document.getElementById('applyClassSheet');
+    const summary  = document.getElementById('classPickerSummary');
+    const controls = document.querySelector('.class-controls');
+
+    if (!controls || !openBtn || !sheet || !scrim || !mount) return;
+
+    // Placeholder to restore controls to original spot on mobile
+    const home = document.createElement('div');
+    home.id = 'classControlsHome';
+    controls.parentNode.insertBefore(home, controls);
+
+    const mq = window.matchMedia('(min-width: 821px)');
+    function placeControls(){
+      if (mq.matches){
+        if (controls.parentNode !== mount) mount.appendChild(controls);
+        openBtn.style.display = '';
+      } else {
+        if (home && home.parentNode && controls.parentNode !== home.parentNode) home.after(controls);
+        openBtn.style.display = 'none';
+        controls.style.display = '';
+      }
+      updateSummary();
+    }
+
+    function open(){
+      sheet.setAttribute('aria-hidden','false');
+      scrim.setAttribute('aria-hidden','false');
+      document.body.style.overflow='hidden';
+    }
+    function close(){
+      sheet.setAttribute('aria-hidden','true');
+      scrim.setAttribute('aria-hidden','true');
+      document.body.style.overflow='';
+    }
+
+    function updateSummary(){
+      try{
+        const cbs = controls.querySelectorAll('input[type="checkbox"]');
+        const labels = [];
+        cbs.forEach(cb => {
+          if (cb.checked){
+            const lab = cb.closest('label');
+            const text = (lab ? lab.textContent : cb.getAttribute('aria-label') || '')?.trim();
+            if (text && !/buzz/i.test(text)) labels.push(text);
+          }
+        });
+        if (summary) summary.textContent = labels.length ? labels.join(', ') : 'No classes selected';
+      }catch{}
+    }
+
+    mq.addEventListener?.('change', placeControls);
+    if (document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', placeControls, { once:true });
+    } else {
+      setTimeout(placeControls, 0);
+    }
+
+    openBtn.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    cancelBtn.addEventListener('click', close);
+    scrim.addEventListener('click', close);
+    document.addEventListener('keydown', (e)=>{ if(e.key==='Escape') close(); });
+
+    applyBtn.addEventListener('click', () => {
+      updateSummary();
+      document.dispatchEvent(new CustomEvent('sd:class-filter-changed'));
+      close();
+    });
+
+    controls.addEventListener('change', () => { clearTimeout(controls._t); controls._t = setTimeout(updateSummary, 50); });
+  })();
+  </script>
+

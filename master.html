@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Master Caller (Safe Mode)</title>
+
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <!-- Header sets up Firebase + emits claims events -->
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+
+  <!-- Safety pin: make sure nothing blocks clicks -->
+  <style>
+    #qrSheet[hidden]{display:none!important}
+    button, a.btn, select, input { pointer-events:auto!important }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container master-main">
+    <h1 class="page-title page-title-tight">Master Caller</h1>
+
+    <section class="controls controls-top" id="controlsTop" aria-label="Master controls">
+      <label class="sr-only" for="classFilter">Filter by class</label>
+      <select id="classFilter" aria-label="Choose class"></select>
+
+      <input id="search" placeholder="Search student, tag, or car..." aria-label="Search" />
+
+  <button id="clearCalled" class="btn btn-secondary" type="button">Clear Called</button>
+  <a href="/mastercaller.html" class="btn btn-outline" id="tilesBeta" aria-label="Open tiles beta">TILES beta</a>
+  <button id="openScanner" class="btn btn-primary" type="button">Scan</button>
+  <button id="endDismissal" class="btn btn-primary" type="button" title="Broadcast that dismissal is over">End Dismissal</button>
+    </section>
+
+    <ul id="masterList" class="student-list master" aria-live="polite" aria-busy="false"></ul>
+  </main>
+
+  <div id="qrSheet" hidden class="qr-sheet"></div>
+
+  <script type="module">
+    // ======= DOM refs =======
+    const classFilter = document.getElementById('classFilter');
+    const search      = document.getElementById('search');
+    const list        = document.getElementById('masterList');
+  const clearBtn    = document.getElementById('clearCalled');
+  const scanBtn     = document.getElementById('openScanner');
+  const endBtn      = document.getElementById('endDismissal');
+
+    // ======= Local state =======
+    const MODE_FAMILIES = '__families__';
+    let classes = [];
+    let families = [];
+    let carsMap = {};     // TAG -> group name
+    let tagToGroup = {};  // TAG -> group object
+    let currentStudents = [];
+    let unsubscribeStudents = () => {};
+    // Throttle map: prevent repeated writes on the same target for a short window
+    const inFlight = new Map(); // key -> expireAt
+    const THROTTLE_MS = 2000;
+
+    function allowOnce(key){
+      const now = Date.now();
+      const until = inFlight.get(key) || 0;
+      if (until && until > now) return false; // still throttled
+      inFlight.set(key, now + THROTTLE_MS);
+      // auto cleanup later
+      setTimeout(() => { if ((inFlight.get(key) || 0) <= Date.now()) inFlight.delete(key); }, THROTTLE_MS + 200);
+      return true;
+    }
+
+    // ======= API loader (lazy) =======
+    let apiReady = false;
+    let api = {};
+    const actionQueue = [];  // {kind, payload}
+
+    // Attach listeners immediately
+    wireButtonsAndList();
+
+    // Load /app.js AFTER listeners are in place
+  (async () => {
+      try {
+    const mod = await import('/app.js?v=21');
+        api = mod;
+        try { await mod.init?.(); } catch(e) { console.warn('[master] init() failed (continuing):', e?.message || e); }
+        apiReady = true;
+        await ensureClaimsAndGate();   // redirect if not caller/admin
+        await hydrateData();           // load classes + streams
+        flushQueuedActions();          // replay clicks during load
+      } catch (err) {
+        console.error('[master] Failed to import /app.js', err);
+      }
+    })();
+
+    // ======= Claims / gate =======
+    async function getClaims() {
+      if (window.SD?.claims)  return window.SD.claims;
+      if (window.TTD?.claims) return window.TTD.claims;
+      try {
+        const u = window.firebase?.auth?.().currentUser;
+        if (!u) return null;
+        const r = await u.getIdTokenResult(true);
+        return r?.claims || null;
+      } catch { return null; }
+    }
+
+    async function ensureClaimsAndGate() {
+      const claims = await getClaims();
+      if (!claims) {
+        // Wait for header to supply claims
+        await new Promise((resolve) => {
+          const h = (e) => {
+            const c = e?.detail?.claims;
+            if (!c) return;
+            document.removeEventListener('sd:claims-ready', h);
+            document.removeEventListener('ttd:claims-ready', h);
+            if (!c.caller && !c.admin) {
+              const list = document.getElementById('masterList');
+              if (list) list.innerHTML = '<li class="small muted">Access denied. You need Caller or Admin.</li>';
+            }
+            resolve();
+          };
+          document.addEventListener('sd:claims-ready', h);
+          document.addEventListener('ttd:claims-ready', h);
+        });
+        return;
+      }
+      if (!claims.caller && !claims.admin) {
+        const list = document.getElementById('masterList');
+        if (list) list.innerHTML = '<li class="small muted">Access denied. You need Caller or Admin.</li>';
+      }
+    }
+
+    // ======= Data wire-up =======
+    async function hydrateData() {
+      if (!apiReady) return;
+
+      // Car families (orgs/{orgId}/schools/{schoolId}/carGroups/*)
+      api.onCarGroups((groups) => {
+        families = groups || [];
+        const m = {}, tg = {};
+        families.forEach(g => (g.tags || []).forEach(t => {
+          const T = String(t || '').toUpperCase();
+          m[T]  = g.name || '';
+          tg[T] = g;
+        }));
+        carsMap = m; tagToGroup = tg;
+
+        if (classFilter.value === MODE_FAMILIES) renderFamilies();
+        else renderStudents();
+      });
+
+      // Classes
+      try { classes = await api.getClasses() || []; }
+      catch (e) { console.error('getClasses failed:', e); classes = []; }
+
+      const clsOptions = classes.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      classFilter.innerHTML = `
+        <option value="">All Classes</option>
+        <option value="${MODE_FAMILIES}">Car Families</option>
+        ${clsOptions}
+      `;
+
+      resubscribe();
+    }
+
+    function resubscribe() {
+      try { unsubscribeStudents(); } catch {}
+      unsubscribeStudents = () => {};
+
+      const mode = classFilter.value || '';
+      if (!apiReady) { list.innerHTML = '<li class="small muted">Loading…</li>'; return; }
+
+      if (mode === MODE_FAMILIES) {
+        renderFamilies();
+        return;
+      }
+
+      unsubscribeStudents = api.onStudents(mode || null, (students) => {
+        currentStudents = students || [];
+        renderStudents();
+      });
+    }
+
+    // ======= Rendering =======
+    function ding(){ try { new Audio('/chime.mp3').play().catch(()=>{}); } catch(e){} }
+  const rank = s => ({ called:0, waiting:1, en_route:2, picked_up:99, absent:100 }[s] ?? 50);
+
+    function renderStudents() {
+      const q = search.value.toLowerCase().trim();
+      const rows = currentStudents
+        .filter(s => {
+          const tag = String(s.carTag || '').toUpperCase();
+          const hay = `${s.name || ''} ${tag} ${(carsMap[tag] || '')}`.toLowerCase();
+          return hay.includes(q);
+        })
+        .sort((a,b) => {
+          const ra = rank(a.status), rb = rank(b.status);
+          return ra === rb ? (a.name || '').localeCompare(b.name || '') : ra - rb;
+        });
+
+      list.setAttribute('aria-busy','true');
+      list.innerHTML = rows.map(s => {
+        const sid = s.id;
+        const tag = String(s.carTag || '').toUpperCase();
+        const grp = tagToGroup[tag];
+        const hasGroup = !!grp; // show RS button when student belongs to any car group
+        const rs  = grp?.rideShare || '';
+        const cls = classes.find(c => c.id === s.classId)?.name || '';
+        return `
+          <li class="student ${s.status}" data-id="${sid}">
+            <span>
+              <span class="name">${s.name || ''}</span>
+              <span class="meta">
+                ${cls}
+                ${tag ? ' • ' + tag : ''}
+                ${carsMap[tag] ? ' — ' + carsMap[tag] : ''}
+                ${rs ? (' • RS: ' + rs) : ''}
+              </span>
+            </span>
+            <div class="actions">
+              <button class="btn" data-id="${sid}" data-action="called">Call</button>
+              <button class="btn btn-secondary" data-id="${sid}" data-action="waiting">Clear</button>
+              <button class="btn btn-secondary" data-id="${sid}" data-action="picked_up">Picked Up</button>
+              ${tag ? `<button class="btn btn-outline" data-family-tag="${tag}">Call Family</button>` : ''}
+              ${tag ? `<button class="btn btn-outline" data-rs-tag="${tag}">Call Ride Share</button>` : ''}
+            </div>
+          </li>
+        `;
+      }).join('') || '<li class="small muted">No students match your filter.</li>';
+      list.setAttribute('aria-busy','false');
+    }
+
+    function renderFamilies() {
+      const q = search.value.toLowerCase().trim();
+      const rows = families
+        .filter(g => (g.name || '').toLowerCase().includes(q) ||
+                     (g.tags || []).some(t => String(t).toLowerCase().includes(q)))
+        .sort((a,b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
+
+      list.setAttribute('aria-busy','true');
+      list.innerHTML = rows.map(g => {
+        const tags = (g.tags || []).map(t => String(t).toUpperCase());
+        const mainTag = tags[0] || '';
+        const hasRS = !!g.rideShare;
+        return `
+          <li class="student waiting" data-group-id="${g.id}">
+            <span>
+              <span class="name">${g.name || ''}</span>
+              <span class="meta">${tags.join(' • ')}${hasRS ? ' • RS: ' + g.rideShare : ''}</span>
+            </span>
+            <div class="actions">
+              <button class="btn" data-group-id="${g.id}" data-action="called">Call Family</button>
+              ${hasRS && mainTag ? `<button class="btn btn-outline" data-rs-tag="${mainTag}">Call Ride Share</button>` : ''}
+            </div>
+          </li>
+        `;
+      }).join('') || '<li class="small muted">No car families found.</li>';
+      list.setAttribute('aria-busy','false');
+    }
+
+    // ======= Helpers to call families / rideshares =======
+    function callFamilyByTag(tag) {
+      if (!apiReady) return actionQueue.push({ kind:'tagCall', payload: tag });
+  const KEY = 'TAG:' + String(tag||'').toUpperCase();
+  if (!allowOnce(KEY)) return Promise.resolve();
+  return api.setStatusForTag(tag, 'called');
+    }
+
+    function callRideShareByTag(tag) {
+      const TAG = String(tag || '').toUpperCase();
+      const grp = tagToGroup[TAG];
+      ding();
+      if (!apiReady) return actionQueue.push({ kind:'rsCall', payload: TAG });
+  const KEY = 'RS:' + TAG;
+  if (!allowOnce(KEY)) return Promise.resolve();
+
+      // Prefer calling the entire car group; fallback to tags in group, then rideShare token, then tag
+      if (grp && api.setStatusForGroup) return api.setStatusForGroup(grp.id, 'called');
+      if (grp && Array.isArray(grp.tags) && grp.tags.length) {
+        const tags = grp.tags.map(t => String(t||'').toUpperCase());
+        return Promise.allSettled(tags.map(t => {
+          const k2 = 'TAG:' + t;
+          return allowOnce(k2) ? api.setStatusForTag(t, 'called') : Promise.resolve();
+        }));
+      }
+      if (grp?.rideShare && api.setStatusForRideShare) return api.setStatusForRideShare(grp.rideShare, 'called');
+      return api.setStatusForTag(TAG, 'called');
+    }
+
+    // ======= Click handling (always active) =======
+    function wireButtonsAndList() {
+      // Top controls
+      search.addEventListener('input', () => {
+        if (classFilter.value === MODE_FAMILIES) renderFamilies();
+        else renderStudents();
+      });
+      classFilter.addEventListener('change', () => resubscribe());
+
+      clearBtn.addEventListener('click', async () => {
+        const targets = currentStudents.slice();
+        if (!targets.length) return;
+        if (!confirm(`Set ${targets.length} student(s) to Waiting?`)) return;
+
+        if (!apiReady) return actionQueue.push({ kind:'bulkClearAll', payload: targets.map(s=>s.id) });
+
+        try {
+          await Promise.allSettled(targets.map(s => api.setStudentStatus(s.id, 'waiting')));
+        } catch (err) {
+          console.error('Clear all failed:', err);
+          alert('Could not set students to Waiting.');
+        }
+      });
+
+      scanBtn.addEventListener('click', () => {
+        document.dispatchEvent(new CustomEvent('sd:open-scanner'));
+        document.dispatchEvent(new CustomEvent('ttd:open-scanner'));
+      });
+
+      // Broadcast: dismissal is over (writes to signals/dismissal)
+      endBtn.addEventListener('click', async () => {
+        if (!confirm('Notify all classes that dismissal time is over?')) return;
+        try {
+          // compat write using site-header Firebase
+          const fb = window.firebase;
+          const user = fb?.auth?.().currentUser;
+          const claims = window.SD?.claims || {};
+          if (!user || (!claims.admin && !claims.caller)) { alert('Need caller or admin.'); return; }
+          const db = fb.firestore();
+          const orgId = window.SD?.orgId || 'mn-conference';
+          const schoolId = window.SD?.schoolId; if (!schoolId) { alert('Missing school.'); return; }
+          const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('signals').doc('dismissal');
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const seq = (snap.exists ? (snap.data().seq||0) : 0) + 1;
+            tx.set(ref, { seq, lastAt: fb.firestore.FieldValue.serverTimestamp(), message: 'Dismissal is over!' }, { merge: true });
+          });
+          // quick local banner
+          try { new Audio('/chime.mp3').play().catch(()=>{}); } catch{}
+          alert('Notified classes that dismissal is over.');
+        } catch (e) {
+          console.error('Broadcast failed:', e);
+          alert('Could not send broadcast.');
+        }
+      });
+
+  // per-student Ride Share buttons are rendered in each row when available
+
+      // Delegate clicks in the list
+      list.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+        const li = btn.closest('li.student');
+
+        // Per-student status buttons
+        const action = btn.dataset.action;
+        if (action && btn.dataset.id) {
+          const id = btn.dataset.id;
+          if (!allowOnce('STU:'+id) && action === 'called') { return; }
+          if (action === 'called') {
+            li?.classList.add('called','flash'); setTimeout(()=>li?.classList.remove('flash'),900); ding();
+          } else {
+            li?.classList.remove('called','picked_up','en_route'); li?.classList.add(action);
+          }
+          if (!apiReady) return actionQueue.push({ kind:'setStudentStatus', payload:{ id, action }});
+          api.setStudentStatus(id, action).catch(err => { console.error('Action failed:', err); resubscribe(); });
+          return;
+        }
+
+        // Family call by tag
+        if (btn.dataset.familyTag) {
+          const tag = btn.dataset.familyTag;
+          ding();
+          callFamilyByTag(tag).catch(err => console.error('Family call failed:', err));
+          return;
+        }
+
+        // Ride share call by tag (resolves the group's rideShare)
+        if (btn.dataset.rsTag) {
+          const tag = btn.dataset.rsTag;
+          callRideShareByTag(tag).catch(err => console.error('Ride share call failed:', err));
+          return;
+        }
+
+        // Group call (Car Families view)
+        if (btn.dataset.groupId) {
+          const groupId = btn.dataset.groupId;
+          ding();
+          if (!apiReady) return actionQueue.push({ kind:'groupCall', payload:{ groupId, action: btn.dataset.action || 'called' }});
+          api.setStatusForGroup(groupId, btn.dataset.action || 'called').catch(err => console.error('Group call failed:', err));
+        }
+      });
+    }
+
+    function flushQueuedActions() {
+      if (!apiReady || !actionQueue.length) return;
+      const q = actionQueue.splice(0);
+      q.forEach(job => {
+        try {
+          if (job.kind === 'setStudentStatus') api.setStudentStatus(job.payload.id, job.payload.action);
+          else if (job.kind === 'bulkClear') job.payload.forEach(id => api.setStudentStatus(id, 'waiting'));
+          else if (job.kind === 'bulkClearAll') job.payload.forEach(id => api.setStudentStatus(id, 'waiting'));
+          else if (job.kind === 'tagCall') api.setStatusForTag(job.payload, 'called');
+          else if (job.kind === 'rsCall') {
+            const tag = job.payload;
+            const grp = tagToGroup[tag];
+            if (grp && api.setStatusForGroup) api.setStatusForGroup(grp.id, 'called');
+            else if (grp && Array.isArray(grp.tags) && grp.tags.length) grp.tags.forEach(t => api.setStatusForTag(String(t||'').toUpperCase(), 'called'));
+            else if (grp?.rideShare && api.setStatusForRideShare) api.setStatusForRideShare(grp.rideShare, 'called');
+            else api.setStatusForTag(tag, 'called');
+          }
+          else if (job.kind === 'groupCall') api.setStatusForGroup(job.payload.groupId, job.payload.action || 'called');
+        } catch (e) {
+          console.error('Queue flush error:', e);
+        }
+      });
+    }
+
+    // Also start if header fires later
+    document.addEventListener('sd:claims-ready',  () => ensureClaimsAndGate());
+    document.addEventListener('ttd:claims-ready', () => ensureClaimsAndGate());
+
+    // ======= Scanner event handlers =======
+    // When a car tag is scanned, call the family/group using the fallback chain.
+    document.addEventListener('scan:car-tag', (e) => {
+      const tag = (e && e.detail && e.detail.tag) ? String(e.detail.tag) : '';
+      if (!tag) return;
+      try {
+        if (!allowOnce('SCAN_TAG:'+tag.toUpperCase())) return;
+        callRideShareByTag(tag);
+      } catch (err) { console.error('[master] scan tag handler failed', err); }
+    });
+
+    // When a student QR is scanned, directly call that student.
+    document.addEventListener('scan:student-id', (e) => {
+      const id = (e && e.detail && e.detail.id) ? String(e.detail.id) : '';
+      if (!id) return;
+      try {
+        if (!allowOnce('SCAN_STU:'+id)) return;
+        if (apiReady) api.setStudentStatus(id, 'called'); else actionQueue.push({ kind:'setStudentStatus', payload:{ id, action:'called' }});
+      } catch (err) { console.error('[master] scan student handler failed', err); }
+    });
+  </script>
+
+  <script src="/scanner.js?v=22" defer></script>
+</body>
+</html>

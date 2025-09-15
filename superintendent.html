@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Time To Dismiss — Superintendent</title>
+	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+	<meta http-equiv="Pragma" content="no-cache" />
+	<meta http-equiv="Expires" content="0" />
+	<link rel="stylesheet" href="/styles.css?v=2025-09-06-MC4" />
+	<link rel="preconnect" href="https://www.gstatic.com" />
+	<script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+	<style>
+		.sup-main{ padding:18px 0 28px; }
+		.titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; border-bottom:1px solid #e5e7eb; padding-bottom:10px; }
+		.titlebar .page-title{ margin:0; font-size:1.4rem; font-weight:800; }
+		.muted{ color: var(--muted); }
+		.small{ font-size:.95rem; }
+		.sup-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+		.field{ display:flex; flex-direction:column; gap:6px; }
+		.field input, .field select{ background:#fff; border:1px solid #d1d5db; color:#0b132b; border-radius:12px; padding:.55rem .7rem; }
+		.row-between{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+		.list{ list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+		.school-item{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; }
+	</style>
+	<script>
+		// Lightweight toast helper (text-only)
+		function setToast(msg, isErr){
+			const t = document.getElementById('toast');
+			if(!t) return; t.textContent = msg || ''; t.style.color = isErr ? '#b91c1c' : 'var(--muted)';
+			if(msg) setTimeout(()=>{ if(t.textContent===msg) t.textContent=''; }, 4000);
+		}
+
+		function readyFirebase(){ return window.firebase && firebase.apps && firebase.apps.length; }
+
+		function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+		function renderQuota({ used=0, allowed=0 }){
+			const u = document.getElementById('quotaUsed');
+			const a = document.getElementById('quotaAllowed');
+			const p = document.getElementById('quotaProgress');
+			if(u) u.textContent = used;
+			if(a) a.textContent = allowed;
+			if(p){ p.max = Math.max(allowed, 0); p.value = Math.min(used, p.max); }
+			const btn = document.getElementById('addSchoolBtn');
+			if(btn) btn.disabled = (allowed && used >= allowed);
+		}
+
+		function renderSchools(list){
+			const ul = document.getElementById('schoolsList');
+			const sel = document.getElementById('schoolSel');
+			if(!ul) return;
+			ul.innerHTML = '';
+			(list || []).forEach(s => {
+				const li = document.createElement('li');
+				li.className = 'school-item';
+				li.innerHTML = `<div class="row-between"><strong>${escapeHtml(s.name || s.id)}</strong><span class="muted small">Admins: ${(s.admins||[]).length}</span></div>`;
+				ul.appendChild(li);
+			});
+			if(sel){
+				sel.innerHTML = '';
+				(list || []).forEach(s => {
+					const opt = document.createElement('option');
+					opt.value = s.id; opt.textContent = s.name || s.id; sel.appendChild(opt);
+				});
+			}
+		}
+
+		function initPortal(ctx){
+			const { db, fx, orgId } = ctx;
+			const addBtn = document.getElementById('addSchoolBtn');
+			const inviteForm = document.getElementById('inviteForm');
+
+			// Live quota from org doc
+			const orgRef = db.collection('orgs').doc(orgId);
+			orgRef.onSnapshot((snap) => {
+				const d = snap.data() || {};
+				const allowed = Number(d.allowedSchools || 0);
+				const used = Number(d.usedSchools || 0);
+				renderQuota({ used, allowed });
+			});
+
+			// Live schools list (subcollection)
+			db.collection('orgs').doc(orgId).collection('schools')
+				.orderBy('name')
+				.onSnapshot((qs) => {
+					const list = [];
+					qs.forEach(doc => list.push({ id: doc.id, ...(doc.data()||{}) }));
+					renderSchools(list);
+				});
+
+			addBtn?.addEventListener('click', async () => {
+				const name = prompt('New school name');
+				if(!name) return;
+				try{
+					const addSchool = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('addSchool');
+					await addSchool({ orgId, schoolName: name });
+					setToast('School created.');
+				}catch(e){
+					console.error(e);
+					const msg = e?.message || '';
+					const code = e?.code || '';
+					setToast(`Failed to add school${code?` [${code}]`:''}${msg?`: ${msg}`:''}`, true);
+				}
+			});
+
+			inviteForm?.addEventListener('submit', async (e) => {
+				e.preventDefault();
+				const email = document.getElementById('inviteEmail')?.value?.trim();
+				const schoolId = document.getElementById('schoolSel')?.value;
+				const role = document.getElementById('roleSel')?.value || 'admin';
+				if(!email || !schoolId){ setToast('Email and school are required.', true); return; }
+				try{
+					const inviteUser = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('inviteUser');
+					await inviteUser({ email, orgId, schoolId, role });
+					setToast('Invitation sent.');
+					e.target.reset();
+				}catch(err){
+					const msg = err?.message || '';
+					const code = err?.code || '';
+					setToast(`Failed to invite user${code?` [${code}]`:''}${msg?`: ${msg}`:''}`, true);
+				}
+			});
+		}
+
+		async function requireSuperintendent(){
+			const gate = document.getElementById('gateMsg');
+			const portal = document.getElementById('portal');
+			if(!readyFirebase()){
+				gate.textContent = 'Loading…';
+				let tries = 0;
+				const wait = await new Promise((resolve)=>{
+					const iv = setInterval(()=>{ if(readyFirebase() || tries++ > 80){ clearInterval(iv); resolve(true); } }, 100);
+				});
+			}
+
+			const auth = firebase.auth();
+			const db = firebase.firestore();
+			const fx = (window.SD && window.SD.functions) ? window.SD.functions : null;
+
+			auth.onAuthStateChanged(async (user) => {
+				if(!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } portal.hidden = true; return; }
+				try{
+					const tr = await user.getIdTokenResult(true);
+					const claims = tr?.claims || {};
+					const isSup = !!claims.superintendent || claims.role === 'superintendent';
+					const isOwner = !!claims.owner || claims.role === 'owner';
+					if(!isSup && !isOwner){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } portal.hidden = true; return; }
+						const badge = document.getElementById('roleBadge');
+						if (badge) badge.textContent = isOwner ? 'Owner' : 'Superintendent';
+					const orgId = (Array.isArray(claims.orgIds) && claims.orgIds[0]) || window.SD?.orgId || localStorage.getItem('SD_ORG') || '';
+					if(!orgId){ gate.textContent = 'No organization assigned.'; portal.hidden = true; return; }
+					gate.textContent = ''; portal.hidden = false;
+					initPortal({ db, fx, orgId });
+				}catch(e){ gate.textContent = 'Error loading permissions.'; portal.hidden = true; console.error(e); }
+			});
+		}
+
+		document.addEventListener('DOMContentLoaded', requireSuperintendent);
+	</script>
+</head>
+<body class="sd-body">
+	<main class="container sup-main">
+		<header class="titlebar">
+			<h1 class="page-title">Superintendent Dashboard</h1>
+			<span id="roleBadge" class="muted small">Restricted</span>
+		</header>
+
+		<p id="gateMsg" class="small muted">Checking access…</p>
+
+		<div id="portal" hidden>
+			<section class="sup-grid" aria-labelledby="overview-h">
+				<article class="card" aria-live="polite">
+					<h3 class="card-title">Quota</h3>
+								<p class="muted small">Schools used: <strong id="quotaUsed">0</strong> of <strong id="quotaAllowed">0</strong></p>
+								<progress id="quotaProgress" value="0" max="0" class="w-100"></progress>
+				</article>
+
+							<article class="card">
+					<h3 class="card-title">Add School</h3>
+					<p class="muted small">Create a new school in your district (within your quota).</p>
+					<button id="addSchoolBtn" class="btn btn-primary" type="button">Add School</button>
+				</article>
+			</section>
+
+						<section class="mt-12" aria-labelledby="schools-h">
+				<article class="card">
+					<div class="row-between">
+						<h3 id="schools-h" class="card-title">Schools</h3>
+						<span id="toast" class="muted small" aria-live="polite"></span>
+					</div>
+					<ul id="schoolsList" class="list" aria-live="polite"></ul>
+				</article>
+			</section>
+
+						<section class="mt-12" aria-labelledby="invite-h">
+				<article class="card">
+					<h3 id="invite-h" class="card-title">Invite Admin</h3>
+					<form id="inviteForm">
+						<div class="field">
+							<label for="inviteEmail">Email</label>
+							<input id="inviteEmail" type="email" placeholder="name@school.org" required autocomplete="email" />
+						</div>
+						<div class="field">
+							<label for="schoolSel">School</label>
+							<select id="schoolSel" required></select>
+						</div>
+						<div class="field">
+							<label for="roleSel">Role</label>
+							<select id="roleSel">
+								<option value="admin">Admin</option>
+							</select>
+						</div>
+									<div class="mt-8">
+							<button class="btn btn-primary" type="submit">Send Invite</button>
+						</div>
+					</form>
+								<p class="muted small mt-8">Note: This page is a stub. Actions will call Cloud Functions once deployed.</p>
+				</article>
+			</section>
+		</div>
+	</main>
+</body>
+</html>

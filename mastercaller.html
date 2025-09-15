@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Mobile Caller (Tiles)</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-05-MC4" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script>(function(){ try{ console.log('[TTD] Page BUILD','2025-09-05-MC4','mobile-tiles'); }catch{} })();</script>
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    /* Scoped styles for the tiles page */
+    .tiles-main{ padding:8px 0 20px; }
+    .tiles-container{ padding:8px 3%; }
+
+    /* Toolbar */
+    .row-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 4%; }
+    .row-top h1{ font-size:1.05rem; margin:0; font-weight:800; }
+    .filters{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .filters select, .filters input{ border:1px solid #e5e7eb; border-radius:10px; padding:8px 10px; background:#fff; color:#0b132b; }
+  /* iOS: prevent zoom on focus */
+  .filters input, .filters select{ font-size:16px; }
+
+    .tiles-toolbar{ display:flex; gap:8px; align-items:center; padding:8px 3%; }
+    .tiles-toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.45rem .6rem; }
+    .tiles-toolbar .spacer{ flex:1 1 auto; }
+
+    /* Grid: configurable via CSS variables with sensible defaults */
+    .tiles-grid{ display:grid; grid-template-columns: repeat(var(--tiles-cols, 6), minmax(0, 1fr)); grid-auto-rows: var(--tile-row-h, 54px); gap:6px; align-content:start; list-style:none; padding:0; margin:0; }
+    .tiles-grid > li{ min-width:0; }
+
+    /* Responsive override if user hasn't set cols; once user sets cols, we keep their value */
+    @media (max-width: 380px){ :root:not([data-tiles-user]) .tiles-grid{ grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+    @media (min-width: 900px){ :root:not([data-tiles-user]) .tiles-grid{ grid-template-columns: repeat(8, 1fr); } }
+
+    /* Tile styles */
+    .tile-btn{ position:relative; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:3px; border:1px solid #e5e7eb; border-radius:10px; padding:6px; background:#fff; color:var(--text); min-width:0; width:100%; height:100%; }
+    .tile-btn:active{ transform: translateY(1px); }
+  .tile-name{ font-weight:800; font-size: var(--tile-font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; }
+  .tile-tag{ font-size: var(--tile-sub); color:var(--muted); display:flex; gap:6px; width:100%; overflow:hidden; align-items:center; }
+  .tile-tag .pill{ background:#f1f5f9; color:var(--text); border:1px solid #e5e7eb; border-radius:8px; padding:.1rem .35rem; font-weight:700; font-size: calc(var(--tile-sub) * 0.9); white-space:nowrap; }
+    .tile-tag .muted{ color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* Status styles (match master page) */
+    .tile-btn.called{ background: var(--called); color: var(--calledText); border-color: rgba(0,0,0,.12); }
+    .tile-btn.called .tile-name{ color: var(--calledText); }
+    .tile-btn.called .tile-tag .pill{ background: rgba(0,0,0,.12); color: var(--calledText); border-color: transparent; }
+    .tile-btn.called .tile-tag .muted{ color: var(--calledText); opacity:.95; }
+
+    .tile-btn.en_route{ background:#ffedd5; color:#7c2d12; border-color:#fdba74; }
+    .tile-btn.en_route .tile-tag .pill{ background:#fed7aa; color:#9a3412; border-color:transparent; }
+    .tile-btn.en_route .tile-tag .muted{ color:#9a3412; opacity:.95 }
+
+    .tile-btn.picked_up{ background: color-mix(in srgb, var(--called) 22%, #ffffff); color: var(--calledText); border-color: rgba(0,0,0,.12); }
+    .tile-btn.picked_up .tile-tag .pill{ background: rgba(0,0,0,.12); color: var(--calledText); border-color: transparent; }
+    .tile-btn.picked_up .tile-tag .muted{ color: var(--calledText); opacity:.9 }
+
+    /* Letter tile (group header) */
+    .letter-tile{ display:flex; align-items:center; justify-content:center; font-weight:900; font-size:1.05rem; border:1px solid var(--accent); color:var(--accent); background:#f8fafc; border-radius:10px; pointer-events:none; }
+
+    /* Action sheet */
+    .sheet-scrim{ position:fixed; inset:0; background:rgba(2,6,23,.45); opacity:0; pointer-events:none; transition: opacity .18s ease; }
+    .sheet{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-radius:16px 16px 0 0; box-shadow:0 -12px 28px rgba(2,6,23,.16); transform: translateY(100%); transition: transform .24s cubic-bezier(.2,.8,.2,1); will-change: transform; padding:12px; }
+    .sheet.open{ transform: translateY(0); }
+    .sheet-scrim.open{ opacity:1; pointer-events:auto; }
+    .sheet .sheet-title{ font-weight:800; margin:2px 2px 8px; }
+    .sheet .actions{ display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:8px; }
+    .sheet .btn{ padding:.6rem .7rem; border-radius:10px; font-weight:800; }
+
+    .btn-muted{ background:#f8fafc; color:#0b132b; border:1px solid #e5e7eb; }
+
+    /* Toast */
+    .toast{ position:fixed; left:50%; transform:translateX(-50%); bottom:16px; background:#0b132b; color:#fff; padding:.5rem .75rem; border-radius:8px; font-weight:700; display:none; }
+    .toast.show{ display:block; }
+
+    /* --- Readability upgrades --- */
+    :root{ --tile-scale: 1; }
+
+    /* Derive type sizes from row height; clamp to sane bounds and apply user scale */
+    .tiles-grid{
+      --tile-font: clamp(18px, calc(var(--tile-row-h, 54px) * 0.50), 46px);
+      --tile-sub : clamp(14px, calc(var(--tile-row-h, 54px) * 0.30), 28px);
+      --tile-gap : clamp(4px,  calc(var(--tile-row-h, 54px) * 0.10), 10px);
+      --tile-font: calc(var(--tile-font) * var(--tile-scale));
+      --tile-sub : calc(var(--tile-sub)  * var(--tile-scale));
+    }
+
+    /* Scale text inside tiles by default */
+    .tiles-grid > li{
+      font-size: var(--tile-font);
+      line-height: 1.15;
+      /* Fallback first */
+      overflow-wrap: anywhere;
+    }
+    .tiles-grid > li .t-sub,
+    .tiles-grid > li .sub{
+      font-size: var(--tile-sub);
+      line-height: 1.1;
+    }
+    .tiles-grid > li .t-name{
+      font-weight: 800;
+      letter-spacing: .2px;
+      line-height: 1.05;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .tiles-grid > li .btn{
+      font-size: calc(var(--tile-sub) * 0.95);
+      padding: .4rem .55rem;
+    }
+
+    /* iOS Safari: prevent page zoom on focus by ensuring >=16px */
+  .tiles-toolbar input,
+  .tiles-toolbar select,
+  .tiles-toolbar textarea{ font-size:16px; line-height:1.2; }
+  </style>
+  <script>
+    // Make touchmove passive for smoother scrolling
+    (function(){ try { const _add = EventTarget.prototype.addEventListener; EventTarget.prototype.addEventListener = function(t, cb, o){ if(t==='touchmove' && (!o||o===true)) return _add.call(this,t,cb,{passive:true}); return _add.call(this,t,cb,o); } } catch(e){} })();
+  </script>
+</head>
+<body class="sd-body">
+  <main class="container tiles-main">
+    <div class="row-top">
+      <h1>Mobile Caller</h1>
+      <div class="filters">
+        <label class="sr-only" for="classFilter">Filter by class</label>
+        <select id="classFilter" aria-label="Filter by class"></select>
+        <input id="tilesSearch" placeholder="Search name, tag, or family" inputmode="search" autocomplete="off" enterkeyhint="search" />
+      </div>
+    </div>
+
+    <div class="small-help">Tap a student to call or open actions. RS calls family/group with fallbacks.</div>
+
+    <div class="tiles-toolbar">
+      <label class="small">Cols
+        <select id="colsSel" aria-label="Columns">
+          <option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option>
+        </select>
+      </label>
+      <label class="small">Rows
+        <select id="rowsSel" aria-label="Rows">
+          <option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option>
+        </select>
+      </label>
+      <div class="spacer"></div>
+  <span id="tilesCount" class="small muted">—</span>
+    </div>
+
+    <div class="tiles-container">
+      <ul id="tiles" class="tiles-grid" aria-live="polite"></ul>
+    </div>
+  </main>
+
+  <!-- Action sheet -->
+  <div id="sheetScrim" class="sheet-scrim" aria-hidden="true"></div>
+  <section id="actionSheet" class="sheet" aria-label="Actions" aria-hidden="true">
+    <div class="sheet-title" id="sheetTitle">Actions</div>
+    <div class="actions" id="sheetActions"></div>
+  </section>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module">
+    import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare } from '/app.js?v=21';
+    await init();
+
+    const classFilter = document.getElementById('classFilter');
+    const search = document.getElementById('tilesSearch');
+    const tiles = document.getElementById('tiles');
+    const sheet = document.getElementById('actionSheet');
+    const scrim = document.getElementById('sheetScrim');
+    const sheetTitle = document.getElementById('sheetTitle');
+    const sheetActions = document.getElementById('sheetActions');
+    const toast = document.getElementById('toast');
+  const colsSel = document.getElementById('colsSel');
+  const rowsSel = document.getElementById('rowsSel');
+  const tilesCount = document.getElementById('tilesCount');
+  let current = null;
+
+    function showToast(msg){ if(!toast) return; toast.textContent = msg||''; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1500); }
+    function openSheet(){ sheet?.classList.add('open'); scrim?.classList.add('open'); sheet?.setAttribute('aria-hidden','false'); scrim?.setAttribute('aria-hidden','false'); }
+    function closeSheet(){ sheet?.classList.remove('open'); scrim?.classList.remove('open'); sheet?.setAttribute('aria-hidden','true'); scrim?.setAttribute('aria-hidden','true'); }
+    scrim?.addEventListener('click', closeSheet);
+
+    function escapeHtml(s){ return (''+(s??''))
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+    // Families map TAG -> group
+    let tagToGroup = {};
+    onCarGroups((groups) => {
+      const m = {};
+      (groups||[]).forEach(g => (g.tags||[]).forEach(t => m[String(t||'').toUpperCase()] = g));
+      tagToGroup = m;
+    });
+
+    // Grid size persistence
+    const LS_COLS = 'TILES_COLS';
+    const LS_ROWS = 'TILES_ROWS';
+    function applyGridSize(){
+      const cols = Math.max(3, Math.min(7, parseInt(colsSel.value, 10) || 6));
+      const rows = Math.max(3, Math.min(7, parseInt(rowsSel.value, 10) || 5));
+      document.documentElement.style.setProperty('--tiles-cols', String(cols));
+      document.documentElement.setAttribute('data-tiles-user','1');
+      const toolbarH = (document.querySelector('.tiles-toolbar')?.offsetHeight || 48) + 24;
+      const avail = Math.max(200, window.innerHeight - toolbarH);
+      const gap = 6;
+      const rowH = Math.max(44, Math.floor((avail - (rows-1)*gap) / rows));
+      tiles.style.setProperty('--tile-row-h', rowH + 'px');
+      localStorage.setItem(LS_COLS, String(cols));
+      localStorage.setItem(LS_ROWS, String(rows));
+    }
+    function loadGridPrefs(){
+      const c = parseInt(localStorage.getItem(LS_COLS)||'', 10); if (c>=3 && c<=7) colsSel.value = String(c);
+      const r = parseInt(localStorage.getItem(LS_ROWS)||'', 10); if (r>=3 && r<=7) rowsSel.value = String(r);
+      applyGridSize();
+    }
+    colsSel.addEventListener('change', applyGridSize);
+    rowsSel.addEventListener('change', applyGridSize);
+    window.addEventListener('resize', applyGridSize);
+    loadGridPrefs();
+
+    function ding(){ try { new Audio('/chime.mp3').play().catch(()=>{}); } catch(e){} }
+
+    // Call Ride Share by tag — mirrors master.html fallback chain
+    async function callRideShareByTag(tag){
+      const TAG = String(tag||'').toUpperCase();
+      const grp = tagToGroup[TAG];
+      ding();
+      if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
+      if (grp && Array.isArray(grp.tags) && grp.tags.length) {
+        const tags = grp.tags.map(t => String(t||'').toUpperCase());
+        return Promise.allSettled(tags.map(t => setStatusForTag(t, 'called')));
+      }
+      if (grp?.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
+      return setStatusForTag(TAG, 'called');
+    }
+
+    let allStudents = [];
+
+    function render(list){
+      const rows = [];
+      let prevLetter = '';
+      const items = (list||[]);
+      tilesCount.textContent = `${items.length} students`;
+      for (const s of items){
+        const tag = s.carTag ? String(s.carTag).trim().toUpperCase() : '';
+        const grp = tag ? tagToGroup[tag] : null;
+        const fam = grp?.name || s.groupName || s.carName || '';
+        const statusCls = s.status ? String(s.status) : '';
+        const first = (s.name || '').trim();
+        const firstName = first.split(/\s+/)[0] || '';
+        const initial = firstName.charAt(0).toUpperCase();
+        const letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
+        const isHead = letter !== prevLetter;
+        if (isHead) {
+          rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
+          prevLetter = letter;
+        }
+        const hasRS = !!grp?.rideShare || (grp && (grp.tags||[]).length>0);
+        rows.push(`<li role="listitem">
+          <div class="tile-btn ${statusCls}" data-id="${s.id}">
+            <div class="tile-name">${escapeHtml(s.name||'')}</div>
+            <div class="tile-tag">
+              ${tag ? `<span class=\"pill\">${escapeHtml(tag)}</span>` : ''}
+              ${hasRS && tag ? `<button type=\"button\" class=\"pill\" data-rs-tag=\"${escapeHtml(tag)}\">RS</button>` : ''}
+              <span class="muted">${escapeHtml(fam)}</span>
+            </div>
+          </div>
+        </li>`);
+      }
+      tiles.innerHTML = rows.join('');
+    }
+
+    function applyFilters(){
+      const q = (search?.value || '').trim().toLowerCase();
+      const base = !q ? allStudents : allStudents.filter(s => {
+        const tag = (s.carTag || '').toString().toLowerCase();
+        const fam = (s.groupName || s.carName || '').toString().toLowerCase();
+        return (s.name||'').toLowerCase().includes(q) || tag.includes(q) || fam.includes(q);
+      });
+      const order = { waiting: 0, null: 0, undefined: 0, called: 1, en_route: 2, picked_up: 3 };
+      const list = base.slice().sort((a,b) => {
+        const as = order[a.status] ?? 0;
+        const bs = order[b.status] ?? 0;
+        if (as !== bs) return as - bs;
+        const an = (a.name||'').toLowerCase();
+        const bn = (b.name||'').toLowerCase();
+        return an.localeCompare(bn);
+      });
+      render(list);
+    }
+
+    let unsub = null;
+    let unsubGroups = null;
+    const groupMap = {}; // live map for actions panel
+
+    function resubscribe(){
+      if (unsub) { try{unsub();}catch{} unsub=null; }
+      if (unsubGroups) { try{unsubGroups();}catch{} unsubGroups=null; }
+      unsubGroups = onCarGroups((groups) => {
+        const map = {};
+        (groups||[]).forEach(g => (g.tags||[]).forEach(t => map[String(t||'').toUpperCase()] = g));
+        Object.keys(groupMap).forEach(k => delete groupMap[k]);
+        Object.assign(groupMap, map);
+        tagToGroup = map; // keep render map updated
+      });
+      const classId = classFilter?.value || null;
+      unsub = onStudents(classId, (list) => { allStudents = Array.isArray(list) ? list : []; applyFilters(); });
+    }
+
+    async function populateClasses(){
+      try{
+        const classes = await getClasses();
+        const opts = ['<option value="">All Classes</option>'].concat((classes||[]).map(c => `<option value="${c.id}">${escapeHtml(c.name||c.id)}</option>`));
+        classFilter.innerHTML = opts.join('');
+      }catch(e){ classFilter.innerHTML = '<option value="">All Classes</option>'; }
+    }
+
+    // Click handling on tiles — open action sheet; RS pill acts as quick action
+    tiles.addEventListener('click', (e) => {
+      const rs = e.target.closest('button[data-rs-tag]');
+      if (rs) {
+        const tag = rs.getAttribute('data-rs-tag');
+        callRideShareByTag(tag).then(()=>showToast('Ride share called')).catch(err => console.error('[tiles] RS call failed', err));
+        return;
+      }
+      const btn = e.target.closest('.tile-btn[data-id]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-id');
+      current = allStudents.find(s => s.id === id) || null;
+      if (!current) return;
+      sheetTitle.textContent = current.name || 'Actions';
+      const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
+      const hasTag = !!tag;
+      const grp = tag ? (groupMap[tag] || null) : null;
+      const hasRSorGroup = !!grp;
+      const isCalled = current.status === 'called';
+      const isEnRoute = current.status === 'en_route';
+      const isPicked = current.status === 'picked_up';
+      sheetActions.innerHTML = (isCalled || isEnRoute || isPicked)
+        ? `
+            <button id="aPicked" class="btn btn-primary">Picked Up</button>
+            <button id="aClear" class="btn btn-danger">Clear</button>
+          `
+        : `
+            <button id="aCall" class="btn btn-primary">Call</button>
+            <button id="aFam" class="btn btn-secondary" ${!hasTag?'disabled':''}>Call Family</button>
+            <button id="aRS" class="btn btn-secondary" ${!hasRSorGroup?'disabled':''}>Call Ride Share</button>
+            <button id="aPicked" class="btn btn-muted">Picked Up</button>
+          `;
+      openSheet();
+    });
+
+    sheetActions?.addEventListener('click', async (e) => {
+      const b = e.target.closest('button');
+      if (!b || !current) return;
+      const id = current.id;
+      try{
+        if (b.id === 'aCall'){
+          await setStudentStatus(id, 'called');
+          showToast('Called');
+        } else if (b.id === 'aFam'){
+          const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
+          if (tag){
+            const g = await getGroupByTag(tag);
+            if (g && g.id) await setStatusForGroup(g.id, 'called'); else await setStatusForTag(tag, 'called');
+            showToast('Family called');
+          }
+        } else if (b.id === 'aRS'){
+          const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
+          const grp = tag ? (groupMap[tag] || await getGroupByTag(tag)) : null;
+          if (grp && grp.id){ await setStatusForGroup(grp.id, 'called'); showToast('Ride share called'); }
+          else if (grp && Array.isArray(grp.tags) && grp.tags.length){ await Promise.allSettled(grp.tags.map(t => setStatusForTag(String(t||'').toUpperCase(), 'called'))); showToast('Ride share called'); }
+          else if (grp && grp.rideShare){ await setStatusForRideShare(grp.rideShare, 'called'); showToast('Ride share called'); }
+          else if (tag){ await setStatusForTag(tag, 'called'); showToast('Family called'); }
+        } else if (b.id === 'aPicked'){
+          await setStudentStatus(id, 'picked_up');
+          showToast('Picked up');
+        } else if (b.id === 'aClear'){
+          await setStudentStatus(id, 'waiting');
+          showToast('Cleared');
+        }
+      } finally { closeSheet(); }
+    });
+
+    async function bootstrap(claims){
+      const allowed = !!(claims && (claims.caller || claims.admin));
+      if (!allowed){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } return; }
+      await populateClasses();
+      resubscribe();
+    }
+
+    // Support both explicit initAppWithClaims from site-header and an event-driven fallback
+    window.initAppWithClaims = bootstrap;
+    const now = (window.SD && (window.SD.claims || window.SD.userClaims)) || null;
+    if (now) bootstrap(now);
+    else window.addEventListener('sd:claims-ready', (e) => bootstrap((e && e.detail && (e.detail.claims||e.detail)) || ((window.SD && (window.SD.claims||window.SD.userClaims)) || {})), { once:true });
+
+    classFilter?.addEventListener('change', resubscribe);
+    search?.addEventListener('input', applyFilters);
+  </script>
+</body>
+</html>

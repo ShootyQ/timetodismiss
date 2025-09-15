@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Owner Console</title>
+  <link rel="stylesheet" href="/styles.css?v=2025-09-06-MC4" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+</head>
+<body class="sd-body">
+  <main class="container owner-main">
+  <header class="titlebar">
+    <h1 class="page-title">Owner Console</h1>
+    <div id="ownerBadge" class="badge">Owner</div>
+  </header>
+
+  <!-- Create Organization -->
+  <section aria-labelledby="create-h" class="owner-section">
+    <h2 id="create-h" class="card-title">Create Organization</h2>
+    <form id="createOrgForm" class="card owner-create-form">
+      <label class="field">
+        <span class="label-strong">Organization Name</span>
+        <input id="createOrgName" placeholder="e.g., Minnesota Conference of SDA" required />
+      </label>
+      <label class="field">
+        <span class="label-strong">Organization ID (optional)</span>
+        <input id="createOrgId" placeholder="lowercase-id (letters, numbers, dashes)" pattern="[a-z0-9\-]{2,40}" />
+      </label>
+      <label class="field">
+        <span class="label-strong">Allowed Schools</span>
+        <input id="createAllowed" type="number" min="0" step="1" value="1" required />
+      </label>
+      <label class="field">
+        <span class="label-strong">Superintendent Email</span>
+        <input id="createEmail" type="email" placeholder="user@domain.com" required />
+      </label>
+      <button id="createOrgBtn" class="btn btn-primary" type="submit">Create</button>
+    </form>
+    <p class="small muted" id="createHint">Creates the org, a superintendent user (if needed), and assigns ownership/claims.</p>
+  </section>
+
+  <section aria-labelledby="orgs-h">
+  <h2 id="orgs-h" class="card-title">Organizations</h2>
+    <p class="small muted" id="hint">Loading…</p>
+  <div id="orgList" class="grid-cards-320"></div>
+  </section>
+</main>
+
+<script>
+(function(){
+  let wired = false; // avoid duplicate listeners
+  let loading = false;
+
+  /**
+   * This is the master function that runs the page's security check.
+   * It relies on site-header.js to set window.SD.claims when the user is ready.
+   */
+  function authGuard() {
+    const claims = window.SD?.claims;
+    const user = firebase.auth().currentUser;
+
+    if (user && claims?.role === 'owner') {
+      init();
+    } else if (user) {
+      const msg = document.getElementById('hint') || document.createElement('p');
+      msg.id = msg.id || 'ownerGateMsg';
+      msg.className = 'small muted';
+      msg.textContent = 'Owners only. You are signed in but do not have the Owner role.';
+      (document.querySelector('main')||document.body).prepend(msg);
+    }
+    // If there's no user, we do nothing. site-header.js will handle redirecting them to the login page.
+  }
+
+  // --- Event Listeners ---
+
+  // Listen for the 'sd:claims-ready' signal from site-header.js
+  document.addEventListener('sd:claims-ready', authGuard);
+
+  // Also check when the page loads, in case the signal has already been sent
+  document.addEventListener('DOMContentLoaded', () => {
+    const readyCheck = setInterval(() => {
+      if (window.firebase) {
+        clearInterval(readyCheck);
+        // If claims are already available when the page loads, run the check immediately.
+        if (window.SD?.claims) {
+          authGuard();
+        }
+      }
+    }, 50);
+  });
+
+
+  // --- All of your other functions remain below ---
+
+  function setCtx({orgId, schoolId}) {
+    window.SD = window.SD || {};
+    if (orgId) window.SD.orgId = orgId;
+    if (schoolId !== undefined) window.SD.schoolId = schoolId;
+    try {
+      if (orgId) localStorage.setItem('SD_ORG', orgId);
+      if (schoolId !== undefined) localStorage.setItem('SD_SCHOOL', schoolId || '');
+    } catch {}
+    const ev = new CustomEvent('sd:claims-ready');
+    document.dispatchEvent(ev);
+  }
+
+  function escapeHtml(s){
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  async function init(){
+    const db = firebase.firestore();
+    const orgListEl = document.getElementById('orgList');
+    const hint = document.getElementById('hint');
+
+    // One-time wire: Create Org form
+    if (!wired) {
+      const form = document.getElementById('createOrgForm');
+      const btn  = document.getElementById('createOrgBtn');
+      form?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (loading) return;
+        const nameEl = document.getElementById('createOrgName');
+        const idEl = document.getElementById('createOrgId');
+        const allowedEl = document.getElementById('createAllowed');
+        const emailEl = document.getElementById('createEmail');
+        const orgName = nameEl.value.trim();
+        const rawId = (idEl?.value || '').trim();
+        const orgId = rawId ? rawId.toLowerCase() : '';
+        const allowed = Number(allowedEl.value);
+        const email = emailEl.value.trim();
+        if (!orgName || !email || !Number.isFinite(allowed) || allowed < 0) { alert('Please fill all fields with valid values.'); return; }
+        if (orgId && !/^[a-z0-9\-]{2,40}$/.test(orgId)) { alert('Org ID must be 2-40 chars, lowercase letters, numbers, or dashes.'); return; }
+        try {
+          loading = true; btn.disabled = true; btn.textContent = 'Creating…';
+          const callable = (window.SD?.httpsCallable)
+            ? window.SD.httpsCallable('createSuperintendent')
+            : firebase.app().functions('us-central1').httpsCallable('createSuperintendent');
+          await callable({ email, orgName, allowedSchools: allowed, orgId: orgId || undefined });
+          // Clear and refresh list
+          nameEl.value = '';
+          if (idEl) idEl.value = '';
+          allowedEl.value = '1';
+          emailEl.value = '';
+          await loadOrgs(db, orgListEl, hint);
+          alert('Organization created and superintendent set up.');
+        } catch (err) {
+          console.error('Create organization failed:', err);
+          alert('Create failed: ' + (err?.message || err));
+        } finally {
+          loading = false; btn.disabled = false; btn.textContent = 'Create';
+        }
+      });
+      wired = true;
+    }
+
+    await loadOrgs(db, orgListEl, hint);
+  }
+
+  async function loadOrgs(db, orgListEl, hint){
+    hint.textContent = 'Loading…';
+    orgListEl.innerHTML = '';
+    const snap = await db.collection('orgs').orderBy('name').get().catch(()=>null);
+    if (!snap || snap.empty) { hint.textContent = 'No organizations found.'; return; }
+    hint.textContent = '';
+    const orgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    orgListEl.innerHTML = '';
+    for (const org of orgs) {
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.style.padding = '12px';
+      const schoolsSnap = await db.collection('orgs').doc(org.id).collection('schools').orderBy('name').get().catch(err => { console.error("Error fetching schools:", err); return null; });
+      const schools = schoolsSnap && !schoolsSnap.empty ? schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
+
+      // Load superintendents for this org via callable (avoids strict client rules)
+      let supers = [];
+      let listErr = '';
+      try {
+        const cf = (window.SD?.httpsCallable)
+          ? window.SD.httpsCallable('ownerListSuperintendents')
+          : firebase.app().functions('us-central1').httpsCallable('ownerListSuperintendents');
+        const res = await cf({ orgId: org.id });
+        supers = (res?.data?.members || []).map(m => ({ id: m.id, email: m.email, displayName: m.displayName, status: m.status }));
+      } catch (e){
+        console.warn('ownerListSuperintendents failed, falling back to client query', e);
+        listErr = (e && (e.message || e.details)) || String(e);
+        try {
+          const suSnap = await db.collection('orgs').doc(org.id)
+            .collection('members')
+            .where('roles', 'array-contains', 'superintendent')
+            .get();
+          supers = suSnap.docs.map(d => ({ id: d.id, ...(d.data()||{}) }))
+            .filter(m => (m.status || 'active') !== 'removed')
+            .map(m => ({ id: m.uid || m.id, email: m.email || '', displayName: m.displayName || null, status: m.status || 'active' }));
+        } catch (e2) {
+          console.error('members client query failed', e2);
+        }
+      }
+
+      card.innerHTML = `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+          <div>
+            <div style="font-weight:800">${escapeHtml(org.name || org.id)}</div>
+            <div class="small muted">ID: ${escapeHtml(org.id)}</div>
+            <div class="small">Schools: <strong>${schools.length}</strong>
+              ${Number.isFinite(org.usedSchools) && Number.isFinite(org.allowedSchools)
+                ? ` · Quota: <strong>${org.usedSchools}</strong> / ${org.allowedSchools}`
+                : ''}</div>
+            <div class="small muted">Status: ${escapeHtml(org.status || 'active')}</div>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" data-act="viewSup" data-org="${org.id}">View as Superintendent</button>
+            <button class="btn btn-secondary btn-sm" data-act="editQuota" data-org="${org.id}">Edit Quota</button>
+          </div>
+        </div>
+        <div style="margin-top:12px;border-top:1px solid #e5e7eb;padding-top:10px;">
+          <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:8px;">Superintendents
+            <span class="small muted">(${supers.length})</span>
+          </div>
+          <div class="small muted" ${supers.length ? 'style="display:none;"' : ''}>No superintendents yet.${listErr ? ' (note: '+escapeHtml(listErr)+')' : ''}</div>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px;" id="supList-${org.id}">
+      ${supers.map(u => `
+              <li style="border:1px solid #e5e7eb;border-radius:10px;padding:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div style="min-width:0; overflow:hidden;">
+                  <div style="font-weight:700; text-overflow:ellipsis; white-space:nowrap; overflow:hidden;">${escapeHtml(u.displayName || u.name || u.email || u.id)}</div>
+                  <div class="small muted">${escapeHtml(u.email || u.id)}</div>
+                </div>
+        <button class="btn btn-outline btn-sm" data-act="delSup" data-org="${org.id}" data-uid="${escapeHtml(u.id)}" data-email="${escapeHtml(u.email || '')}">Remove</button>
+              </li>
+            `).join('')}
+          </ul>
+          <form data-act="addSupForm" data-org="${org.id}" class="owner-add-sup" style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="field" style="flex:1 1 260px;">
+              <span class="label-strong">Add superintendent (email)</span>
+              <input type="email" name="email" placeholder="user@domain.com" required />
+            </label>
+            <button class="btn btn-primary btn-sm" type="submit">Add</button>
+          </form>
+        </div>
+        <div style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:10px;">
+          <div style="font-weight:700;margin-bottom:6px;">Schools</div>
+          <div class="small muted" ${schools.length ? 'style="display:none;"' : ''}>No schools yet.</div>
+          <ul style="list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;">
+            ${schools.map(s => `
+              <li style="border:1px solid #e5e7eb;border-radius:10px;padding:8px;background:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div style="min-width:0; overflow:hidden;">
+                  <div style="font-weight:700; text-overflow:ellipsis; white-space:nowrap; overflow:hidden;">${escapeHtml(s.name || s.id)}</div>
+                  <div class="small muted">ID: ${escapeHtml(s.id)}</div>
+                </div>
+                <button class="btn btn-sm" data-act="viewSchool" data-org="${org.id}" data-school="${s.id}">Admin</button>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+      `;
+      card.addEventListener('click', async (e) => {
+        const btn = e.target.closest('button[data-act]');
+        if (!btn) return;
+        const act = btn.getAttribute('data-act');
+        const orgId = btn.getAttribute('data-org');
+        try{
+          if (act === 'viewSup') {
+            setCtx({ orgId: orgId, schoolId: '' });
+            location.href = '/superintendent.html'; // You will create this page
+          } else if (act === 'editQuota') {
+            const cur = Number.isFinite(org.allowedSchools) ? String(org.allowedSchools) : '1';
+            const val = prompt('Set allowed schools (number):', cur);
+            if (val === null) return;
+            const allowed = Number(val);
+            if (!Number.isFinite(allowed) || allowed < 0) { alert('Please enter a valid number.'); return; }
+            await db.collection('orgs').doc(org.id).update({ allowedSchools: allowed });
+            card.querySelector('strong:last-of-type').textContent = `${org.usedSchools} / ${allowed}`;
+          } else if (act === 'viewSchool') {
+            const schoolId = btn.getAttribute('data-school');
+            setCtx({ orgId: orgId, schoolId });
+            location.href = '/admin.html';
+          } else if (act === 'delSup') {
+            const uid = btn.getAttribute('data-uid');
+            const email = btn.getAttribute('data-email') || '';
+            if (!uid) return;
+            const who = email || uid;
+            if (!confirm(`Remove superintendent ${who} from ${orgId}?`)) return;
+            // If this is an invite placeholder, just delete the member doc
+            if (uid.startsWith('invite:')){
+              try{
+                await db.collection('orgs').doc(orgId).collection('members').doc(uid).delete();
+                alert('Invite removed.');
+                await loadOrgs(db, orgListEl, hint);
+              }catch(err){ console.error('remove invite failed', err); alert('Remove failed: ' + (err?.message || err)); }
+              return;
+            }
+            try{
+              const cf = (window.SD?.httpsCallable)
+                ? window.SD.httpsCallable('ownerRemoveSuperintendent')
+                : firebase.app().functions('us-central1').httpsCallable('ownerRemoveSuperintendent');
+              await cf({ orgId, uid });
+              alert('Superintendent removed.');
+              await loadOrgs(db, orgListEl, hint);
+            }catch(err){ console.error('ownerRemoveSuperintendent failed', err); alert('Remove failed: ' + (err?.message || err)); }
+          }
+        }catch(err){ console.error(err); alert('Action failed: ' + err.message); }
+      });
+
+      // Handle add superintendent form
+    card.addEventListener('submit', async (e) => {
+        const form = e.target.closest('form[data-act="addSupForm"]');
+        if (!form) return;
+        e.preventDefault();
+        const email = String((new FormData(form)).get('email')||'').trim();
+        if (!email) return;
+        try{
+          const cf = (window.SD?.httpsCallable)
+            ? window.SD.httpsCallable('ownerAddSuperintendent')
+            : firebase.app().functions('us-central1').httpsCallable('ownerAddSuperintendent');
+          await cf({ orgId: org.id, email });
+          alert('Superintendent added.');
+          form.reset();
+          await loadOrgs(db, orgListEl, hint);
+        }catch(err){ console.error('add superintendent', err); alert('Add failed: ' + (err?.message || err)); }
+      });
+      orgListEl.appendChild(card);
+    }
+  }
+})();
+</script>
+</body>
+</html>

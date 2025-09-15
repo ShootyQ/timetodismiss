@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Silent Dismissal - Select Class</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <h1>Silent Dismissal</h1>
+      <nav>
+        <a class="btn" href="./master.html">Master (Caller)</a>
+      </nav>
+    </header>
+
+    <main class="container">
+      <h2>Select Your Class</h2>
+      <div id="classes" class="grid"></div>
+    </main>
+
+    <script type="module">
+      import { init, getClasses } from './app.js?v=4';
+      await init();
+
+      const container = document.getElementById('classes');
+      const classes = await getClasses();
+
+      container.innerHTML = classes.length === 0
+        ? '<p>No classes yet. Add some from the Master page.</p>'
+        : classes.map(c => `
+            <a class="card" href="./class.html?classId=${encodeURIComponent(c.id)}">
+              <div class="card-title">${c.name}</div>
+            </a>
+          `).join('');
+    </script>
+  </body>
+</html>

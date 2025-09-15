@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time To Dismiss — Bulk Import</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-06-MC5" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .imp-main{ padding:18px 0 28px; }
+    .box{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; }
+    .grid{ display:grid; grid-template-columns: 1.2fr .8fr; gap:14px; }
+    @media (max-width: 900px){ .grid{ grid-template-columns: 1fr; } }
+    .field{ display:flex; flex-direction:column; gap:6px; margin:8px 0; }
+    .field input, .field select, .field textarea{ border:1px solid #d1d5db; border-radius:10px; padding:.6rem .7rem; }
+    .small{ color:#64748b; }
+    .hidden{ display:none !important; }
+    .table{ width:100%; border-collapse:separate; border-spacing:0; }
+    .table th, .table td{ padding:.45rem .6rem; border-bottom:1px solid #f1f5f9; text-align:left; }
+    .table thead th{ background:#f8fafc; font-weight:700; font-size:.9rem; color:#334155; border-bottom:1px solid #e5e7eb; }
+    .muted{ color:var(--muted); }
+    .warning{ background:#fffbeb; border:1px solid #fde68a; color:#854d0e; border-radius:8px; padding:.6rem .7rem; }
+    .subttl{ font-size:1rem; margin:0 0 8px; }
+    .scroll{ max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; }
+    .titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .title-actions{ display:flex; align-items:center; gap:8px; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container imp-main">
+      <header class="titlebar">
+        <h1 class="page-title">Bulk Import</h1>
+        <div class="title-actions">
+          <span id="ctxSchool" class="chip" title="Current school">—</span>
+          <a href="/manage.html" class="btn btn-outline" aria-label="Back to Roster Manager">Back</a>
+        </div>
+      </header>
+    <p class="small" id="helpText">Choose what to import, paste CSV or upload a file, preview, then import.</p>
+
+    <div class="grid">
+      <section class="box">
+        <div class="field">
+          <label for="entity">Import type</label>
+          <select id="entity">
+            <option value="students">Students</option>
+            <option value="classes">Classes</option>
+            <option value="families">Car Families</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="mode">Mode</label>
+          <select id="mode">
+            <option value="append">Append to existing</option>
+            <option value="replace">Replace all</option>
+          </select>
+        </div>
+
+        <div id="replaceWarn" class="warning hidden">
+          Replace mode will delete all existing items in the selected collection before importing. This cannot be undone.
+        </div>
+
+        <div class="field">
+          <label for="csv">CSV</label>
+          <textarea id="csv" rows="10" placeholder=""></textarea>
+          <div class="small">Or upload a .csv file:</div>
+          <label for="file" class="sr-only">Upload CSV file</label>
+          <input type="file" id="file" accept=".csv,text/csv" aria-label="Upload CSV file" />
+          <div class="small muted" id="hint"></div>
+        </div>
+
+        <div class="field">
+          <button id="preview" class="btn btn-primary" type="button">Preview</button>
+        </div>
+      </section>
+
+      <section class="box">
+        <h2 class="page-title subttl">Preview</h2>
+        <div id="counts" class="small muted">No data yet.</div>
+        <div class="scroll">
+          <table class="table" aria-label="Preview">
+            <thead><tr id="thead"></tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="field">
+          <button id="import" class="btn btn-primary" type="button" disabled>Import</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+  import { init, onAuthChanged, colPath, docPath } from '/app.js?v=21';
+    await init();
+    import { getDocs, addDoc, setDoc, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+    const ctxSchool = document.getElementById('ctxSchool');
+    function updateCtx(){ const name = window.SD && (window.SD.schoolName || window.SD.schoolId); if (ctxSchool) ctxSchool.textContent = name || '—'; }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+
+    // Elements
+    const entitySel = document.getElementById('entity');
+    const modeSel = document.getElementById('mode');
+    const replaceWarn = document.getElementById('replaceWarn');
+    const csvTA = document.getElementById('csv');
+    const fileIn = document.getElementById('file');
+    const hint = document.getElementById('hint');
+    const prevBtn = document.getElementById('preview');
+    const importBtn = document.getElementById('import');
+    const thead = document.getElementById('thead');
+    const tbody = document.getElementById('tbody');
+    const counts = document.getElementById('counts');
+
+    // UI text per entity
+    const samples = {
+      students:
+`name,classId,carTag
+Nova Bloodsaw,5,B4
+John Lee,3B,T3`,
+      classes:
+`id,name
+K,Kindergarten
+1,First Grade
+2,Second Grade`,
+  families:
+`id,name,tags
+smith,Smith Family,K4 A2 T3
+baker,Baker Family,G1 A7` // tags can be space or comma separated in one column, or use tag1,tag2 headers
+    };
+    const hints = {
+  students: 'Columns: name, classId, carTag/tag. Optional: studentId, firstName, lastName (we will still create these fields as empty when not provided). Status is always set to waiting.',
+      classes: 'Columns: id (class id), name/title (display name).',
+      families: 'Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
+    };
+    const headersView = {
+  students: ['#','Name','Class','Tag'],
+      classes: ['#','Class ID','Name','Order'],
+      families: ['#','Family ID','Name','Tags']
+    };
+
+    function resetPlaceholders(){
+      const e = entitySel.value;
+      csvTA.placeholder = samples[e] || '';
+      hint.textContent = hints[e] || '';
+      renderHead();
+      tbody.innerHTML = '';
+      counts.textContent = 'No data yet.';
+      importBtn.disabled = true;
+    }
+    function renderHead(){
+      const cols = headersView[entitySel.value] || [];
+      thead.innerHTML = cols.map(c => `<th>${c}</th>`).join('');
+    }
+    function showReplaceWarn(){ replaceWarn.classList.toggle('hidden', modeSel.value !== 'replace'); }
+    modeSel.addEventListener('change', showReplaceWarn);
+    entitySel.addEventListener('change', resetPlaceholders);
+
+    // Robust CSV parsing and flexible header matching
+    function parseCSV(text){
+      const rows = [];
+      let i=0, field='', row=[], inQuotes=false;
+      while(i<=text.length){
+        const c = text[i] || '\n';
+        if (inQuotes){
+          if (c==='"' && text[i+1]==='"'){ field+='"'; i+=2; continue; }
+          if (c==='"'){ inQuotes=false; i++; continue; }
+          field+=c; i++; continue;
+        }
+        if (c==='"'){ inQuotes=true; i++; continue; }
+        if (c===',' || c==='\t'){ row.push(field); field=''; i++; continue; }
+        if (c==='\n' || i===text.length){ row.push(field); field=''; if (row.length && !(row.length===1 && row[0]==='')) rows.push(row); row=[]; i++; continue; }
+        field+=c; i++;
+      }
+      if (!rows.length) return { headers:[], records:[] };
+      const rawHeaders = rows[0];
+      const headers = rawHeaders.map(h => normHeader(h));
+      const records = rows.slice(1).filter(r => r.some(x => x && x.length)).map(r => {
+        const obj = {};
+        for (let k=0; k<headers.length; k++) obj[headers[k]] = norm(String(r[k]||''));
+        return obj;
+      });
+      return { headers, records };
+    }
+    function normHeader(h){ return String(h||'').replace(/\ufeff/g,'').trim().toLowerCase().replace(/[^a-z0-9]+/g,''); }
+    function norm(s){ return String(s || '').trim(); }
+    function up(s){ return norm(s).toUpperCase(); }
+    function pick(obj, ...keys){ for (const k of keys){ if (obj[k]) return obj[k]; } return ''; }
+
+    function parseStudentsCSV(text){
+      const { records } = parseCSV(text||'');
+      if (!records.length) return [];
+      const rows = [];
+      for (const rec of records){
+        const firstName = pick(rec, 'firstname','first');
+        const lastName  = pick(rec, 'lastname','last');
+        const display   = pick(rec, 'name','displayname');
+        const id        = pick(rec, 'studentid','id');
+        const classId   = pick(rec, 'classid','class','classcode');
+        const tag       = up(pick(rec, 'cartag','tag'));
+        const name = display || [lastName, firstName].filter(Boolean).join(', ');
+        if (!(firstName||lastName||name||id||tag||classId)) continue;
+        rows.push({ firstName, lastName, name, id, classId, tag, carTag: tag, status: 'waiting' });
+      }
+      return rows;
+    }
+
+  function parseClassesCSV(text){
+      const { records } = parseCSV(text||'');
+      if (!records.length) return [];
+      const rows = [];
+      for (const rec of records){
+        const id   = pick(rec, 'id','classid','code');
+        const name = pick(rec, 'name','title','classname','class','displayname');
+    const orderStr = pick(rec, 'order','sort','seq','position','ordinal');
+    const order = orderStr && !isNaN(Number(orderStr)) ? Number(orderStr) : undefined;
+        if (!id) continue;
+    rows.push({ id, name: name || id, title: name || id, order });
+      }
+      return rows;
+    }
+
+    function parseFamiliesCSV(text){
+      const { headers, records } = parseCSV(text||'');
+      if (!records.length) return [];
+      const rows = [];
+      const tagCols = headers.filter(h => /^tag\d+$/.test(h));
+      for (const rec of records){
+        const id   = pick(rec, 'id','familyid');
+        if (!id) continue;
+        const name = pick(rec, 'name','familyname','title');
+        let tagsRaw = pick(rec, 'tags');
+        let tags = [];
+        if (tagsRaw){ tags = tagsRaw.split(/[\s,]+/).filter(Boolean).map(up); }
+        if (!tags.length && tagCols.length){ tags = tagCols.map(tc => up(rec[tc])).filter(Boolean); }
+        rows.push({ id, name: name || id, tags });
+      }
+      return rows;
+    }
+
+    fileIn.addEventListener('change', async () => {
+      const f = fileIn.files?.[0]; if (!f) return;
+      const text = await f.text();
+      csvTA.value = text;
+    });
+
+    let previewRows = [];
+
+    function renderPreview(){
+      const e = entitySel.value;
+      tbody.innerHTML = '';
+      if (!previewRows.length){
+        counts.textContent = 'No valid rows.';
+        importBtn.disabled = true;
+        return;
+      }
+      counts.textContent = `${previewRows.length} rows ready. Showing first ${Math.min(500, previewRows.length)}.`;
+      const slice = previewRows.slice(0, 500);
+      for (let i=0; i<slice.length; i++){
+        const r = slice[i];
+        let tds = '';
+        if (e === 'students'){
+          tds = `<td>${i+1}</td><td>${r.name}</td><td>${r.classId||''}</td><td>${r.tag||''}</td>`;
+        } else if (e === 'classes'){
+          tds = `<td>${i+1}</td><td>${r.id}</td><td>${r.name||r.title||''}</td><td>${r.order ?? ''}</td>`;
+        } else {
+          const tags = (r.tags||[]).join(' ');
+          tds = `<td>${i+1}</td><td>${r.id}</td><td>${r.name||''}</td><td>${tags||''}</td>`;
+        }
+        const tr = document.createElement('tr');
+        tr.innerHTML = tds;
+        tbody.appendChild(tr);
+      }
+      importBtn.disabled = false;
+    }
+
+    function doParse(){
+      const e = entitySel.value;
+      const raw = csvTA.value;
+      if (e === 'students') previewRows = parseStudentsCSV(raw);
+      else if (e === 'classes') previewRows = parseClassesCSV(raw);
+      else previewRows = parseFamiliesCSV(raw);
+      renderPreview();
+    }
+
+    prevBtn.addEventListener('click', doParse);
+    modeSel.addEventListener('change', showReplaceWarn);
+
+    importBtn.addEventListener('click', async () => {
+      const e = entitySel.value;
+      const rows = previewRows;
+      if (!rows.length) return;
+
+      const replace = modeSel.value === 'replace';
+      if (replace){
+        const ok = confirm(`Delete ALL existing ${e} then import?`);
+        if (!ok) return;
+        const snap = await getDocs(colPath(e === 'students' ? 'students' : e === 'classes' ? 'classes' : 'carGroups'));
+        for (const doc of snap.docs){
+          try { await deleteDoc(doc.ref); } catch (err){ console.error('delete', doc.id, err); }
+        }
+      }
+
+      if (e === 'students'){
+        for (const r of rows){
+          try {
+            const payload = {
+              firstName: r.firstName||'',
+              lastName: r.lastName||'',
+              name: r.name||[r.lastName||'', r.firstName||''].filter(Boolean).join(', '),
+              id: r.id||'',
+              classId: r.classId||'',
+              tag: r.tag||'',
+              carTag: r.carTag||r.tag||'',
+              status: 'waiting',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            };
+            await addDoc(colPath('students'), payload);
+          } catch (err){ console.error('add student', r, err); }
+        }
+  } else if (e === 'classes'){
+        for (const r of rows){
+          try {
+    const payload = { id: r.id, name: r.name||r.title||r.id, title: r.name||r.title||r.id, ...(r.order!==undefined?{order:r.order}:{}), updatedAt: serverTimestamp(), createdAt: serverTimestamp() };
+            await setDoc(docPath('classes', r.id), payload);
+          } catch (err){ console.error('set class', r, err); }
+        }
+      } else { // families
+        for (const r of rows){
+          try {
+            const payload = { id: r.id, name: r.name||r.id, tags: (r.tags||[]).map(t=>String(t).toUpperCase()), updatedAt: serverTimestamp(), createdAt: serverTimestamp() };
+            await setDoc(docPath('carGroups', r.id), payload);
+          } catch (err){ console.error('set family', r, err); }
+        }
+      }
+
+      alert('Import completed.');
+      previewRows = [];
+      renderPreview();
+    });
+
+    onAuthChanged((user) => {
+      if (!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } }
+    });
+
+    // init view
+    resetPlaceholders();
+    showReplaceWarn();
+  </script>
+</body>
+</html>

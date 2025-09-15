@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — QR Codes</title>
+
+  <link rel="stylesheet" href="/styles.css?v=2025-09-06-MC4" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+
+  <style>
+    .qr-toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
+    .qr-toolbar input, .qr-toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
+    .qr-grid{ display:grid; gap:12px; list-style:none; padding:0; margin:0; }
+    .qr-item{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px; display:flex; flex-direction:column; align-items:center; gap:8px; }
+    .qr-item:focus-within{ outline:3px solid #2563eb33; outline-offset:2px; }
+    .qr-box{ width:200px; height:200px; display:grid; place-items:center; }
+    .qr-label{ font-weight:800; letter-spacing:.5px; }
+    .qr-sub{ color:var(--muted); font-size:.9rem; text-align:center; }
+    .qr-actions{ display:flex; gap:8px; }
+    .qr-cols-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .qr-cols-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .qr-cols-4{ grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .qr-tight .qr-item{ padding:6px; border-radius:8px; }
+    .qr-tight .qr-box{ width:180px; height:180px; }
+    .muted{ color:var(--muted); }
+    .note{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:.75rem 1rem; }
+
+    .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+    /* Utility */
+    .hidden{ display:none !important; }
+    .qr-main{ padding:18px 0 28px; }
+    .qr-title{ margin:0 0 .4rem 0; }
+    .qr-desc{ margin:.25rem 0 1rem; }
+    .inline-flex{ display:flex; align-items:center; gap:6px; cursor:pointer; }
+    .qr-filter{ min-width:240px; }
+    .csv-help{ margin:.5rem 0 .5rem; }
+    .csv-area{ width:100%; font-family:ui-monospace, monospace; }
+    .helpers-actions{ margin-top:.5rem; display:flex; gap:8px; }
+
+    /* Print area (dedicated, avoids grid print bugs) */
+    #printArea.hidden{ display:none !important; }
+    #printArea{ background:#fff; }
+    #printArea .pa{ display:grid; }
+    #printArea .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; }
+    #printArea .pa-qr{ display:grid; place-items:center; }
+    #printArea .pa-label{ font-weight:800; }
+    #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
+
+    /* Presets (letter-size page expected) */
+    /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; h-gap .125in; v-gap 0in; page margins top .5in left .1875in */
+    .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
+    .pa-avery5160 .pa-item{ width:2.625in; height:1in; }
+
+    /* Avery 5163: 2 cols x 5 rows, label 4in x 2in; h-gap .125in; v-gap 0in; margins similar */
+    .pa-avery5163{ grid-template-columns: repeat(2, 4in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
+    .pa-avery5163 .pa-item{ width:4in; height:2in; }
+
+    /* Square 2x2 in generic */
+    .pa-square2{ grid-template-columns: repeat(3, 2in); column-gap: .2in; row-gap: .2in; padding: .5in; }
+    .pa-square2 .pa-item{ width:2in; height:2in; }
+
+    /* Square 3x3 in generic */
+    .pa-square3{ grid-template-columns: repeat(2, 3in); column-gap: .25in; row-gap: .25in; padding: .5in; }
+    .pa-square3 .pa-item{ width:3in; height:3in; }
+
+    /* Print-time cleanup */
+    .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty{ display:none !important; }
+
+    @media print{
+      header.site-header{ display:none !important; }
+      body{ background:#fff; }
+    }
+
+    @page { size: letter; margin: 0; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container qr-main">
+    <h1 class="page-title qr-title">QR Codes</h1>
+    <p class="small muted qr-desc">
+      Codes encode <strong>car=TAG</strong> when available, else <strong>student=ID</strong>. Select items to print just those.
+    </p>
+
+    <div id="hostWarning" class="note hidden" role="status">
+      Tip: To load All Students from your database, open this page via your app (http/https). When opened from disk (file://), use the CSV helper below.
+    </div>
+
+    <div class="qr-toolbar" role="toolbar" aria-label="QR options">
+      <label class="inline-flex">
+        <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> All Students
+      </label>
+      <span id="modeHelp" class="sr-only">Toggle to list all students instead of car tags</span>
+
+      <input id="q" class="qr-filter" placeholder="Filter by tag or name…" inputmode="search" autocomplete="off" aria-label="Filter" />
+      <select id="cols" aria-label="Columns">
+        <option value="2">2 columns</option>
+        <option value="3" selected>3 columns</option>
+        <option value="4">4 columns</option>
+      </select>
+      <select id="size" aria-label="QR size">
+        <option value="160">160 px</option>
+        <option value="180">180 px</option>
+        <option value="200" selected>200 px</option>
+        <option value="240">240 px</option>
+        <option value="300">300 px</option>
+      </select>
+      <label class="inline-flex">
+        <input id="tight" type="checkbox" /> Tight layout
+      </label>
+      <label class="inline-flex">
+        <input id="showNames" type="checkbox" checked /> Show names
+      </label>
+      <select id="layout" aria-label="Label layout">
+        <option value="grid" selected>Responsive Grid</option>
+        <option value="avery5160">Avery 5160 (30/pg)</option>
+        <option value="avery5163">Avery 5163 (10/pg)</option>
+        <option value="square2">Square 2×2 in</option>
+        <option value="square3">Square 3×3 in</option>
+      </select>
+      <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
+      <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
+      <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
+    </div>
+
+    <div id="loading" class="note hidden" role="status" aria-live="polite">Loading…</div>
+    <div id="errors" class="note hidden" role="alert"></div>
+    <div id="helpers" class="note hidden">
+      <details>
+        <summary><strong>No student data?</strong> Paste CSV to generate codes</summary>
+        <div class="small csv-help">
+          CSV headers: name,id,tag — tag optional. Example: Doe, John,12345,Q32
+        </div>
+        <textarea id="csv" rows="6" class="csv-area"></textarea>
+        <div class="helpers-actions">
+          <button id="csvLoad" class="btn btn-secondary" type="button">Load CSV</button>
+          <button id="csvClear" class="btn btn-outline" type="button">Clear</button>
+        </div>
+      </details>
+    </div>
+
+    <div id="empty" class="small muted hidden">No items.</div>
+    <ul id="grid" class="qr-grid qr-cols-3"></ul>
+
+    <!-- Dedicated print area; built only when printing -->
+    <div id="printArea" class="hidden">
+      <div class="pa" id="paGrid"></div>
+    </div>
+  </main>
+
+  <script>
+    (function ensureQRCode(){
+      if (window.QRCode) return;
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      s.crossOrigin = 'anonymous';
+      document.head.appendChild(s);
+    })();
+  </script>
+
+  <script type="module">
+    // Load APIs
+    let api = {};
+    const isFile = location.protocol === 'file:';
+    const hostWarning = document.getElementById('hostWarning');
+    if (isFile) hostWarning.classList.remove('hidden');
+
+    async function loadApi(){
+      if (window.app) return window.app;
+      try { return await import('/app.js?v=20'); } catch (e) { console.warn('Import /app.js failed', e); }
+      try { return await import('./app.js'); } catch (e) { console.warn('Import ./app.js failed', e); }
+      return {};
+    }
+
+    api = await loadApi();
+    const { init, onCarGroups, onStudents } = api;
+
+    // Elements
+    const grid = document.getElementById('grid');
+    const empty = document.getElementById('empty');
+    const loading = document.getElementById('loading');
+    const errors = document.getElementById('errors');
+    const helpers = document.getElementById('helpers');
+
+    const q = document.getElementById('q');
+    const cols = document.getElementById('cols');
+    const sizeSel = document.getElementById('size');
+    const tight = document.getElementById('tight');
+    const showNames = document.getElementById('showNames');
+    const layoutSel = document.getElementById('layout');
+    const modeStudents = document.getElementById('modeStudents');
+    const btnAll = document.getElementById('selectAll');
+    const btnClr = document.getElementById('clearSel');
+    const btnPrint = document.getElementById('print');
+
+    const csvTA = document.getElementById('csv');
+    const csvLoad = document.getElementById('csvLoad');
+    const csvClear = document.getElementById('csvClear');
+
+    const printArea = document.getElementById('printArea');
+    const paGrid = document.getElementById('paGrid');
+
+    // Data
+    let tags = [];     // [{ tag, name }]
+    let students = []; // [{ id, name, tag }]
+    const selected = new Set();
+
+    // Helpers
+    const norm = s => String(s||'').trim();
+    const normTag = s => norm(s).toUpperCase();
+
+    function nameOf(s){
+      if (!s) return '';
+      if (s.name) return String(s.name);
+      const first = s.firstName || s.first || s.givenName || '';
+      const last = s.lastName || s.last || s.surname || '';
+      const both = [last, first].filter(Boolean).join(', ');
+      return both || s.displayName || s.fullName || '';
+    }
+
+    function setCols(n){
+      grid.classList.remove('qr-cols-2','qr-cols-3','qr-cols-4');
+      grid.classList.add('qr-cols-' + n);
+    }
+    function setTight(v){ grid.classList.toggle('qr-tight', !!v); }
+
+    function collectTags(groups){
+      const map = new Map();
+      for (const g of (groups||[])){
+        const family = g.name || g.family || '';
+        for (const t of (g.tags || g.tagList || [])){
+          const T = normTag(t);
+          if (!T) continue;
+          if (!map.has(T)) map.set(T, family);
+        }
+      }
+      return Array.from(map.entries())
+        .map(([tag, name]) => ({ tag, name }))
+        .sort((a,b)=>a.tag.localeCompare(b.tag));
+    }
+
+    function currentFilterList(){
+      const filter = (q.value||'').toLowerCase();
+      const useStudents = !!modeStudents.checked;
+      return useStudents
+        ? students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)))
+        : tags.filter(x => x.tag.toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+    }
+
+    function renderList(){
+      const W = parseInt(sizeSel.value,10) || 200;
+      const useStudents = !!modeStudents.checked;
+      const prev = new Set(selected);
+      const list = currentFilterList();
+
+      grid.innerHTML = '';
+      empty.classList.toggle('hidden', list.length > 0);
+
+      for (const item of list){
+        const tag = useStudents ? (item.tag || '') : item.tag;
+        const name = useStudents ? nameOf(item) : (item.name || '');
+        const id = useStudents ? (item.id || item.studentId || '') : null;
+        const key = id || tag;
+
+        const li = document.createElement('li');
+        li.className = 'qr-item';
+        li.dataset.key = key;
+        const topName = showNames.checked ? `<span class="small muted">${useStudents ? (name || '') : (name || '&nbsp;')}</span>` : '';
+        const underName = showNames.checked && useStudents ? `<div class="qr-sub">${name || ''}</div>` : '';
+        li.innerHTML = `
+          <label class="inline-flex" style="align-self:flex-start;">
+            <input type="checkbox" aria-label="Select ${useStudents ? (name || id || tag) : tag}" ${prev.has(key) ? 'checked' : ''} />
+            ${topName}
+          </label>
+          <div class="qr-box"></div>
+          <div class="qr-label" aria-hidden="true">${useStudents ? (tag || id || '') : tag}</div>
+          ${underName}
+          <div class="qr-actions">
+            <button class="btn btn-xs btn-outline" data-dl="${key}" type="button" aria-label="Download ${useStudents ? (tag || id || 'code') : tag}">Download PNG</button>
+          </div>`;
+
+        grid.appendChild(li);
+
+        const payload = useStudents
+          ? (tag ? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id||'')}`)
+          : `car=${encodeURIComponent(tag)}`;
+
+        const box = li.querySelector('.qr-box');
+        box.style.width = W + 'px'; box.style.height = W + 'px';
+        const host = document.createElement('div'); box.appendChild(host);
+
+        const draw = () => new QRCode(host, { text: payload, width: W, height: W, correctLevel: QRCode.CorrectLevel.M });
+        if (window.QRCode) { try { draw(); } catch {} }
+        else {
+          const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+        }
+
+        const cb = li.querySelector('input[type="checkbox"]');
+        cb.addEventListener('change', () => {
+          if (cb.checked) selected.add(key); else selected.delete(key);
+        });
+        if (prev.has(key)) selected.add(key);
+
+        li.tabIndex = 0;
+        li.addEventListener('keydown', (e) => {
+          if (e.code === 'Space'){ e.preventDefault(); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
+        });
+      }
+    }
+
+    function parseCSV(text){
+      const rows = String(text||'').split(/\r?\n/).map(r => r.trim()).filter(Boolean);
+      if (!rows.length) return [];
+      const first = rows[0].split(',').map(s=>s.trim().toLowerCase());
+      const hasHeader = ['name','id','tag'].some(h => first.includes(h));
+      const start = hasHeader ? 1 : 0;
+      const idx = {
+        name: hasHeader ? first.indexOf('name') : 0,
+        id: hasHeader ? first.indexOf('id') : 1,
+        tag: hasHeader ? first.indexOf('tag') : 2
+      };
+      const out = [];
+      for (let i=start;i<rows.length;i++){
+        const cols = rows[i].split(',').map(s=>s.trim());
+        const name = cols[idx.name] || '';
+        const id = cols[idx.id] || '';
+        const tag = (cols[idx.tag] || '').toUpperCase().trim();
+        if (!name && !id && !tag) continue;
+        out.push({ id, name, tag });
+      }
+      return out;
+    }
+
+    // Print presets
+    function presetInfo(key){
+      switch(key){
+        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.82 };
+        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.6 };
+        case 'square2':   return { class: 'pa-square2',   qrIn: 1.6 };
+        case 'square3':   return { class: 'pa-square3',   qrIn: 2.3 };
+        default:          return { class: 'pa-square2',   qrIn: (parseInt(sizeSel.value,10)||200)/96 }; // fallback
+      }
+    }
+
+    function toPx(inches){ return Math.round(inches * 96); }
+
+    function getAllItems(){ return modeStudents.checked ? students : tags; }
+
+    function getKey(item, useStudents){ return useStudents ? (item.id || item.studentId || item.tag) : item.tag; }
+
+    function buildPayload(item, useStudents){
+      if (useStudents){
+        const tag = item.tag || '';
+        const id = item.id || item.studentId || '';
+        return tag ? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id)}`;
+      }
+      return `car=${encodeURIComponent(item.tag)}`;
+    }
+
+    function buildPrintArea(items){
+      const useStudents = modeStudents.checked;
+      const preset = presetInfo(layoutSel.value);
+      paGrid.className = 'pa ' + preset.class;
+      paGrid.innerHTML = '';
+
+      const qrPx = toPx(preset.qrIn);
+      for (const item of items){
+        const tag = useStudents ? (item.tag || '') : item.tag;
+        const name = useStudents ? nameOf(item) : (item.name || '');
+        const id = useStudents ? (item.id || item.studentId || '') : null;
+        const labelText = useStudents ? (tag || id || '') : tag;
+        const payload = buildPayload(item, useStudents);
+
+        const div = document.createElement('div');
+        div.className = 'pa-item';
+        div.innerHTML = `
+          <div class="pa-qr"></div>
+          <div class="pa-label">${labelText}</div>
+          ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+        `;
+        paGrid.appendChild(div);
+
+        const host = div.querySelector('.pa-qr');
+        const holder = document.createElement('div');
+        holder.style.width = qrPx + 'px';
+        holder.style.height = qrPx + 'px';
+        host.appendChild(holder);
+
+        const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
+        if (window.QRCode) { try { draw(); } catch {} }
+        else {
+          const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+        }
+      }
+    }
+
+    function printNow(){
+      const useStudents = modeStudents.checked;
+      const all = getAllItems();
+      const keys = new Set(selected);
+      let items = [];
+
+      if (keys.size){
+        items = all.filter(it => keys.has(getKey(it, useStudents)));
+      } else {
+        // Print current filter list if nothing explicitly selected
+        items = currentFilterList();
+      }
+
+      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+
+      buildPrintArea(items);
+      document.body.classList.add('printing');
+      printArea.classList.remove('hidden');
+
+      const cleanup = () => {
+        document.body.classList.remove('printing');
+        printArea.classList.add('hidden');
+        paGrid.innerHTML = '';
+        window.removeEventListener('afterprint', cleanup);
+      };
+      window.addEventListener('afterprint', cleanup);
+      window.print();
+    }
+
+    // UI wiring
+    cols.addEventListener('change', () => setCols(cols.value));
+    sizeSel.addEventListener('change', renderList);
+    layoutSel.addEventListener('change', () => {/* used at print-time */});
+    q.addEventListener('input', renderList);
+    tight.addEventListener('change', () => setTight(tight.checked));
+    showNames.addEventListener('change', renderList);
+    modeStudents.addEventListener('change', () => {
+      selected.clear();
+      renderList();
+      if (modeStudents.checked && typeof onStudents !== 'function') {
+        helpers.classList.remove('hidden');
+      } else if (!modeStudents.checked) {
+        helpers.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-dl]');
+      if (!btn) return;
+      const item = btn.closest('.qr-item');
+      const canvas = item?.querySelector('.qr-box canvas');
+      if (!canvas) return;
+      const url = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `qr-${(item.querySelector('.qr-label')?.textContent||'code').replace(/[^A-Za-z0-9_-]+/g,'_')}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+    });
+
+    btnAll.addEventListener('click', () => {
+      selected.clear();
+      grid.querySelectorAll('.qr-item').forEach(li => {
+        const key = li.dataset.key;
+        selected.add(key);
+        const cb = li.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = true;
+      });
+    });
+    btnClr.addEventListener('click', () => {
+      selected.clear();
+      grid.querySelectorAll('.qr-item input[type="checkbox"]').forEach(cb => cb.checked = false);
+    });
+
+    btnPrint.addEventListener('click', printNow);
+
+    // CSV helpers
+    csvLoad.addEventListener('click', () => {
+      const parsed = parseCSV(csvTA.value);
+      students = parsed;
+      modeStudents.checked = true;
+      selected.clear();
+      renderList();
+      empty.classList.toggle('hidden', students.length > 0);
+    });
+    csvClear.addEventListener('click', () => { csvTA.value=''; });
+
+    // Bootstrap
+    function whenClaimsReady(fn) {
+      let fired = false;
+      const once = () => { if (fired) return; fired = true; try { fn(); } catch (e) { console.error(e); } };
+      window.addEventListener('sd:claims-ready', once, { once: true });
+      setTimeout(once, 1500);
+    }
+
+    async function bootstrap(){
+      loading.classList.remove('hidden');
+      errors.classList.add('hidden'); errors.textContent = '';
+
+      try { if (typeof init === 'function') await init(); } catch (e) { console.warn('init failed', e); }
+
+      try {
+        if (typeof onCarGroups === 'function') {
+          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); });
+        }
+      } catch (e) { console.warn('onCarGroups failed', e); }
+
+      try {
+        if (typeof onStudents === 'function') {
+          onStudents(null, all => {
+            students = (all||[]).map(s => ({
+              id: s.id || s.studentId || s.uid || '',
+              name: nameOf(s),
+              tag: s.tag ? normTag(s.tag) : (s.carTag ? normTag(s.carTag) : '')
+            })).sort((a,b)=> (nameOf(a)||'').localeCompare(nameOf(b)||''));
+            if (modeStudents.checked) renderList();
+          });
+          helpers.classList.add('hidden');
+        } else {
+          helpers.classList.remove('hidden');
+        }
+      } catch (e) {
+        console.warn('onStudents failed', e);
+        helpers.classList.remove('hidden');
+        errors.classList.remove('hidden');
+        errors.textContent = 'Could not subscribe to students. You can still paste a CSV below.';
+      } finally {
+        loading.classList.add('hidden');
+      }
+    }
+
+    setCols(cols.value);
+    setTight(tight.checked);
+    whenClaimsReady(bootstrap);
+  </script>
+</body>
+</html>

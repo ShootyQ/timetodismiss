@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss</title>
+
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-05-MC3" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script>
+    (function(){
+      try{
+  const KEY='SD_SW_PURGE_2025-09-05-HDR3';
+        if(!localStorage.getItem(KEY)){
+          if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }
+          if(window.caches&&caches.keys){ caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{}); }
+          localStorage.setItem(KEY,'1');
+        }
+      }catch(e){}
+    try{ console.log('[TTD] Page BUILD','2025-09-05-HDR3'); }catch{}
+    })();
+  </script>
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+</head>
+<body class="sd-body">
+  <!-- Universal header injected by /site-header.js -->
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container hero-inner">
+      <h1>Fast, calm, and organized dismissal.</h1>
+      <p>Call once. Every classroom sees the update immediately — no shouting, no chaos. A smooth, silent flow to the end of day.</p>
+      <div class="hero-cta">
+  <a class="btn btn-primary" href="mailto:andrewpcarlson85@gmail.com">Contact us</a>
+        <a class="btn btn-outline" href="/class.html">View Class Pages</a>
+      </div>
+
+      <ul class="hero-highlights" role="list">
+        <li>Realtime updates</li>
+        <li>Multi-class sync</li>
+        <li>Simple setup</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- In-progress disclaimer / pilot program -->
+  <section>
+    <div class="container mt-14">
+      <div class="banner-warning">
+        <strong>In progress:</strong> We’re actively developing Time To Dismiss and looking for pilot schools. The first 3 schools get the first year free.
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features">
+    <div class="container">
+  <h2 class="section-title">Available now</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>One Tap Calling</h3>
+          <p>From the master caller page, mark a car and push. Every class page refreshes instantly.</p>
+        </article>
+        <article class="card">
+          <h3>Classroom-Ready</h3>
+          <p>Large, clean layout built for projectors or TVs. Students see exactly when their ride arrives.</p>
+        </article>
+        <article class="card">
+          <h3>Groups & Lanes</h3>
+          <p>Create groups (e.g., Cars, Buses, Walkers). Call individually or call a whole group at once.</p>
+        </article>
+        <article class="card">
+          <h3>Secure Access</h3>
+          <p>Staff log in to manage calls. Public class pages display status only — no sensitive data.</p>
+        </article>
+      </div>
+
+  <h2 class="section-title section-title--spaced">Coming soon</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>QR Code Scanning</h3>
+          <p>Quickly call cars by scanning windshield tags. Camera-based, no extra hardware.</p>
+        </article>
+        <article class="card">
+          <h3>Printable QR Tags</h3>
+          <p>Generate and print car/family QR codes sized for common label sheets.</p>
+        </article>
+        <article class="card">
+          <h3>Bulk Import Tools</h3>
+          <p>CSV import for students, classes, and families to get up and running fast.</p>
+        </article>
+        <article class="card">
+          <h3>Role-Based Admin</h3>
+          <p>Assign caller, teacher, and admin roles to keep access simple and safe.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how">
+    <div class="container">
+      <h2>How it works</h2>
+      <ol class="steps">
+  <li><strong>Caller opens</strong> the master page.</li>
+        <li><strong>Caller selects</strong> a car, student, or group.</li>
+        <li><strong>Class pages update</strong> in real time — students head out calmly.</li>
+      </ol>
+      <div class="how-cta">
+  <a class="btn btn-primary" href="mailto:andrewpcarlson85@gmail.com">Contact us</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p>© <span id="year"></span> Time To Dismiss. All rights reserved.</p>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+  <a href="mailto:andrewpcarlson85@gmail.com">Contact</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    // Year
+    const y = document.getElementById('year');
+    if (y) y.textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

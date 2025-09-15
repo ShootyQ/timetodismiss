@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Time To Dismiss — Roster Manager</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-06-MC4" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .rm-main{ padding:18px 0 28px; }
+    .titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; border-bottom:1px solid #e5e7eb; padding-bottom:10px; }
+    .title-actions{ display:flex; align-items:center; gap:8px; }
+    .toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
+    .toolbar input, .toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
+    .grid2{ display:grid; grid-template-columns: 1.5fr .8fr; gap:14px; }
+    @media (max-width: 900px){ .grid2{ grid-template-columns: 1fr; } }
+    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; }
+  .table{ width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
+    .table th, .table td{ padding:.6rem .75rem; text-align:left; }
+    .table thead th{ background:#f8fafc; font-weight:700; font-size:.9rem; color:#334155; border-bottom:1px solid #e5e7eb; }
+    .table tbody tr + tr td{ border-top:1px solid #f1f5f9; }
+    .muted{ color:var(--muted); }
+    .chip{ display:inline-flex; align-items:center; gap:6px; background:#f1f5f9; color:#334155; border:1px solid #e5e7eb; border-radius:999px; padding:.1rem .5rem; font-weight:700; font-size:.75rem; }
+  .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+    .field{ display:flex; flex-direction:column; gap:6px; margin:8px 0; }
+    .field input, .field select, .field textarea{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
+    .btn-sm{ padding:.5rem .7rem; border-radius:10px; font-weight:700; }
+    .small{ color:var(--muted); }
+  .ml-auto{ margin-left:auto; }
+  .t-sm-title{ font-size:1rem; }
+  /* Multi-add rows */
+  .rows-toolbar{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; }
+  .student-rows{ display:flex; flex-direction:column; gap:10px; }
+  .student-row{ display:grid; grid-template-columns: 1.4fr .9fr 1fr .8fr auto; gap:10px; align-items:end; }
+  .student-row .field{ margin:0; }
+  .row-actions{ display:flex; align-items:center; gap:6px; padding-bottom:6px; }
+  @media (max-width: 1100px){ .student-row{ grid-template-columns: 1fr 1fr; } .student-row .row-actions{ grid-column: 1 / -1; } }
+  .field input, .field select{ width:100%; min-width:0; }
+  #tenantInfo{ margin-left:8px; color: var(--muted); }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container rm-main">
+    <header class="titlebar">
+      <h1 class="page-title">Roster Manager</h1>
+      <div class="title-actions">
+        <span id="ctxSchool" class="chip" title="Current school">—</span>
+  <a href="/import.html" class="btn btn-outline" aria-label="Go to Import">Import CSV</a>
+  <span id="tenantInfo" class="small"></span>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="Roster tools">
+      <label class="sr-only" for="entitySel">Entity</label>
+      <select id="entitySel" aria-label="Select entity">
+        <option value="students">Students</option>
+        <option value="classes">Classes</option>
+        <option value="families">Car Families</option>
+      </select>
+      <label class="sr-only" for="search">Search</label>
+      <input id="search" placeholder="Search…" inputmode="search" autocomplete="off" />
+      <span id="counts" class="small">—</span>
+  <span id="toast" class="small ml-auto"></span>
+    </section>
+
+    <section class="grid2">
+      <div class="card">
+        <table class="table" aria-label="Roster list">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <form id="addForm" class="card" aria-labelledby="add-h">
+  <h2 id="add-h" class="page-title t-sm-title">Add</h2>
+        <div id="formFields"></div>
+        <div class="actions">
+          <button id="addBtn" type="submit" class="btn btn-primary">Add</button>
+          <button id="clearBtn" type="button" class="btn btn-ghost">Clear</button>
+        </div>
+        <p class="small" id="hint">Select an entity to add items to your roster.</p>
+      </form>
+    </section>
+  </main>
+
+  <script type="module">
+  import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=21';
+    await init();
+  import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+    // UI refs
+    const entitySel = document.getElementById('entitySel');
+    const searchIn  = document.getElementById('search');
+    const thead     = document.getElementById('thead');
+    const tbody     = document.getElementById('tbody');
+    const counts    = document.getElementById('counts');
+    const toast     = document.getElementById('toast');
+    const form      = document.getElementById('addForm');
+    const formFields= document.getElementById('formFields');
+    const addBtn    = document.getElementById('addBtn');
+    const clearBtn  = document.getElementById('clearBtn');
+    const ctxSchool = document.getElementById('ctxSchool');
+  const titleEl   = document.getElementById('add-h');
+  const toolbar   = document.querySelector('.toolbar');
+
+  // Class filter UI (inserted dynamically into toolbar)
+  const classSel = document.createElement('select');
+  classSel.id = 'classSel';
+  classSel.ariaLabel = 'Filter by class';
+  classSel.style.minWidth = '200px';
+  classSel.style.display = 'none'; // only shown for Students
+  toolbar.insertBefore(classSel, counts);
+
+    function setToast(msg, isErr=false){
+      toast.textContent = msg || '';
+      toast.style.color = isErr ? '#b91c1c' : 'var(--muted)';
+      if (msg) setTimeout(()=>{ if (toast.textContent === msg) toast.textContent = ''; }, 3200);
+    }
+  function updateCtx(){ const name = window.SD && (window.SD.schoolName || window.SD.schoolId); if (ctxSchool) ctxSchool.textContent = name || '—'; renderBody(); }
+  function updateTenantInfo(){ const el = document.getElementById('tenantInfo'); if (!el) return; const org = window.SD?.orgId || '—'; const sch = window.SD?.schoolId || '—'; el.textContent = `org:${org} • school:${sch}`; }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+  document.addEventListener('sd:school-changed', updateTenantInfo);
+  document.addEventListener('sd:claims-ready', updateTenantInfo);
+
+    // Wait for tenant (orgId + schoolId)
+    async function waitTenant(maxMs=15000){
+      if (window.SD?.orgId && window.SD?.schoolId) return;
+      let resolved = false;
+      await new Promise((res, rej) => {
+        const onReady = () => { if (!resolved && window.SD?.orgId && window.SD?.schoolId){ resolved = true; cleanup(); res(); } };
+        function cleanup(){ try{ document.removeEventListener('sd:claims-ready', onReady); }catch{} try{ clearInterval(iv); }catch{} try{ clearTimeout(to); }catch{} }
+        document.addEventListener('sd:claims-ready', onReady, { once:true });
+        const iv = setInterval(onReady, 50);
+        const to = setTimeout(()=>{ if(!resolved){ cleanup(); rej(new Error('tenant not ready')); } }, Math.max(1000, maxMs));
+      }).catch(()=>{});
+    }
+
+    // State
+  let unsub = () => {};
+  let classes = [];
+    let rows = [];
+    let filter = '';
+  let editingId = null; // students: current docId being edited
+  let classFilter = '';
+
+    const headersMap = {
+      students: ['Name','ID','Class','Tag',''],
+      classes:  ['Class ID','Name',''],
+      families: ['Family ID','Name','Tags','']
+    };
+
+    function renderHead(){
+  const cols = headersMap[entitySel.value] || [];
+      thead.innerHTML = cols.map(c => `<th>${c}</th>`).join('');
+    }
+
+  function renderBody(){
+      const e = entitySel.value;
+      const q = filter.toLowerCase();
+      // base filtered by search
+      let list = rows.filter(r => {
+        const hay = (e === 'students')
+          ? `${r.name||''} ${r.studentId||''} ${r.classId||''} ${r.carTag||''}`
+          : (e === 'classes')
+            ? `${r.id||''} ${r.name||r.title||''}`
+            : `${r.id||''} ${r.name||''} ${(r.tags||[]).join(' ')}`;
+        return hay.toLowerCase().includes(q);
+      });
+      // apply class filter for students
+      if (e === 'students' && classFilter) {
+        list = list.filter(r => (r.classId||'') === classFilter);
+      }
+      // sort: when viewing all students, group by class name then name
+      if (e === 'students' && !classFilter) {
+        list = list.slice().sort((a,b) => {
+          const ca = (resolveClassName(a.classId) || '').localeCompare(resolveClassName(b.classId) || '');
+          if (ca !== 0) return ca;
+          return (a.name||'').localeCompare(b.name||'');
+        });
+      }
+      counts.textContent = `${list.length} item(s)`;
+      if (e === 'students' && list.length === 0) {
+        const org = (window.SD && window.SD.orgId) || '—';
+        const sch = (window.SD && window.SD.schoolId) || '—';
+        counts.textContent = `${list.length} item(s) — org:${org} • school:${sch}`;
+      }
+      tbody.innerHTML = '';
+      list.forEach(r => {
+        const tr = document.createElement('tr');
+        if (e === 'students'){
+          const tag = r.carTag || '';
+          tr.innerHTML = `
+            <td>${escapeHtml(r.name||'')}</td>
+            <td>${escapeHtml(r.studentId||'')}</td>
+            <td>${escapeHtml(resolveClassName(r.classId)||r.classId||'')}</td>
+            <td>${escapeHtml(tag||'')}</td>
+            <td class="actions">
+              <button class="btn btn-sm" data-edit="${r._docId}">Edit</button>
+              <button class="btn btn-sm btn-outline" data-del="${r._docId}">Delete</button>
+            </td>
+          `;
+        } else if (e === 'classes'){
+          tr.innerHTML = `
+            <td>${escapeHtml(r.id)}</td>
+            <td>${escapeHtml(r.name||r.title||'')}</td>
+            <td class="actions">
+              <button class="btn btn-sm" data-edit="${r.id}">Edit</button>
+              <button class="btn btn-sm btn-outline" data-del="${r.id}">Delete</button>
+            </td>
+          `;
+        } else {
+          tr.innerHTML = `
+            <td>${escapeHtml(r.id)}</td>
+            <td>${escapeHtml(r.name||'')}</td>
+            <td>${escapeHtml((r.tags||[]).join(' '))}</td>
+            <td class="actions">
+              <button class="btn btn-sm" data-edit="${r.id}">Edit</button>
+              <button class="btn btn-sm btn-outline" data-del="${r.id}">Delete</button>
+            </td>
+          `;
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+
+    function renderForm(){
+      const e = entitySel.value;
+      if (e === 'students'){
+        const classOpts = classes.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name||c.id)}</option>`).join('');
+        if (editingId){
+          // Single-row edit mode: use a single Name field (we primarily store 'name')
+          formFields.innerHTML = `
+            <div class="field"><label for="nameFull">Name</label><input id="nameFull" autocomplete="name" required /></div>
+            <div class="field"><label for="studentId">Student ID (optional)</label><input id="studentId" inputmode="text" /></div>
+            <div class="field"><label for="classId">Class</label><select id="classId">${classOpts}</select></div>
+            <div class="field"><label for="carTag">Car Tag</label><input id="carTag" placeholder="e.g., A12" /></div>
+          `;
+          document.getElementById('nameFull')?.focus();
+          titleEl.textContent = 'Edit Student';
+          // Keep the primary button labeled "Add" per request; do not change to Save/Update
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Cancel';
+          document.getElementById('hint').textContent = 'Edit details, then submit.';
+        } else {
+          // Multi-add mode: Name + (optional) ID, Class, Tag rows
+          formFields.innerHTML = `
+            <div class="rows-toolbar">
+              <button id="addRowBtn" type="button" class="btn btn-outline btn-sm" aria-label="Add another row">＋ Add row</button>
+              <span class="small">Add multiple students at once. Name and Class are required per row.</span>
+            </div>
+            <div id="studentRows" class="student-rows" aria-live="polite"></div>
+          `;
+          // Seed with one empty row
+          try { addStudentRow(); } catch {}
+          titleEl.textContent = 'Add';
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Clear';
+          document.getElementById('hint').textContent = 'Adds one or more students with status set to waiting.';
+          // Wire row add/remove
+          const addRowBtn = document.getElementById('addRowBtn');
+          addRowBtn?.addEventListener('click', () => addStudentRow());
+        }
+      } else if (e === 'classes'){
+        formFields.innerHTML = `
+          <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /></div>
+          <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /></div>
+        `;
+        const keyEl = document.getElementById('classKey');
+        keyEl?.focus();
+        if (editingId) {
+          // In edit mode, keep ID fixed to avoid moving docs unexpectedly
+          try { keyEl.setAttribute('disabled','disabled'); } catch {}
+          titleEl.textContent = 'Edit Class';
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Cancel';
+          document.getElementById('hint').textContent = 'Update the class name and submit.';
+        } else {
+          titleEl.textContent = 'Add';
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Clear';
+          document.getElementById('hint').textContent = 'Creates or updates a class with the given ID and name.';
+        }
+      } else {
+        formFields.innerHTML = `
+          <div class="field"><label for="famId">Family ID</label><input id="famId" placeholder="e.g., smith" /></div>
+          <div class="field"><label for="famName">Name</label><input id="famName" placeholder="e.g., Smith Family" /></div>
+          <div class="field"><label for="famTags">Tags</label><input id="famTags" placeholder="e.g., K4 A2 T3" aria-describedby="tagsHelp" /></div>
+          <div id="tagsHelp" class="small">Separate tags by space or comma. Tags will be uppercased.</div>
+        `;
+        const idEl = document.getElementById('famId');
+        idEl?.focus();
+        if (editingId) {
+          try { idEl.setAttribute('disabled','disabled'); } catch {}
+          titleEl.textContent = 'Edit Family';
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Cancel';
+          document.getElementById('hint').textContent = 'Update the family and submit.';
+        } else {
+          titleEl.textContent = 'Add';
+          addBtn.textContent = 'Add';
+          clearBtn.textContent = 'Clear';
+          document.getElementById('hint').textContent = 'Creates or updates a car family with one or more tags.';
+        }
+      }
+    }
+
+    // Build class option HTML, with optional selected value
+    function getClassOptionsHtml(selectedId=''){
+      return classes.map(c => {
+        const val = String(c.id);
+        const sel = (val === String(selectedId)) ? ' selected' : '';
+        return `<option value="${escapeHtml(val)}"${sel}>${escapeHtml(c.name||c.id)}</option>`;
+      }).join('');
+    }
+
+    let rowSeq = 0;
+    function addStudentRow(pref={}){
+      const rowsHost = document.getElementById('studentRows');
+      if (!rowsHost) return;
+      rowSeq++;
+      const idx = rowSeq;
+      const row = document.createElement('div');
+      row.className = 'student-row';
+      row.setAttribute('data-idx', String(idx));
+      row.innerHTML = `
+        <div class="field"><label for="name_${idx}">Name</label><input id="name_${idx}" name="name" autocomplete="name" value="${escapeHtml(pref.name||'')}" /></div>
+        <div class="field"><label for="studentId_${idx}">Student ID</label><input id="studentId_${idx}" name="studentId" inputmode="text" value="${escapeHtml(pref.id||'')}" /></div>
+        <div class="field"><label for="classId_${idx}">Class</label><select id="classId_${idx}" name="classId">${getClassOptionsHtml(pref.classId||'')}</select></div>
+        <div class="field"><label for="carTag_${idx}">Car Tag</label><input id="carTag_${idx}" name="carTag" placeholder="e.g., A12" value="${escapeHtml((pref.carTag||'').toString().toUpperCase())}" /></div>
+        <div class="row-actions">
+          <button type="button" class="btn btn-ghost btn-sm remove-row" aria-label="Remove row">Remove</button>
+        </div>
+      `;
+      rowsHost.appendChild(row);
+      // Focus first field of the new row
+      try { row.querySelector('input[name="name"]').focus(); } catch {}
+      // Delegate remove
+      row.querySelector('.remove-row')?.addEventListener('click', () => {
+        rowsHost.removeChild(row);
+      });
+    }
+
+    function resolveClassName(classId){
+      if (!classId) return '';
+      const c = classes.find(x => x.id === classId);
+      return c ? (c.name || c.title || c.id) : '';
+    }
+
+    async function subscribe(){
+      await waitTenant().catch(()=>{});
+      try { unsub(); } catch {}
+      rows = [];
+      renderHead();
+      renderBody();
+      const e = entitySel.value;
+      if (e === 'students'){
+        const qy = query(colPath('students'), orderBy('name','asc'));
+        unsub = onSnapshot(qy, (snap) => {
+          rows = snap.docs.map(d => {
+            const data = d.data() || {};
+            return {
+              _docId: d.id,
+              name: data.name || '',
+              studentId: data.id || '',
+              classId: data.classId || '',
+              carTag: (data.carTag || data.tag || '').toString().toUpperCase()
+            };
+          });
+          renderBody();
+        }, (err) => { console.error('[students] listener error:', err); });
+      } else if (e === 'classes'){
+        const qy = query(colPath('classes'), orderBy('name','asc'));
+        unsub = onSnapshot(qy, (snap) => { rows = snap.docs.map(d=>({ id:d.id, ...d.data() })); renderBody(); });
+      } else {
+        unsub = onCarGroups((list) => { rows = list; renderBody(); });
+      }
+    }
+
+    async function refreshClasses(){
+      await waitTenant().catch(()=>{});
+      try { classes = await getClasses(); } catch { classes = []; }
+      renderClassFilter();
+    }
+
+  entitySel.addEventListener('change', async () => { editingId = null; await refreshClasses(); renderForm(); toggleClassFilterVisibility(); renderBody(); subscribe(); });
+    searchIn.addEventListener('input', () => { filter = searchIn.value || ''; renderBody(); });
+    function exitEditMode(){
+      editingId = null;
+      form.reset();
+      renderForm();
+      setToast('');
+    }
+    clearBtn.addEventListener('click', () => { if (editingId) exitEditMode(); else { form.reset(); setToast(''); } });
+
+    // ----- Class filter helpers -----
+    function renderClassFilter(){
+      // Persist selection across sessions
+      try {
+        const saved = localStorage.getItem('RM_CLASS_FILTER');
+        if (saved !== null && saved !== undefined && classFilter === '') classFilter = saved;
+      } catch {}
+      // Build options
+      const opts = [
+        { value: '', label: 'All classes' },
+        ...classes
+          .slice()
+          .sort((a,b) => (a.name||a.id||'').localeCompare(b.name||b.id||''))
+          .map(c => ({ value: String(c.id), label: String(c.name || c.id) }))
+      ];
+      classSel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
+      classSel.value = classFilter || '';
+      toggleClassFilterVisibility();
+    }
+
+    function toggleClassFilterVisibility(){
+      classSel.style.display = (entitySel.value === 'students') ? '' : 'none';
+    }
+
+    classSel.addEventListener('change', () => {
+      classFilter = classSel.value || '';
+      try { localStorage.setItem('RM_CLASS_FILTER', classFilter); } catch {}
+      renderBody();
+    });
+
+    tbody.addEventListener('click', async (e) => {
+      const del = e.target.closest('button[data-del]');
+      const edt = e.target.closest('button[data-edit]');
+      const ent = entitySel.value;
+      if (del){
+        const id = del.getAttribute('data-del');
+        if (!id) return;
+        if (!confirm(`Delete ${ent.slice(0,-1)} “${id}”?`)) return;
+        try{
+          if (ent === 'students') await deleteDoc(docPath('students', id));
+          else if (ent === 'classes') await deleteDoc(docPath('classes', id));
+          else await deleteDoc(docPath('carGroups', id));
+          setToast('Deleted.');
+        } catch (err){ console.error(err); setToast('Delete failed: ' + (err?.message||'Unknown'), true); }
+        return;
+      }
+  if (edt){
+        const id = edt.getAttribute('data-edit');
+        if (!id) return;
+        try{
+          if (ent === 'students'){
+            const snap = await getDoc(docPath('students', id));
+            if (!snap.exists()) { setToast('Student not found', true); return; }
+            editingId = id;
+            renderForm();
+            const d = snap.data() || {};
+    document.getElementById('nameFull').value = d.name || [d.lastName, d.firstName].filter(Boolean).join(', ');
+    document.getElementById('studentId').value = d.id || '';
+            document.getElementById('classId').value   = d.classId || '';
+            document.getElementById('carTag').value    = (d.carTag || d.tag || '').toString().toUpperCase();
+          } else if (ent === 'classes'){
+            const snap = await getDoc(docPath('classes', id));
+            if (!snap.exists()) { setToast('Class not found', true); return; }
+            editingId = id;
+            renderForm();
+            const d = snap.data() || {};
+            document.getElementById('classKey').value  = id;
+            document.getElementById('className').value = d.name || d.title || '';
+          } else { // families
+            const snap = await getDoc(docPath('carGroups', id));
+            if (!snap.exists()) { setToast('Family not found', true); return; }
+            editingId = id;
+            renderForm();
+            const d = snap.data() || {};
+            document.getElementById('famId').value   = id;
+            document.getElementById('famName').value = d.name || '';
+            document.getElementById('famTags').value = (d.tags||[]).join(' ');
+          }
+          try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+          setToast('Editing…');
+        } catch (err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+      }
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const ent = entitySel.value;
+      try {
+        if (ent === 'students'){
+          const rowsHost = document.getElementById('studentRows');
+          if (editingId || !rowsHost){
+            // Single-row path (edit mode or legacy single form)
+            const name = (document.getElementById('nameFull')?.value||'').trim();
+            const id   = (document.getElementById('studentId')?.value||'').trim();
+            const classId = (document.getElementById('classId')?.value||'').trim();
+            const carTag  = (document.getElementById('carTag')?.value||'').trim().toUpperCase();
+            if (!name) return setToast('Name is required.', true);
+            if (!classId) return setToast('Class is required.', true);
+            if (editingId){
+              const payload = { name, id, classId, carTag, updatedAt: serverTimestamp() };
+              await setDoc(docPath('students', editingId), payload, { merge: true });
+              setToast('Student updated.');
+              exitEditMode();
+            } else {
+              const payload = { name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+              await addDoc(colPath('students'), payload);
+              setToast('Student added.');
+              form.reset();
+              renderForm();
+            }
+          } else {
+            // Batch add path (multi-rows)
+            const rows = Array.from(rowsHost.querySelectorAll('.student-row'));
+            const toCreate = [];
+            for (const row of rows){
+              const name      = (row.querySelector('input[name="name"]')?.value||'').trim();
+              const id        = (row.querySelector('input[name="studentId"]')?.value||'').trim();
+              const classId   = (row.querySelector('select[name="classId"]')?.value||'').trim();
+              const carTag    = (row.querySelector('input[name="carTag"]')?.value||'').trim().toUpperCase();
+              // Skip completely empty rows
+              const hasAny = name || id || classId || carTag;
+              if (!hasAny) continue;
+              if (!name) return setToast('Name is required for each filled row.', true);
+              if (!classId) return setToast('Class is required for each filled row.', true);
+              toCreate.push({ name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+            }
+            if (toCreate.length === 0){ setToast('Nothing to add. Fill at least one row.', true); return; }
+            await Promise.all(toCreate.map(p => addDoc(colPath('students'), p)));
+            setToast(`Added ${toCreate.length} student(s).`);
+            form.reset();
+            renderForm();
+          }
+        } else if (ent === 'classes'){
+          const keyEl = document.getElementById('classKey');
+          const nameEl = document.getElementById('className');
+          const key  = (keyEl?.value||'').trim();
+          const name = (nameEl?.value||'').trim();
+          if (!key) return setToast('Class ID is required.', true);
+          const payload = { id: key, name: name || key, title: name || key, updatedAt: serverTimestamp() };
+          if (editingId){
+            await setDoc(docPath('classes', editingId), payload, { merge: true });
+            setToast('Class updated.');
+            // Re-enable ID for future adds and exit edit
+            try { keyEl?.removeAttribute('disabled'); } catch {}
+            exitEditMode();
+          } else {
+            payload.createdAt = serverTimestamp();
+            await setDoc(docPath('classes', key), payload, { merge: true });
+            setToast('Class saved.');
+            form.reset();
+          }
+        } else {
+          const idEl = document.getElementById('famId');
+          const nmEl = document.getElementById('famName');
+          const tgEl = document.getElementById('famTags');
+          const id   = (idEl?.value||'').trim();
+          const name = (nmEl?.value||'').trim();
+          const tags = (tgEl?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+          if (!id) return setToast('Family ID is required.', true);
+          const payload = { id, name: name || id, tags, updatedAt: serverTimestamp() };
+          if (editingId){
+            await setDoc(docPath('carGroups', editingId), payload, { merge: true });
+            setToast('Family updated.');
+            try { idEl?.removeAttribute('disabled'); } catch {}
+            exitEditMode();
+          } else {
+            payload.createdAt = serverTimestamp();
+            await setDoc(docPath('carGroups', id), payload, { merge: true });
+            setToast('Family saved.');
+            form.reset();
+          }
+        }
+      } catch (err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
+    });
+
+    // Auth guard: require sign-in
+    onAuthChanged((user) => {
+      if (!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } }
+    });
+
+    // Boot
+  await refreshClasses();
+  renderForm();
+  subscribe();
+  </script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contact — Time To Dismiss</title>
+  <link rel="stylesheet" href="/styles.css?v=2025-09-02-1" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js" defer></script>
+  <style>
+    .form-card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; }
+    .field{ display:flex; flex-direction:column; gap:6px; margin:10px 0; }
+    .field label{ font-weight:600; }
+    .field input, .field textarea, .field select{
+      background:#fff; border:1px solid #d1d5db; color:#0b132b;
+      border-radius:12px; padding:.65rem .75rem;
+    }
+    .help{ color:var(--muted); font-size:.9rem; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container" style="max-width:900px;padding:22px 16px;">
+    <h1 class="page-title" style="margin:0 0 .25rem 0;font-size:1.5rem;">Contact</h1>
+    <p class="small" style="color:var(--muted);">Tell us a bit about your school and we’ll reach out.</p>
+
+    <form id="contactForm" class="form-card">
+      <div class="field">
+        <label for="name">Name</label>
+        <input id="name" name="name" required autocomplete="name" />
+      </div>
+
+      <div class="field">
+        <label for="org">Organization (School)</label>
+        <input id="org" name="organization" required autocomplete="organization" />
+      </div>
+
+      <div class="field">
+        <label for="staff">Amount of Staff</label>
+        <input id="staff" name="staffCount" type="number" min="1" inputmode="numeric" />
+      </div>
+
+      <div class="field">
+        <label for="students">Amount of Students</label>
+        <input id="students" name="studentCount" type="number" min="1" inputmode="numeric" />
+      </div>
+
+      <div class="field">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required autocomplete="email" />
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone (optional)</label>
+        <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" />
+      </div>
+
+      <div class="field">
+        <label for="message">Anything else that would be useful?</label>
+        <textarea id="message" name="message" rows="5" placeholder="Timeline, current process, challenges, etc."></textarea>
+        <div class="help">You can also email us directly at <a href="mailto:andrewpcarlson85@gmail.com">andrewpcarlson85@gmail.com</a>.</div>
+      </div>
+
+      <button class="btn btn-primary" type="submit">Send</button>
+    </form>
+  </main>
+
+  <script>
+    document.getElementById('contactForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const f = new FormData(e.currentTarget);
+      const lines = [
+        'New inquiry from Time To Dismiss:',
+        '',
+        'Name: ' + (f.get('name') || ''),
+        'Organization: ' + (f.get('organization') || ''),
+        'Staff: ' + (f.get('staffCount') || ''),
+        'Students: ' + (f.get('studentCount') || ''),
+        'Email: ' + (f.get('email') || ''),
+        'Phone: ' + (f.get('phone') || ''),
+        '',
+        'Message:',
+        (f.get('message') || '')
+      ];
+      const recipient = 'andrewpcarlson85@gmail.com'; // TODO: set your real inbox
+      const subject = 'Time To Dismiss — Inquiry';
+      const body = encodeURIComponent(lines.join('\\n'));
+      const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${body}`;
+      window.location.href = url;
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Time To Dismiss — Role Data Tools</title>
+	<link rel="stylesheet" href="/styles.css?v=2025-09-06-MC5" />
+	<script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+	<style>
+		.main{ padding:18px 0 28px; }
+		.card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+		.muted{ color:var(--muted); }
+		.small{ font-size:.95rem; }
+		.row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+		input{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
+	</style>
+	<script>
+		function readyFirebase(){ return window.firebase && firebase.apps && firebase.apps.length; }
+		function callable(name){ return (window.SD?.httpsCallable) ? window.SD.httpsCallable(name) : firebase.app().functions('us-central1').httpsCallable(name); }
+		function setMsg(m,err){ const el = document.getElementById('msg'); el.textContent = m||''; el.style.color = err?'#b91c1c':'var(--muted)'; }
+
+			async function migrate(){
+			if(!readyFirebase()) return;
+			const orgId = window.SD?.orgId || prompt('Org ID?');
+			const schoolId = window.SD?.schoolId || prompt('School ID?');
+			if(!orgId || !schoolId) return;
+			setMsg('Scanning…');
+			const db = firebase.firestore();
+			const schoolRef = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId);
+			const [usersSnap, membersSnap, schoolSnap] = await Promise.all([
+				schoolRef.collection('users').get(),
+				schoolRef.collection('members').get(),
+				schoolRef.get()
+			]);
+			const batch = db.batch();
+			const existingMembers = new Set(membersSnap.docs.map(d=>d.id));
+			usersSnap.forEach(d => {
+				if(existingMembers.has(d.id)) return; // skip if already migrated
+				const x = d.data()||{};
+				const mRef = schoolRef.collection('members').doc(d.id);
+				batch.set(mRef, {
+					uid: x.uid || d.id,
+					email: (x.emailLower || x.email || '').toLowerCase(),
+					displayName: x.displayName || x.name || '',
+					roles: x.roles || { admin: !!x.admin, viewer: !!x.viewer, caller: !!x.caller },
+					status: x.status || 'active',
+					migratedAt: firebase.firestore.FieldValue.serverTimestamp()
+				}, { merge: true });
+			});
+			// ensure adminUids is an array (keep fast-check field)
+			const school = schoolSnap.data()||{};
+			const adminUids = Array.isArray(school.adminUids) ? school.adminUids : [];
+			batch.set(schoolRef, { adminUids }, { merge: true });
+			await batch.commit();
+			setMsg('Migration complete. You can delete the users/ subcollection and the admins map after verifying.', false);
+		}
+
+			async function syncAdminUids(){
+				if(!readyFirebase()) return;
+				const orgId = window.SD?.orgId || prompt('Org ID?');
+				const schoolId = window.SD?.schoolId || prompt('School ID?');
+				if(!orgId || !schoolId) return;
+				setMsg('Syncing adminUids from members…');
+				const db = firebase.firestore();
+				const schoolRef = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId);
+				const memSnap = await schoolRef.collection('members').get();
+				const adminIds = [];
+				memSnap.forEach(d=>{
+					const x = d.data()||{};
+					const roles = Array.isArray(x.roles) ? x.roles : (x.roles && typeof x.roles==='object' ? Object.keys(x.roles).filter(k=>x.roles[k]) : ['admin','viewer','caller'].filter(r=>x[r]===true));
+					if(roles.includes('admin')) adminIds.push(x.uid || d.id);
+				});
+				await schoolRef.set({ adminUids: adminIds }, { merge: true });
+				setMsg(`Synced adminUids (${adminIds.length}) from members.`, false);
+			}
+
+			async function deleteLegacy(){
+				if(!readyFirebase()) return;
+				const orgId = window.SD?.orgId || prompt('Org ID?');
+				const schoolId = window.SD?.schoolId || prompt('School ID?');
+				if(!orgId || !schoolId) return;
+				if(!confirm('This will delete users/ docs and the admins map on the school doc. Proceed?')) return;
+				setMsg('Deleting legacy artifacts…');
+				const db = firebase.firestore();
+				const schoolRef = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId);
+				const usersSnap = await schoolRef.collection('users').get();
+				const batch = db.batch();
+				usersSnap.forEach(d=> batch.delete(d.ref));
+				batch.set(schoolRef, { admins: firebase.firestore.FieldValue.delete() }, { merge: true });
+				await batch.commit();
+				setMsg('Deleted legacy users/ and removed admins map. Keep adminUids for rule checks.', false);
+			}
+
+		document.addEventListener('DOMContentLoaded', () => {
+			  document.getElementById('migrateBtn').addEventListener('click', migrate);
+			  document.getElementById('syncBtn').addEventListener('click', syncAdminUids);
+			  document.getElementById('deleteBtn').addEventListener('click', deleteLegacy);
+		});
+	</script>
+	</head>
+	<body class="sd-body">
+		<main class="container main">
+			<h1 class="page-title">Role Data Tools</h1>
+			<p class="small muted">Migrate legacy users → members and keep adminUids for fast checks.</p>
+			<div class="card">
+				<div class="row">
+					<button id="migrateBtn" class="btn btn-primary">Migrate users ➜ members</button>
+				  <button id="syncBtn" class="btn btn-secondary">Sync adminUids from members</button>
+				  <button id="deleteBtn" class="btn btn-outline">Delete legacy users/ + admins map</button>
+					<span id="msg" class="small muted"></span>
+				</div>
+			</div>
+		</main>
+	</body>
+	</html>
