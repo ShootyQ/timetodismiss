@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "dismissalcaller",
     "public": ".",
     "ignore": [
       "firebase.json",
