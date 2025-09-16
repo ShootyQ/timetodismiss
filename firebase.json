@@ -1,0 +1,19 @@
+{
+  "hosting": {
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "/.*",
+      "/node_modules/"
+    ],
+    "cleanUrls": true,
+    "headers": [
+      {
+        "source": "/*.html",
+        "headers": [
+          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+        ]
+      }
+    ]
+  }
+}
