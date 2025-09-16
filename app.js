@@ -1,5 +1,5 @@
 // Firebase-powered realtime helpers shared by all pages.
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
 import {
   getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc,
   serverTimestamp, onSnapshot, query, where, orderBy, writeBatch
@@ -24,7 +24,13 @@ export async function init() {
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-279958XEND"
   };
-  app  = initializeApp(firebaseConfig);
+  // Reuse existing app if compat (site-header.js) already initialized it
+  try {
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  } catch (e) {
+    // Fallback: try to grab default app if initialization raced
+    try { app = getApp(); } catch { app = initializeApp(firebaseConfig); }
+  }
   db   = getFirestore(app);
   auth = getAuth(app);
 }

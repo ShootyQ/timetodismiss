@@ -84,7 +84,8 @@
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
-      link.href = '/images/favicon.png'; // align with index.html
+      // Use the favicon at the project root
+      link.href = '/favicon.png';
       document.head.appendChild(link);
     }
   }
@@ -177,7 +178,15 @@
     if (firebase.apps && firebase.apps.length === 0) {
       firebase.initializeApp(firebaseConfig);
     }
-    return firebase.auth();
+    // Ensure durable session persistence (fall back gracefully if blocked)
+    const auth = firebase.auth();
+    try {
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (e1) {
+      try { await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }
+      catch (e2) { try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch {} }
+    }
+    return auth;
   }
 
   // Prefer token claims to resolve tenant; fallback to domain mapping only if missing
@@ -366,9 +375,11 @@
       return;
     }
 
-    auth.getRedirectResult().catch(e => {
-      console.warn('[Auth] Redirect sign-in error:', e.code, e.message);
-    });
+    // Track redirect processing so we don't prematurely redirect to login
+    let _redirectResultPending = true;
+    auth.getRedirectResult()
+      .catch(e => { try { console.warn('[Auth] Redirect sign-in error:', e.code, e.message); } catch {} })
+      .finally(() => { _redirectResultPending = false; });
 
   // Auth providers
   const googleProvider = new firebase.auth.GoogleAuthProvider();
@@ -678,7 +689,9 @@
 
     // NEW: defer redirects to avoid bouncing during auth hydration
     let _pendingLoginTimer = null;
-    function scheduleLoginRedirect(ms = 1800){
+    function scheduleLoginRedirect(ms = 5000){
+      // If we're still processing a redirect result, extend the grace period
+      try { if (typeof _redirectResultPending !== 'undefined' && _redirectResultPending) ms = Math.max(ms, 9000); } catch {}
       try { clearTimeout(_pendingLoginTimer); } catch {}
       _pendingLoginTimer = setTimeout(() => {
         try {

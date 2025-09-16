@@ -1,0 +1,135 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ───────────── Helpers ─────────────
+    function isAuthed() { return request.auth != null; }
+
+    function hasRole(r) {
+      return request.auth.token.role == r ||
+             (request.auth.token.roles != null && request.auth.token.roles.hasAny([r])) ||
+             (r == 'owner'          && request.auth.token.owner == true) ||
+             (r == 'superintendent' && request.auth.token.superintendent == true) ||
+             (r == 'admin'          && request.auth.token.admin == true) ||
+             (r == 'caller'         && request.auth.token.caller == true) ||
+             (r == 'viewer'         && request.auth.token.viewer == true);
+    }
+
+    function isOwner()  { return isAuthed() && hasRole('owner'); }
+    function isSup()    { return isAuthed() && hasRole('superintendent'); }
+    function isAdmin()  { return isAuthed() && hasRole('admin'); }
+    function isCaller() { return isAuthed() && hasRole('caller'); }
+    function isViewer() { return isAuthed() && hasRole('viewer'); }
+
+    function isAtLeastViewer() { return isOwner() || isSup() || isAdmin() || isCaller() || isViewer(); }
+    function isAtLeastCaller() { return isOwner() || isSup() || isAdmin() || isCaller(); }
+    function isAtLeastAdmin()  { return isOwner() || isSup() || isAdmin(); }
+
+    function inOrg(orgId) {
+      return isOwner() ||
+             (request.auth.token.orgId == orgId) ||
+             (request.auth.token.orgIds != null && request.auth.token.orgIds.hasAny([orgId]));
+    }
+
+    function inSchool(orgId, schoolId) {
+      return inOrg(orgId) && (
+        isAtLeastAdmin() ||
+        request.auth.token.schoolId == schoolId ||
+        (request.auth.token.schoolIds != null && request.auth.token.schoolIds.hasAny([schoolId]))
+      );
+    }
+
+    // Viewer-limited flip: called → en_route with server time only
+    function canViewerFlipToEnRoute() {
+      return resource.data.status == 'called' &&
+             request.resource.data.status == 'en_route' &&
+             request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']) &&
+             request.resource.data.updatedAt == request.time;
+    }
+
+    // ───────────── Orgs & Schools ─────────────
+    match /orgs/{orgId} {
+      // Owner can always see; others must be scoped to the org
+      allow get:  if isAuthed() && (isOwner() || (inOrg(orgId) && isAtLeastViewer()));
+      allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)));
+      allow create, update, delete: if false;
+
+      // Org-level members (no recursive get()-checks)
+      match /members/{uid} {
+        allow get:  if isAuthed() && (request.auth.uid == uid || isOwner() || (isSup() && inOrg(orgId)));
+        allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)));
+        allow create, update, delete: if false;
+      }
+
+      match /schools/{schoolId} {
+        allow get:  if isAuthed() && inSchool(orgId, schoolId);
+        allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)));
+        allow create, update, delete: if false;
+
+        match /members/{memberId} {
+          allow get:  if isAuthed() && (
+                        request.auth.uid == memberId ||
+                        isOwner() ||
+                        (isSup() && inOrg(orgId)) ||
+                        (isAdmin() && inSchool(orgId, schoolId))
+                      );
+          allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)) || (isAdmin() && inSchool(orgId, schoolId)));
+          // CHANGED: allow writes by admins/sup/owners scoped to school (to support admin UI)
+          allow create, update, delete: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+        }
+
+        // CLASSES
+        match /classes/{classId} {
+          allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+          allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
+        }
+
+        // STUDENTS
+        match /students/{studentId} {
+          allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute());
+          allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
+        }
+
+        // SETTINGS
+        match /settings/{docId} {
+          allow get: if isAuthed() && inSchool(orgId, schoolId);
+          allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastAdmin();
+        }
+
+        // Catch-all subcollections
+        match /{sub}/{doc} {
+          allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+          allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
+        }
+      }
+    }
+
+    // Users / Invites
+    match /users/{userId} {
+      allow get: if isOwner() || (isAuthed() && request.auth.uid == userId);
+      allow list, create, update, delete: if false;
+    }
+    match /invites/{inviteId} {
+      allow get: if isOwner() || (isAuthed() && request.auth.token.email == resource.data.email);
+      allow list, create, update, delete: if false;
+    }
+
+    // Domain mapping (used by header fallback)
+    match /domains/{domain} {
+      allow get: if isAuthed();
+      allow list, create, update, delete: if false;
+    }
+
+    // Legacy top-level schools (read-only during migration)
+    match /schools/{schoolId} {
+      allow get, list: if isAuthed();
+      allow create, update, delete: if false;
+    }
+    match /schoolDomains/{domain} {
+      allow get: if isAtLeastAdmin();
+      allow list, create, update, delete: if false;
+    }
+  }
+}
