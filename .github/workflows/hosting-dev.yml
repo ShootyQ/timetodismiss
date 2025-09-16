@@ -3,6 +3,11 @@ name: Deploy dev preview to Firebase Hosting
 on:
   push:
     branches: [ "dev" ]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Why are you deploying? (optional)"
+        required: false
 
 jobs:
   deploy:
