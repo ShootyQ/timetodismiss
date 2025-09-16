@@ -689,7 +689,7 @@
 
     // NEW: defer redirects to avoid bouncing during auth hydration
     let _pendingLoginTimer = null;
-    function scheduleLoginRedirect(ms = 5000){
+    function scheduleLoginRedirect(ms = 12000){
       // If we're still processing a redirect result, extend the grace period
       try { if (typeof _redirectResultPending !== 'undefined' && _redirectResultPending) ms = Math.max(ms, 9000); } catch {}
       try { clearTimeout(_pendingLoginTimer); } catch {}
@@ -883,7 +883,7 @@
     // Helper: wait until token contains any role-ish claim (or timeout)
     // Adaptive poll: faster early (every 200ms first 1.5s) then 350ms; trims max wait to ~6.5s.
     // Still treats any roles array (claims.roles = ['admin']) as success.
-    async function waitForEffectiveClaims(user, timeoutMs = 6500){
+    async function waitForEffectiveClaims(user, timeoutMs = 15000){
       const start = Date.now();
       const hasRoles = (c) => !!(c.owner || c.superintendent || c.admin || c.caller || c.viewer || (Array.isArray(c.roles) && c.roles.length));
       while (Date.now() - start < timeoutMs){

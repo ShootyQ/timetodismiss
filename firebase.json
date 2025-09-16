@@ -1,4 +1,26 @@
 {
+  "hosting": {
+    "site": "dismissalcaller",
+    "public": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**",
+      "functions/**",
+      ".git/**"
+    ],
+    "cleanUrls": true,
+    "headers": [
+      {
+        "source": "**/*.html",
+        "headers": [
+          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+        ]
+      }
+    ]
+  }
+}
+{
   "functions": {
     "source": "functions",
     "runtime": "nodejs18"

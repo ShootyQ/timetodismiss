@@ -24,6 +24,7 @@ export async function init() {
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-279958XEND"
   };
+
   // Reuse existing app if compat (site-header.js) already initialized it
   try {
     app = getApps().length ? getApp() : initializeApp(firebaseConfig);
