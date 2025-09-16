@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeToDisMiss - School Dismissal Platform</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>TimeToDisMiss</h1>
+            <p class="subtitle">School Dismissal Management Platform</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="dashboard">
+            <div class="card">
+                <h2>Student Dismissal</h2>
+                <form id="dismissalForm">
+                    <div class="form-group">
+                        <label for="studentName">Student Name:</label>
+                        <input type="text" id="studentName" name="studentName" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="studentId">Student ID:</label>
+                        <input type="text" id="studentId" name="studentId" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="grade">Grade:</label>
+                        <select id="grade" name="grade" required>
+                            <option value="">Select Grade</option>
+                            <option value="K">Kindergarten</option>
+                            <option value="1">1st Grade</option>
+                            <option value="2">2nd Grade</option>
+                            <option value="3">3rd Grade</option>
+                            <option value="4">4th Grade</option>
+                            <option value="5">5th Grade</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dismissalType">Dismissal Type:</label>
+                        <select id="dismissalType" name="dismissalType" required>
+                            <option value="">Select Type</option>
+                            <option value="parent">Parent Pickup</option>
+                            <option value="bus">Bus</option>
+                            <option value="aftercare">After Care</option>
+                            <option value="walker">Walker</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="parentName">Parent/Guardian Name:</label>
+                        <input type="text" id="parentName" name="parentName">
+                    </div>
+                    
+                    <button type="submit">Record Dismissal</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <h2>Today's Dismissals</h2>
+                <div id="dismissalList">
+                    <p class="no-dismissals">No dismissals recorded yet today.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Quick Stats</h2>
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="stat-number" id="totalDismissals">0</span>
+                        <span class="stat-label">Total Today</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="pendingDismissals">0</span>
+                        <span class="stat-label">Pending</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 TimeToDisMiss - School Dismissal Platform</p>
+        </div>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
