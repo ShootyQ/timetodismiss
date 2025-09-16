@@ -5,6 +5,14 @@ on:
     branches: [ "dev" ]
   workflow_dispatch:
     inputs:
+      channelId:
+        description: "Preview channel name (e.g., dev, test, pr-123, or live)"
+        default: "dev"
+        required: false
+      expires:
+        description: "How long the preview should live (e.g., 7d, 12h). Ignored for live."
+        default: "7d"
+        required: false
       reason:
         description: "Why are you deploying? (optional)"
         required: false
@@ -17,10 +25,15 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: FirebaseExtended/action-hosting-deploy@v0
+      - id: deploy
+        uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
           firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}'
           projectId: dismissalcaller
-          channelId: dev
-          expires: 7d
+          channelId: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.channelId || 'dev' }}
+          expires: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.expires || '7d' }}
+      - name: Print preview URLs
+        run: |
+          echo "Channel URL: ${{ steps.deploy.outputs.channel_url }}"
+          echo "Details URL: ${{ steps.deploy.outputs.details_url }}"
