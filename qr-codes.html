@@ -40,19 +40,21 @@
     .csv-area{ width:100%; font-family:ui-monospace, monospace; }
     .helpers-actions{ margin-top:.5rem; display:flex; gap:8px; }
 
-    /* Print area (dedicated, avoids grid print bugs) */
-    #printArea.hidden{ display:none !important; }
-    #printArea{ background:#fff; }
-    #printArea .pa{ display:grid; }
-    #printArea .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; }
-    #printArea .pa-qr{ display:grid; place-items:center; }
-    #printArea .pa-label{ font-weight:800; }
-    #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
+  /* Print area (dedicated, avoids grid print bugs) */
+  #printArea.hidden{ display:none !important; }
+  #printArea{ background:#fff; }
+  #printArea .pa-pages{ display:block; }
+  #printArea .pa-page{ display:grid; break-after: page; page-break-after: always; }
+  #printArea .pa-page:last-child{ break-after: auto; page-break-after: auto; }
+  #printArea .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; break-inside: avoid; page-break-inside: avoid; }
+  #printArea .pa-qr{ display:grid; place-items:center; }
+  #printArea .pa-label{ font-weight:800; }
+  #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
 
     /* Presets (letter-size page expected) */
     /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; h-gap .125in; v-gap 0in; page margins top .5in left .1875in */
-    .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
-    .pa-avery5160 .pa-item{ width:2.625in; height:1in; }
+  .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
+  .pa-avery5160 .pa-item{ width:2.625in; height:1in; }
 
     /* Avery 5163: 2 cols x 5 rows, label 4in x 2in; h-gap .125in; v-gap 0in; margins similar */
     .pa-avery5163{ grid-template-columns: repeat(2, 4in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
@@ -67,7 +69,7 @@
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
     /* Print-time cleanup */
-    .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty{ display:none !important; }
+  .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
 
     @media print{
       header.site-header{ display:none !important; }
@@ -124,6 +126,9 @@
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
       <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
     </div>
+    <div id="countSummary" class="small muted" aria-live="polite" style="margin:-6px 0 10px;">
+      
+    </div>
 
     <div id="loading" class="note hidden" role="status" aria-live="polite">Loading…</div>
     <div id="errors" class="note hidden" role="alert"></div>
@@ -146,7 +151,7 @@
 
     <!-- Dedicated print area; built only when printing -->
     <div id="printArea" class="hidden">
-      <div class="pa" id="paGrid"></div>
+      <div class="pa-pages" id="paPages"></div>
     </div>
   </main>
 
@@ -199,8 +204,9 @@
     const csvLoad = document.getElementById('csvLoad');
     const csvClear = document.getElementById('csvClear');
 
-    const printArea = document.getElementById('printArea');
-    const paGrid = document.getElementById('paGrid');
+  const printArea = document.getElementById('printArea');
+  const paPages = document.getElementById('paPages');
+  const countSummary = document.getElementById('countSummary');
 
     // Data
     let tags = [];     // [{ tag, name }]
@@ -300,6 +306,7 @@
         const cb = li.querySelector('input[type="checkbox"]');
         cb.addEventListener('change', () => {
           if (cb.checked) selected.add(key); else selected.delete(key);
+          updateCounts();
         });
         if (prev.has(key)) selected.add(key);
 
@@ -308,6 +315,7 @@
           if (e.code === 'Space'){ e.preventDefault(); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         });
       }
+      updateCounts();
     }
 
     function parseCSV(text){
@@ -336,11 +344,21 @@
     // Print presets
     function presetInfo(key){
       switch(key){
-        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.82 };
-        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.6 };
-        case 'square2':   return { class: 'pa-square2',   qrIn: 1.6 };
-        case 'square3':   return { class: 'pa-square3',   qrIn: 2.3 };
-        default:          return { class: 'pa-square2',   qrIn: (parseInt(sizeSel.value,10)||200)/96 }; // fallback
+        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.82, perPage: 30 };
+        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.6,  perPage: 10 };
+        case 'square2':   return { class: 'pa-square2',   qrIn: 1.6,  perPage: 12 };
+        case 'square3':   return { class: 'pa-square3',   qrIn: 2.3,  perPage: 6 };
+        default: {
+          const px = (parseInt(sizeSel.value,10)||200);
+          const qrIn = px/96;
+          // Approximate rows by available 10in height (letter minus 1in padding) and 0.25in gaps
+          const colsN = parseInt(cols.value,10)||3;
+          const rowGap = 0.25; // in
+          const labelH = 0.4;  // approx name+label stack
+          const itemH = qrIn + labelH + rowGap;
+          const rows = Math.max(1, Math.floor((10 + rowGap) / itemH));
+          return { class: 'pa-square2', qrIn, perPage: rows * colsN };
+        }
       }
     }
 
@@ -362,36 +380,44 @@
     function buildPrintArea(items){
       const useStudents = modeStudents.checked;
       const preset = presetInfo(layoutSel.value);
-      paGrid.className = 'pa ' + preset.class;
-      paGrid.innerHTML = '';
+      paPages.className = 'pa-pages';
+      paPages.innerHTML = '';
 
       const qrPx = toPx(preset.qrIn);
-      for (const item of items){
-        const tag = useStudents ? (item.tag || '') : item.tag;
-        const name = useStudents ? nameOf(item) : (item.name || '');
-        const id = useStudents ? (item.id || item.studentId || '') : null;
-        const labelText = useStudents ? (tag || id || '') : tag;
-        const payload = buildPayload(item, useStudents);
+      const perPage = preset.perPage || items.length;
+      for (let i=0; i<items.length; i+=perPage){
+        const pageItems = items.slice(i, i+perPage);
+        const page = document.createElement('div');
+        page.className = 'pa-page ' + preset.class;
+        paPages.appendChild(page);
 
-        const div = document.createElement('div');
-        div.className = 'pa-item';
-        div.innerHTML = `
-          <div class="pa-qr"></div>
-          <div class="pa-label">${labelText}</div>
-          ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
-        `;
-        paGrid.appendChild(div);
+        for (const item of pageItems){
+          const tag = useStudents ? (item.tag || '') : item.tag;
+          const name = useStudents ? nameOf(item) : (item.name || '');
+          const id = useStudents ? (item.id || item.studentId || '') : null;
+          const labelText = useStudents ? (tag || id || '') : tag;
+          const payload = buildPayload(item, useStudents);
 
-        const host = div.querySelector('.pa-qr');
-        const holder = document.createElement('div');
-        holder.style.width = qrPx + 'px';
-        holder.style.height = qrPx + 'px';
-        host.appendChild(holder);
+          const div = document.createElement('div');
+          div.className = 'pa-item';
+          div.innerHTML = `
+            <div class="pa-qr"></div>
+            <div class="pa-label">${labelText}</div>
+            ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+          `;
+          page.appendChild(div);
 
-        const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
-        if (window.QRCode) { try { draw(); } catch {} }
-        else {
-          const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+          const host = div.querySelector('.pa-qr');
+          const holder = document.createElement('div');
+          holder.style.width = qrPx + 'px';
+          holder.style.height = qrPx + 'px';
+          host.appendChild(holder);
+
+          const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
+          if (window.QRCode) { try { draw(); } catch {} }
+          else {
+            const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+          }
         }
       }
     }
@@ -411,14 +437,14 @@
 
       if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
 
-      buildPrintArea(items);
+  buildPrintArea(items);
       document.body.classList.add('printing');
       printArea.classList.remove('hidden');
 
       const cleanup = () => {
         document.body.classList.remove('printing');
         printArea.classList.add('hidden');
-        paGrid.innerHTML = '';
+        paPages.innerHTML = '';
         window.removeEventListener('afterprint', cleanup);
       };
       window.addEventListener('afterprint', cleanup);
@@ -447,8 +473,21 @@
       if (!btn) return;
       const item = btn.closest('.qr-item');
       const canvas = item?.querySelector('.qr-box canvas');
-      if (!canvas) return;
-      const url = canvas.toDataURL('image/png');
+      let url = '';
+      if (canvas) {
+        url = canvas.toDataURL('image/png');
+      } else {
+        // Fallback: qrcodejs sometimes renders an <img>
+        const img = item?.querySelector('.qr-box img');
+        if (!img) return;
+        // Create an offscreen canvas to draw the image and export PNG
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width || 512;
+        c.height = img.naturalHeight || img.height || 512;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        url = c.toDataURL('image/png');
+      }
       const a = document.createElement('a');
       a.href = url;
       a.download = `qr-${(item.querySelector('.qr-label')?.textContent||'code').replace(/[^A-Za-z0-9_-]+/g,'_')}.png`;
@@ -482,6 +521,49 @@
     });
     csvClear.addEventListener('click', () => { csvTA.value=''; });
 
+    // Counts helper
+    function updateCounts(){
+      try{
+        const useStudents = !!modeStudents.checked;
+        const total = (useStudents ? students.length : tags.length) || 0;
+        const visible = currentFilterList().length;
+        const sel = selected.size;
+        const target = sel ? `${sel} selected` : `${visible} shown`;
+        countSummary.textContent = `${target} • ${total} total`;
+      }catch{}
+    }
+
+    // Persist settings
+    const LSKEY = 'ttd.qr.opts.v1';
+    function saveOpts(){
+      try{
+        const o = {
+          cols: cols.value,
+          size: sizeSel.value,
+          tight: !!tight.checked,
+          showNames: !!showNames.checked,
+          layout: layoutSel.value,
+          modeStudents: !!modeStudents.checked,
+          q: q.value || ''
+        };
+        localStorage.setItem(LSKEY, JSON.stringify(o));
+      }catch{}
+    }
+    function loadOpts(){
+      try{
+        const raw = localStorage.getItem(LSKEY);
+        if (!raw) return;
+        const o = JSON.parse(raw);
+        if (o.cols) cols.value = o.cols;
+        if (o.size) sizeSel.value = o.size;
+        if (typeof o.tight === 'boolean') tight.checked = o.tight;
+        if (typeof o.showNames === 'boolean') showNames.checked = o.showNames;
+        if (o.layout) layoutSel.value = o.layout;
+        if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
+        if (typeof o.q === 'string') q.value = o.q;
+      }catch{}
+    }
+
     // Bootstrap
     function whenClaimsReady(fn) {
       let fired = false;
@@ -491,6 +573,7 @@
     }
 
     async function bootstrap(){
+      loadOpts();
       loading.classList.remove('hidden');
       errors.classList.add('hidden'); errors.textContent = '';
 
@@ -498,7 +581,7 @@
 
       try {
         if (typeof onCarGroups === 'function') {
-          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); });
+          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); updateCounts(); });
         }
       } catch (e) { console.warn('onCarGroups failed', e); }
 
@@ -511,6 +594,7 @@
               tag: s.tag ? normTag(s.tag) : (s.carTag ? normTag(s.carTag) : '')
             })).sort((a,b)=> (nameOf(a)||'').localeCompare(nameOf(b)||''));
             if (modeStudents.checked) renderList();
+            updateCounts();
           });
           helpers.classList.add('hidden');
         } else {
@@ -528,7 +612,14 @@
 
     setCols(cols.value);
     setTight(tight.checked);
+    updateCounts();
     whenClaimsReady(bootstrap);
+
+    // Persist on changes
+    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q].forEach(el => {
+      el.addEventListener('change', saveOpts);
+      el.addEventListener('input', saveOpts);
+    });
   </script>
 </body>
 </html>
