@@ -502,3 +502,51 @@ async function computeClaims(uid, email) {
     await bumpUserTokens(uid, { reason });
     return { ok: true };
   });
+
+  // Delete a school and all nested data, then recompute usedSchools
+  exports.deleteSchool = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const { orgId, schoolId } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+    if (!canManageOrg(claims, orgId)) throw new HttpsError('permission-denied', 'Owner or assigned Superintendent only.');
+
+    const orgRef = db.doc(`orgs/${orgId}`);
+    const schoolRef = orgRef.collection('schools').doc(String(schoolId));
+    const schoolSnap = await schoolRef.get();
+    if (!schoolSnap.exists) {
+      // Idempotent: nothing to do; still reconcile quota
+    } else {
+      // Recursive delete via BulkWriter for speed
+      const bw = db.bulkWriter();
+      const deleteDocumentRecursively = async (docRef) => {
+        const subcols = await docRef.listCollections();
+        for (const sub of subcols) {
+          const docs = await sub.listDocuments();
+          for (const d of docs) {
+            await deleteDocumentRecursively(d);
+          }
+        }
+        bw.delete(docRef);
+      };
+      await deleteDocumentRecursively(schoolRef);
+      await bw.close();
+    }
+
+    // Recompute org.usedSchools based on live count
+    const rem = await orgRef.collection('schools').listDocuments();
+    await orgRef.set({ usedSchools: rem.length, updatedAt: ts() }, { merge: true });
+    return { ok: true, usedSchools: rem.length };
+  });
+
+  // Keep org.usedSchools in sync when schools are created/deleted (safety net)
+  exports.onSchoolsWrite = onDocumentWritten(
+    { document: 'orgs/{orgId}/schools/{schoolId}', region: 'us-central1', minInstances: 1 },
+    async (event) => {
+      const orgId = event.params.orgId;
+      if (!orgId) return;
+      const orgRef = db.doc(`orgs/${orgId}`);
+      const docs = await orgRef.collection('schools').listDocuments();
+      await orgRef.set({ usedSchools: docs.length, updatedAt: ts() }, { merge: true });
+    }
+  );

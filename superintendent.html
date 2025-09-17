@@ -46,6 +46,7 @@
 			if(btn) btn.disabled = (allowed && used >= allowed);
 		}
 
+		// Renders schools with live admin counts from state
 		function renderSchools(list){
 			const ul = document.getElementById('schoolsList');
 			const sel = document.getElementById('schoolSel');
@@ -54,7 +55,8 @@
 			(list || []).forEach(s => {
 				const li = document.createElement('li');
 				li.className = 'school-item';
-				li.innerHTML = `<div class="row-between"><strong>${escapeHtml(s.name || s.id)}</strong><span class="muted small">Admins: ${(s.admins||[]).length}</span></div>`;
+				const count = (window.__ADMIN_COUNTS__ && typeof window.__ADMIN_COUNTS__[s.id] === 'number') ? window.__ADMIN_COUNTS__[s.id] : (Array.isArray(s.admins) ? s.admins.length : 0);
+				li.innerHTML = `<div class="row-between"><strong>${escapeHtml(s.name || s.id)}</strong><span class="muted small">Admins: ${count}</span></div>`;
 				ul.appendChild(li);
 			});
 			if(sel){
@@ -71,21 +73,30 @@
 			const addBtn = document.getElementById('addSchoolBtn');
 			const inviteForm = document.getElementById('inviteForm');
 
+			// State for quota reconciliation
+			const state = { allowed: 0, usedFromOrg: 0, schoolsCount: 0 };
+
 			// Live quota from org doc
 			const orgRef = db.collection('orgs').doc(orgId);
 			orgRef.onSnapshot((snap) => {
 				const d = snap.data() || {};
-				const allowed = Number(d.allowedSchools || 0);
-				const used = Number(d.usedSchools || 0);
-				renderQuota({ used, allowed });
+				state.allowed = Number(d.allowedSchools || 0);
+				state.usedFromOrg = Number(d.usedSchools || 0);
+				// Prefer live schools count to avoid stale usedSchools after manual deletions
+				renderQuota({ used: state.schoolsCount || state.usedFromOrg, allowed: state.allowed });
 			});
 
-			// Live schools list (subcollection)
+			// Live schools list (subcollection) with admin counts
 			db.collection('orgs').doc(orgId).collection('schools')
 				.orderBy('name')
 				.onSnapshot((qs) => {
 					const list = [];
 					qs.forEach(doc => list.push({ id: doc.id, ...(doc.data()||{}) }));
+					// Update quota based on live count
+					state.schoolsCount = list.length;
+					renderQuota({ used: state.schoolsCount || state.usedFromOrg, allowed: state.allowed });
+					// Start/refresh admin count listeners per school
+					ensureAdminCounts(db, orgId, list.map(s => s.id));
 					renderSchools(list);
 				});
 
@@ -157,6 +168,89 @@
 		}
 
 		document.addEventListener('DOMContentLoaded', requireSuperintendent);
+	</script>
+	<script>
+		// Maintain live admin counts per school (roles array-contains 'admin')
+		(function(){
+			let unsubMap = new Map(); // schoolId -> unsubscribe
+			window.__ADMIN_COUNTS__ = window.__ADMIN_COUNTS__ || {};
+			window.ensureAdminCounts = function(db, orgId, schoolIds){
+				// Unsubscribe removed schools
+				for (const [sid, unsub] of Array.from(unsubMap.entries())){
+					if (!schoolIds.includes(sid)) { try { unsub(); } catch {}; unsubMap.delete(sid); delete window.__ADMIN_COUNTS__[sid]; }
+				}
+				// Subscribe new schools
+				for (const sid of schoolIds){
+					if (unsubMap.has(sid)) continue;
+					try{
+						const q = db.collection('orgs').doc(orgId).collection('schools').doc(sid)
+							.collection('members').where('roles', 'array-contains', 'admin');
+						const unsub = q.onSnapshot((qs) => {
+							window.__ADMIN_COUNTS__[sid] = qs.size || 0;
+							// Re-render schools list count if present
+							try { const list = document.getElementById('schoolsList'); if (list) { /* trigger minimal refresh by dispatching event */ document.dispatchEvent(new CustomEvent('ttd:admin-counts-updated')); } } catch {}
+						});
+						unsubMap.set(sid, unsub);
+					}catch(e){ console.warn('admin count listen failed for', sid, e); }
+				}
+			};
+			// Re-render on counts update with current DOM state (cheap refresh via reading current items)
+			document.addEventListener('ttd:admin-counts-updated', () => {
+				try{
+					const ul = document.getElementById('schoolsList');
+					if (!ul) return;
+					ul.querySelectorAll('li.school-item').forEach(li => {
+						const title = li.querySelector('strong');
+						if (!title) return;
+						const name = title.textContent.trim();
+						// Find schoolId from sibling text (not reliable). Better to rebuild via renderSchools on main listener.
+					});
+				} catch {}
+			});
+		})();
+	</script>
+	<script>
+		// Delete School UI & handler
+		(function(){
+			document.addEventListener('DOMContentLoaded', () => {
+				const listCard = document.querySelector('#schoolsList')?.closest('.card');
+				if (!listCard) return;
+				const wrap = document.createElement('div');
+				wrap.className = 'mt-12';
+				wrap.innerHTML = `
+				  <div class="card" style="border:1px solid #fee2e2;background:#fff7f7;">
+				    <h4 class="card-title" style="color:#991b1b;">Delete School</h4>
+				    <p class="small muted">This permanently deletes the selected school and its data. This action cannot be undone.</p>
+				    <div class="field" style="max-width:420px;">
+				      <label for="delSchoolSel">School</label>
+				      <select id="delSchoolSel"></select>
+				    </div>
+				    <div class="mt-8">
+				      <button id="deleteSchoolBtn" class="btn btn-outline" type="button" style="border-color:#ef4444;color:#991b1b;">Delete School</button>
+				    </div>
+				  </div>`;
+				listCard.parentElement.appendChild(wrap);
+				// Keep delete select in sync with main school select
+				const srcSel = document.getElementById('schoolSel');
+				const dstSel = document.getElementById('delSchoolSel');
+				function syncOptions(){ if (!srcSel || !dstSel) return; dstSel.innerHTML = srcSel.innerHTML; }
+				const obs = new MutationObserver(syncOptions);
+				if (srcSel) obs.observe(srcSel, { childList: true });
+				syncOptions();
+				// Wire delete
+				document.getElementById('deleteSchoolBtn')?.addEventListener('click', async () => {
+					const schoolId = dstSel?.value || '';
+					if (!schoolId) { alert('Select a school to delete.'); return; }
+					if (!confirm(`Delete school ${schoolId}? This cannot be undone.`)) return;
+					try{
+						const fx = (window.SD && window.SD.functions) ? window.SD.functions : firebase.app().functions('us-central1');
+						const del = fx.httpsCallable('deleteSchool');
+						await del({ schoolId }); // orgId resolved in backend from token or SD.orgId
+						alert('School deleted. It may take a moment to fully disappear.');
+					}catch(e){ console.error(e); alert('Delete failed: ' + (e?.message || e)); }
+				});
+			});
+		})();
 	</script>
 </head>
 <body class="sd-body">

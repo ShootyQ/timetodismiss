@@ -399,6 +399,19 @@
       if (!schoolBox) return;
       schoolBox.style.display = showBox ? 'flex' : 'none';
     }
+    function getStoredSchoolSelection(){
+      try {
+        const raw = localStorage.getItem('SD_SCHOOL_OBJ');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      // Back-compat: if only schoolId was stored
+      try {
+        const sid = localStorage.getItem('SD_SCHOOL');
+        if (sid) return { schoolId: sid };
+      } catch {}
+      return null;
+    }
+
     function applySchoolSelection(sel){
       // sel: { orgId, schoolId, name }
       if (!sel || !sel.schoolId) return;
@@ -406,11 +419,21 @@
       window.SD.orgId = sel.orgId || window.SD.orgId || window.SD.claims?.orgId || 'mn-conference';
       window.SD.schoolId = sel.schoolId;
       window.SD.schoolName = sel.name || sel.schoolId;
-      try { localStorage.setItem('SD_SCHOOL', sel.schoolId); } catch {}
+      // Persist both for cross-refresh stickiness (and keep legacy key)
+      try {
+        localStorage.setItem('SD_SCHOOL', sel.schoolId);
+        localStorage.setItem('SD_SCHOOL_OBJ', JSON.stringify({ orgId: window.SD.orgId, schoolId: sel.schoolId, name: window.SD.schoolName, t: Date.now() }));
+      } catch {}
       if (schoolNameEl) schoolNameEl.textContent = window.SD.schoolName;
       // Announce to pages
       try {
         document.dispatchEvent(new CustomEvent('sd:school-changed', { detail: { orgId: window.SD.orgId, schoolId: sel.schoolId, schoolName: window.SD.schoolName } }));
+      } catch {}
+      // Also re-emit claims-ready with updated school so pages depending on that event can react without a full reload
+      try {
+        const merged = { ...(window.SD.claims || {}), orgId: window.SD.orgId, schoolId: window.SD.schoolId };
+        window.SD.claims = merged; window.claims = merged;
+        document.dispatchEvent(new CustomEvent('sd:claims-ready', { detail: { claims: merged } }));
       } catch {}
     }
     async function fetchSchoolOptions(orgIds, schoolIds){
@@ -599,18 +622,34 @@
       window.SD = window.SD || {};
       const claims = token?.claims || {};
 
-      // schoolId: from claim or first of schoolIds; prefer a stored selection if still valid
-      let sid = claims.schoolId || null;
-      if (!sid && Array.isArray(claims.schoolIds) && claims.schoolIds.length){
-        const pref = (() => { try { return localStorage.getItem('SD_SCHOOL') || ''; } catch { return ''; } })();
-        if (pref && !claims.schoolIds.includes(pref)) {
-          // Clear stale preference (e.g., showing MCA from prior session)
-          try { localStorage.removeItem('SD_SCHOOL'); } catch {}
+      // Preferred school selection order:
+      // 1) Valid stored preference (orgId+schoolId) if user has access (schoolIds includes it OR is superintendent)
+      // 2) Token-provided primary schoolId
+      // 3) First schoolIds[] entry
+      let preferred = null;
+      try {
+        const stored = getStoredSchoolSelection();
+        const isSup = !!claims.superintendent;
+        const allowedList = Array.isArray(claims.schoolIds) ? claims.schoolIds : [];
+        if (stored && stored.schoolId && (isSup || allowedList.includes(stored.schoolId))) {
+          preferred = stored;
+        } else if (stored && stored.schoolId && allowedList.length && !allowedList.includes(stored.schoolId)) {
+          // Stored selection no longer valid for this user; clear it
+          try { localStorage.removeItem('SD_SCHOOL'); localStorage.removeItem('SD_SCHOOL_OBJ'); } catch {}
         }
-        const chosen = (pref && claims.schoolIds.includes(pref)) ? pref : claims.schoolIds[0];
-        sid = chosen || null;
+      } catch {}
+      if (preferred && preferred.schoolId) {
+        window.SD.orgId = preferred.orgId || window.SD.orgId || claims.orgId || 'mn-conference';
+        window.SD.schoolId = preferred.schoolId;
+      } else {
+        let sid = claims.schoolId || null;
+        if (!sid && Array.isArray(claims.schoolIds) && claims.schoolIds.length) {
+          sid = claims.schoolIds[0] || null;
+        }
+        if (sid) window.SD.schoolId = sid;
+        // orgId from claims if present
+        if (claims.orgId) window.SD.orgId = window.SD.orgId || claims.orgId;
       }
-      if (sid) window.SD.schoolId = sid;
 
       // roles strictly from claims
   const isAdmin  = !!claims.admin;
@@ -782,12 +821,13 @@
           }
         } catch {}
 
-        // Seed school/org from claims first
-        if (token?.claims?.schoolId) {
+        // Seed school/org from claims only if not already set via stored preference
+        if (!window.SD?.schoolId && token?.claims?.schoolId) {
           window.SD = window.SD || {};
           window.SD.schoolId = token.claims.schoolId;
-          // Default orgId when not present in claims
-          window.SD.orgId = token.claims.orgId || window.SD.orgId || 'mn-conference';
+        }
+        if (!window.SD?.orgId) {
+          window.SD.orgId = token?.claims?.orgId || window.SD.orgId || 'mn-conference';
         }
 
         // If missing, fallback to domain mapping once (but NOT for superintendent-only users)
