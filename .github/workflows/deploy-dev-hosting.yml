@@ -1,51 +1,33 @@
 name: Deploy to Firebase Hosting (dev channel)
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - dev
-  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   deploy:
+    name: Deploy preview to dev channel
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Use Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      - name: Install Firebase CLI
-        run: npm i -g firebase-tools
-
-      - name: Show Firebase CLI version
-        run: firebase --version
-
-      - name: Deploy to Hosting channel 'dev'
-        shell: bash
-        env:
-          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
-          FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
-        run: |
-          set -euo pipefail
-          # Determine auth: prefer token; else service account JSON
-          AUTH_ARGS=""
-          if [[ -n "${FIREBASE_TOKEN:-}" ]]; then
-            AUTH_ARGS=(--token "$FIREBASE_TOKEN")
-          elif [[ -n "${FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER:-}" ]]; then
-            echo "Using service account secret for auth"
-            echo "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GITHUB_WORKSPACE/sa.json"
-            export GOOGLE_APPLICATION_CREDENTIALS="$GITHUB_WORKSPACE/sa.json"
-          else
-            echo "No auth provided. Set FIREBASE_TOKEN or FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER in repo secrets." >&2
-            exit 1
-          fi
-
-          firebase hosting:channel:deploy dev --project dismissalcaller --non-interactive "${AUTH_ARGS[@]}" --json | tee deploy-output.json
-          echo "Preview URL(s):"
-          node -e "let i='';process.stdin.on('data',d=>i+=d).on('end',()=>{try{const o=JSON.parse(i);const u=o?.result?.hosting?.[0]?.details?.urls||[];console.log(u.join('\n')||'No URL found');}catch(e){console.error('Could not parse deploy output');process.exit(1);}})" < deploy-output.json
+      - name: Deploy to Firebase Hosting (dev channel)
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: dismissalcaller
+          channelId: dev
+          target: app
