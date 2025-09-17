@@ -24,15 +24,23 @@
   </style>
 </head>
 <body class="sd-body">
-  <main class="container prefs-main">
+  <main class="container prefs-main" id="prefsRoot">
     <h1 style="margin:0 0 1rem; font-size:1.4rem; font-weight:900;">Preferences</h1>
+    <div id="userIdent" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:0 0 18px;">
+      <div class="small" id="userEmailBox" style="font-weight:600; color:#334155;">&nbsp;</div>
+      <div id="schoolSelectWrap" style="display:none; align-items:center; gap:6px;">
+        <label for="prefSchoolSel" class="small" style="font-weight:700;">School:</label>
+        <select id="prefSchoolSel" class="btn" style="padding:.4rem .65rem; border:1px solid #cbd5e1; background:#fff; border-radius:10px; font-size:.8rem; font-weight:600;"></select>
+        <span id="schoolStatus" class="small" style="color:#64748b;"></span>
+      </div>
+    </div>
 
-    <section class="pref-card" id="favClassesCard">
+  <section class="pref-card" id="favClassesCard" aria-live="polite">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
         <h2 style="display:flex; align-items:center; gap:10px;">Favorite Classes <span class="pill">Beta</span></h2>
         <div class="small" style="color:#64748b;">Auto-select these on the Class Board when no filter is set.</div>
       </div>
-      <div class="actions-row">
+      <div class="actions-row" id="favActions" style="display:none;">
         <button id="favSelectAll" class="btn btn-secondary btn-sm" type="button">Select All</button>
         <button id="favClear" class="btn btn-outline btn-sm" type="button">Clear</button>
         <button id="favInvert" class="btn btn-outline btn-sm" type="button">Invert</button>
@@ -51,7 +59,7 @@
   </main>
 
   <script type="module">
-    import { init, getClasses, getMyPrefs, setMyPrefs } from '/app.js?v=20';
+    import { init, getClassesForSchool, getMyPrefs, setMyPrefs } from '/app.js?v=20';
     await init();
 
     const grid = document.getElementById('favClassesGrid');
@@ -60,23 +68,57 @@
     const btnInv = document.getElementById('favInvert');
     const btnSave = document.getElementById('saveFavs');
     const statusEl = document.getElementById('saveStatus');
+    const actionsRow = document.getElementById('favActions');
+    const schoolSel = document.getElementById('prefSchoolSel');
+    const schoolWrap = document.getElementById('schoolSelectWrap');
+    const schoolStatus = document.getElementById('schoolStatus');
+    const emailBox = document.getElementById('userEmailBox');
+
+    let currentSchoolId = null;
+    let loading = false;
 
     function setStatus(text, cls){
       if (!statusEl) return; statusEl.textContent = text || ''; statusEl.className = 'status-msg ' + (cls || '');
     }
 
-    async function load(){
-      setStatus('Loading…');
-      let classes = [];
-      try { classes = await getClasses(); } catch (e) { setStatus('Failed to load classes','status-err'); return; }
-      const prefs = await getMyPrefs().catch(()=>({ favoriteClasses: [] }));
-      const favSet = new Set(prefs.favoriteClasses || []);
-      classes.sort((a,b)=> (a.name||a.id).localeCompare(b.name||b.id));
-      grid.innerHTML = classes.map(c => {
-        const checked = favSet.has(c.id) ? 'checked' : '';
-        return `<label><input type="checkbox" value="${c.id}" ${checked} /> <span>${c.name || c.id}</span></label>`;
-      }).join('');
-      if (prefs._local) setStatus('Loaded from local backup (offline mode)','status-warn'); else setStatus('Loaded.','status-ok');
+    async function loadSchoolsFromClaims(){
+      try {
+        const claims = (window.SD && window.SD.claims) || {};
+        emailBox.textContent = (claims.email || (window.firebase?.auth?.()?.currentUser?.email)) || '';
+        const sids = Array.isArray(claims.schoolIds) ? claims.schoolIds.slice() : (claims.schoolId ? [claims.schoolId] : []);
+        const orgIds = Array.isArray(claims.orgIds) ? claims.orgIds.slice() : (claims.orgId ? [claims.orgId] : []);
+        // Populate select if more than one school
+        if (sids.length > 1) {
+          schoolSel.innerHTML = '';
+          sids.forEach(id => { const opt = document.createElement('option'); opt.value = id; opt.textContent = id; schoolSel.appendChild(opt); });
+          schoolWrap.style.display = 'flex';
+          currentSchoolId = sids[0];
+        } else {
+          currentSchoolId = sids[0] || window.SD?.schoolId || null;
+        }
+        return { schoolIds: sids, orgIds };
+      } catch { return { schoolIds: [], orgIds: [] }; }
+    }
+
+    async function loadClassesAndPrefs(){
+      if (!currentSchoolId) { setStatus('No school context','status-warn'); return; }
+      if (loading) return; loading = true;
+      setStatus('Loading classes…'); actionsRow.style.display='none'; grid.innerHTML='';
+      try {
+        const classes = await getClassesForSchool(currentSchoolId).catch(()=>[]);
+        if (!classes.length) { setStatus('No classes found','status-warn'); loading=false; return; }
+        const prefs = await getMyPrefs(currentSchoolId).catch(()=>({ favoriteClasses: [] }));
+        const favSet = new Set(prefs.favoriteClasses || []);
+        classes.sort((a,b)=> (a.name||a.id).localeCompare(b.name||b.id));
+        grid.innerHTML = classes.map(c => {
+          const checked = favSet.has(c.id) ? 'checked' : '';
+          return `<label><input type="checkbox" value="${c.id}" ${checked} /> <span>${c.name || c.id}</span></label>`;
+        }).join('');
+        actionsRow.style.display='flex';
+        if (prefs._local) setStatus('Loaded (local only)','status-warn'); else setStatus('Loaded.','status-ok');
+      } catch (e) {
+        setStatus('Failed: '+(e.message||'error'),'status-err');
+      } finally { loading=false; }
     }
 
     function currentSelection(){
@@ -99,16 +141,26 @@
     btnSave?.addEventListener('click', async () => {
       const favs = currentSelection();
       setStatus('Saving…'); btnSave.disabled = true;
-      const res = await setMyPrefs({ favoriteClasses: favs });
+      const res = await setMyPrefs({ favoriteClasses: favs }, currentSchoolId);
       if (res.ok && res.localOnly) setStatus('Saved locally (offline)','status-warn');
       else if (res.ok) setStatus('Saved.','status-ok');
       else setStatus('Failed to save','status-err');
       btnSave.disabled = false;
     });
 
-    document.addEventListener('sd:claims-ready', () => { load(); }, { once:true });
-    // Also kick a delayed load in case claims event already fired
-    setTimeout(() => { if (!grid.children.length) load(); }, 1200);
+    schoolSel?.addEventListener('change', () => {
+      currentSchoolId = schoolSel.value || null;
+      schoolStatus.textContent = 'Loading…';
+      loadClassesAndPrefs().then(()=>{ schoolStatus.textContent=''; });
+    });
+
+    async function initPage(){
+      await loadSchoolsFromClaims();
+      await loadClassesAndPrefs();
+    }
+
+    if (window.SD?.claims) initPage();
+    else document.addEventListener('sd:claims-ready', initPage, { once:true });
   </script>
 </body>
 </html>

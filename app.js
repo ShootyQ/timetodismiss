@@ -155,6 +155,30 @@ export async function getClassById(classId) {
   return d.exists() ? { ...d.data(), id: d.id } : null;
 }
 
+// Fetch classes explicitly for a provided school (does not mutate global SD context)
+export async function getClassesForSchool(schoolId, orgIdOverride){
+  await waitForTenant();
+  const oid = orgIdOverride || globalThis.SD?.orgId;
+  const sid = schoolId || globalThis.SD?.schoolId;
+  if (!oid) throw new Error('No orgId for getClassesForSchool');
+  if (!sid) throw new Error('No schoolId for getClassesForSchool');
+  // Build manual collection ref (cannot reuse colPath because it always uses current SD values)
+  const classesCol = collection(db, 'orgs', oid, 'schools', sid, 'classes');
+  const norm = (d) => { const data = d.data() || {}; const name = data.name || data.title || d.id; const order = typeof data.order === 'number' ? data.order : undefined; return { ...data, id: d.id, name, ...(order !== undefined ? { order } : {}) }; };
+  try {
+    const s1 = await getDocs(query(classesCol, orderBy('order','asc')));
+    const rows = s1.docs.map(norm);
+    if (rows.length) return rows;
+  } catch {}
+  try {
+    const s2 = await getDocs(query(classesCol, orderBy('name','asc')));
+    const rows = s2.docs.map(norm);
+    if (rows.length) return rows;
+  } catch {}
+  const s3 = await getDocs(classesCol);
+  return s3.docs.map(norm).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
+}
+
 /* ------------------------------------------------------------------ */
 /* Students                                                            */
 /* ------------------------------------------------------------------ */
@@ -556,28 +580,37 @@ export async function setSchoolUser(uid, payload = {}) {
 /* ------------------------------------------------------------------ */
 /* User Preferences (per-member)                                      */
 /* ------------------------------------------------------------------ */
-// Stored at members/{uid}.prefs.favoriteClasses = [classId,...]
-// Provide graceful localStorage fallback if Firestore fails.
-const LOCAL_PREF_KEY = 'TTD_FAV_CLASSES_LOCAL';
+// Stored (new) at members/{uid}.prefs.bySchool[schoolId].favoriteClasses = []
+// Backward compat: accept legacy members/{uid}.prefs.favoriteClasses (school-agnostic)
+// Local fallback per school: key TTD_FAV_CLASSES_LOCAL__<schoolId>
+const LOCAL_PREF_KEY_PREFIX = 'TTD_FAV_CLASSES_LOCAL__';
 
 function currentUser() {
   try { return (typeof auth !== 'undefined') ? auth.currentUser : null; } catch { return null; }
 }
 
-export async function getMyPrefs() {
+export async function getMyPrefs(schoolIdOverride) {
   await waitForTenant();
   const u = currentUser();
   if (!u) return { favoriteClasses: [] };
+  const sid = schoolIdOverride || globalThis.SD?.schoolId;
   try {
     const snap = await getDoc(docPath('members', u.uid));
     if (!snap.exists()) return { favoriteClasses: [] };
     const data = snap.data() || {};
-    const fav = Array.isArray(data?.prefs?.favoriteClasses) ? data.prefs.favoriteClasses.filter(Boolean) : [];
+    const prefs = data.prefs || {};
+    // New structure
+    const bySchool = prefs.bySchool && typeof prefs.bySchool === 'object' ? prefs.bySchool : {};
+    let fav = [];
+    if (sid && bySchool[sid] && Array.isArray(bySchool[sid].favoriteClasses)) {
+      fav = bySchool[sid].favoriteClasses.filter(Boolean);
+    } else if (Array.isArray(prefs.favoriteClasses)) { // legacy
+      fav = prefs.favoriteClasses.filter(Boolean);
+    }
     return { favoriteClasses: fav };
   } catch (e) {
-    // Firestore failed; try local fallback
     try {
-      const raw = localStorage.getItem(LOCAL_PREF_KEY);
+      const raw = localStorage.getItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'));
       if (raw) {
         const obj = JSON.parse(raw);
         const fav = Array.isArray(obj.favoriteClasses) ? obj.favoriteClasses.filter(Boolean) : [];
@@ -588,11 +621,11 @@ export async function getMyPrefs() {
   }
 }
 
-export async function setMyPrefs(patch = {}) {
+export async function setMyPrefs(patch = {}, schoolIdOverride) {
   await waitForTenant();
   const u = currentUser();
   if (!u) return { ok: false, reason: 'no-user' };
-  // Merge favoriteClasses only for now (extensible later)
+  const sid = schoolIdOverride || globalThis.SD?.schoolId;
   const fav = Array.isArray(patch.favoriteClasses) ? Array.from(new Set(patch.favoriteClasses.filter(Boolean))) : undefined;
   try {
     const ref = docPath('members', u.uid);
@@ -600,15 +633,22 @@ export async function setMyPrefs(patch = {}) {
     let existing = {};
     if (snap && snap.exists()) existing = snap.data() || {};
     const prevPrefs = existing.prefs || {};
-    const nextPrefs = { ...prevPrefs };
-    if (fav) nextPrefs.favoriteClasses = fav;
+    const bySchool = (prevPrefs.bySchool && typeof prevPrefs.bySchool === 'object') ? { ...prevPrefs.bySchool } : {};
+    if (sid) {
+      const prevEntry = bySchool[sid] || {};
+      bySchool[sid] = { ...prevEntry };
+      if (fav) bySchool[sid].favoriteClasses = fav;
+    } else if (fav) {
+      // No school context (edge) – store at legacy root for safety
+      prevPrefs.favoriteClasses = fav;
+    }
+    const nextPrefs = { ...prevPrefs, bySchool };
     await setDoc(ref, { prefs: nextPrefs }, { merge: true });
-    try { localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify({ favoriteClasses: nextPrefs.favoriteClasses || [] })); } catch {}
+    try { localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav || [] })); } catch {}
     return { ok: true };
   } catch (e) {
-    // Persist locally only
     try {
-      if (fav) localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify({ favoriteClasses: fav, _ts: Date.now() }));
+      if (fav) localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav, _ts: Date.now() }));
       return { ok: true, localOnly: true };
     } catch {}
     return { ok: false, reason: e?.message || 'fail' };
