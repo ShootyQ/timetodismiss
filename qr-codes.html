@@ -52,13 +52,19 @@
   #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
 
     /* Presets (letter-size page expected) */
-    /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; h-gap .125in; v-gap 0in; page margins top .5in left .1875in */
-  .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
-  .pa-avery5160 .pa-item{ width:2.625in; height:1in; }
+    .pa-page{ width:8.5in; min-height:11in; box-sizing:border-box; }
+    /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; */
+    .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
+    .pa-avery5160 .pa-item{ width:2.625in; height:1in; padding:0; }
+    .pa-avery5160 .pa-qr > div{ margin:0 auto; }
+    .pa-avery5160 .pa-label{ font-size:10px; line-height:1; margin-top:1px; }
+    .pa-avery5160 .pa-name{ font-size:9px; line-height:1.05; }
 
-    /* Avery 5163: 2 cols x 5 rows, label 4in x 2in; h-gap .125in; v-gap 0in; margins similar */
+    /* Avery 5163: 2 cols x 5 rows, label 4in x 2in */
     .pa-avery5163{ grid-template-columns: repeat(2, 4in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
     .pa-avery5163 .pa-item{ width:4in; height:2in; }
+    .pa-avery5163 .pa-label{ font-size:14px; margin-top:4px; }
+    .pa-avery5163 .pa-name{ font-size:12px; }
 
     /* Square 2x2 in generic */
     .pa-square2{ grid-template-columns: repeat(3, 2in); column-gap: .2in; row-gap: .2in; padding: .5in; }
@@ -68,11 +74,16 @@
     .pa-square3{ grid-template-columns: repeat(2, 3in); column-gap: .25in; row-gap: .25in; padding: .5in; }
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
+    /* Fluid grid (non label) auto paginate by browser */
+    .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
+    .pa-gridflow .pa-item{ width:100%; height:auto; }
+    .pa-gridflow .pa-qr > div{ margin:0 auto; }
+
     /* Print-time cleanup */
   .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
 
     @media print{
-      header.site-header{ display:none !important; }
+      header.site-header, .qr-toolbar, #helpers, #errors, #loading, #grid, #empty, #countSummary, .print-hint{ display:none !important; }
       body{ background:#fff; }
     }
 
@@ -90,7 +101,7 @@
       Tip: To load All Students from your database, open this page via your app (http/https). When opened from disk (file://), use the CSV helper below.
     </div>
 
-    <div class="qr-toolbar" role="toolbar" aria-label="QR options">
+  <div class="qr-toolbar" role="toolbar" aria-label="QR options">
       <label class="inline-flex">
         <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> All Students
       </label>
@@ -126,6 +137,7 @@
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
       <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
     </div>
+    <div class="small muted print-hint" style="margin:-4px 0 14px;">Printing tips: Set scale to 100% (no “fit to page”), disable headers/footers. For Avery labels use Chrome/Edge for most accurate alignment.</div>
     <div id="countSummary" class="small muted" aria-live="polite" style="margin:-6px 0 10px;">
       
     </div>
@@ -344,21 +356,11 @@
     // Print presets
     function presetInfo(key){
       switch(key){
-        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.82, perPage: 30 };
-        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.6,  perPage: 10 };
-        case 'square2':   return { class: 'pa-square2',   qrIn: 1.6,  perPage: 12 };
-        case 'square3':   return { class: 'pa-square3',   qrIn: 2.3,  perPage: 6 };
-        default: {
-          const px = (parseInt(sizeSel.value,10)||200);
-          const qrIn = px/96;
-          // Approximate rows by available 10in height (letter minus 1in padding) and 0.25in gaps
-          const colsN = parseInt(cols.value,10)||3;
-          const rowGap = 0.25; // in
-          const labelH = 0.4;  // approx name+label stack
-          const itemH = qrIn + labelH + rowGap;
-          const rows = Math.max(1, Math.floor((10 + rowGap) / itemH));
-          return { class: 'pa-square2', qrIn, perPage: rows * colsN };
-        }
+        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.78, perPage: 30, trimNames: true, maxLabelChars: 8 };
+        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
+        case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
+        case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
+        default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
     }
 
@@ -377,14 +379,19 @@
       return `car=${encodeURIComponent(item.tag)}`;
     }
 
+    function abbreviate(str, max){
+      if (!str) return '';
+      if (str.length <= max) return str;
+      return str.substring(0, max-1) + '…';
+    }
+
     function buildPrintArea(items){
       const useStudents = modeStudents.checked;
       const preset = presetInfo(layoutSel.value);
       paPages.className = 'pa-pages';
       paPages.innerHTML = '';
-
-      const qrPx = toPx(preset.qrIn);
-      const perPage = preset.perPage || items.length;
+      const qrPx = toPx(preset.qrIn || 1);
+      const perPage = preset.gridFlow ? items.length : (preset.perPage || items.length);
       for (let i=0; i<items.length; i+=perPage){
         const pageItems = items.slice(i, i+perPage);
         const page = document.createElement('div');
@@ -393,31 +400,35 @@
 
         for (const item of pageItems){
           const tag = useStudents ? (item.tag || '') : item.tag;
-          const name = useStudents ? nameOf(item) : (item.name || '');
-          const id = useStudents ? (item.id || item.studentId || '') : null;
-          const labelText = useStudents ? (tag || id || '') : tag;
-          const payload = buildPayload(item, useStudents);
+            const nameRaw = useStudents ? nameOf(item) : (item.name || '');
+            const name = (preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw;
+            const id = useStudents ? (item.id || item.studentId || '') : null;
+            const labelTextRaw = useStudents ? (tag || id || '') : tag;
+            const labelText = (preset.maxLabelChars && labelTextRaw.length > preset.maxLabelChars)
+              ? abbreviate(labelTextRaw, preset.maxLabelChars)
+              : labelTextRaw;
+            const payload = buildPayload(item, useStudents);
 
-          const div = document.createElement('div');
-          div.className = 'pa-item';
-          div.innerHTML = `
-            <div class="pa-qr"></div>
-            <div class="pa-label">${labelText}</div>
-            ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
-          `;
-          page.appendChild(div);
+            const div = document.createElement('div');
+            div.className = 'pa-item';
+            div.innerHTML = `
+              <div class="pa-qr"></div>
+              <div class="pa-label">${labelText}</div>
+              ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+            `;
+            page.appendChild(div);
 
-          const host = div.querySelector('.pa-qr');
-          const holder = document.createElement('div');
-          holder.style.width = qrPx + 'px';
-          holder.style.height = qrPx + 'px';
-          host.appendChild(holder);
+            const host = div.querySelector('.pa-qr');
+            const holder = document.createElement('div');
+            holder.style.width = qrPx + 'px';
+            holder.style.height = qrPx + 'px';
+            host.appendChild(holder);
 
-          const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
-          if (window.QRCode) { try { draw(); } catch {} }
-          else {
-            const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
-          }
+            const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
+            if (window.QRCode) { try { draw(); } catch {} }
+            else {
+              const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+            }
         }
       }
     }
@@ -431,8 +442,14 @@
       if (keys.size){
         items = all.filter(it => keys.has(getKey(it, useStudents)));
       } else {
-        // Print current filter list if nothing explicitly selected
-        items = currentFilterList();
+        const filtered = currentFilterList();
+        // If user has an active filter and filtered is subset of all, confirm scope
+        if ((q.value||'').trim() && filtered.length < all.length){
+          const goFiltered = confirm(`Print only the ${filtered.length} filtered items?\nChoose Cancel to print all ${all.length}.`);
+          items = goFiltered ? filtered : all;
+        } else {
+          items = all; // default: print everything
+        }
       }
 
       if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
