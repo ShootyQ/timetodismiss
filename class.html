@@ -590,23 +590,39 @@
       btnAll?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
       btnClr?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
 
-      // Initial selection from URL; default to all if none specified
+      // Initial selection resolution sequence:
+      // 1) Explicit URL params (classes / classId)
+      // 2) User favorites (prefs.favoriteClasses) if present
+      // 3) All classes fallback
       const initial = new Set();
+      let usedFavorites = false;
       if (multiParam) {
         multiParam.split(',').map(s => s.trim()).filter(Boolean).forEach(id => initial.add(id));
       } else if (singleClassId) {
         initial.add(singleClassId);
       } else {
-        classes.forEach(c => initial.add(c.id));
+        // Try favorites
+        try {
+          const mod = await import('/app.js?v=20');
+          if (mod && typeof mod.getMyPrefs === 'function') {
+            const prefs = await mod.getMyPrefs().catch(()=>({favoriteClasses:[]}));
+            if (prefs.favoriteClasses && prefs.favoriteClasses.length) {
+              prefs.favoriteClasses.filter(id => classes.find(c => c.id === id)).forEach(id => initial.add(id));
+              usedFavorites = initial.size > 0;
+            }
+          }
+        } catch {}
+        if (!initial.size) {
+          classes.forEach(c => initial.add(c.id));
+        }
       }
 
-  // Default: start with no classes checked in the UI
-  chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    cb.checked = false;
-    cb.removeAttribute('checked');
-  });
-  // Reflect initial state in the button label
-  try { filterBtn.textContent = 'Select Classes'; } catch {}
+      // Start with no classes checked in the UI; we'll apply initial after building controls
+      chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+        cb.removeAttribute('checked');
+      });
+      try { filterBtn.textContent = 'Select Classes'; } catch {}
 
       function currentSelection(){
         return Array.from(chipsEl.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -809,6 +825,11 @@
       }
 
       chipsEl.addEventListener('change', onSelectionChange);
+      // Apply resolved initial selection now
+      setSelection(Array.from(initial));
+      if (usedFavorites) {
+        try { filterBtn.textContent = initial.size > 1 ? `Filter (${initial.size})` : `Filter (${Array.from(initial)[0] || ''})`; } catch {}
+      }
       // En Route actions (event delegation)
       host.addEventListener('click', (e) => {
         const btn = e.target.closest('button');

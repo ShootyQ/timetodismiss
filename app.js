@@ -552,3 +552,65 @@ export async function setSchoolUser(uid, payload = {}) {
   // Canonical path only (no legacy mirror)
   await setDoc(docPath('members', uid), body, { merge: true });
 }
+
+/* ------------------------------------------------------------------ */
+/* User Preferences (per-member)                                      */
+/* ------------------------------------------------------------------ */
+// Stored at members/{uid}.prefs.favoriteClasses = [classId,...]
+// Provide graceful localStorage fallback if Firestore fails.
+const LOCAL_PREF_KEY = 'TTD_FAV_CLASSES_LOCAL';
+
+function currentUser() {
+  try { return (typeof auth !== 'undefined') ? auth.currentUser : null; } catch { return null; }
+}
+
+export async function getMyPrefs() {
+  await waitForTenant();
+  const u = currentUser();
+  if (!u) return { favoriteClasses: [] };
+  try {
+    const snap = await getDoc(docPath('members', u.uid));
+    if (!snap.exists()) return { favoriteClasses: [] };
+    const data = snap.data() || {};
+    const fav = Array.isArray(data?.prefs?.favoriteClasses) ? data.prefs.favoriteClasses.filter(Boolean) : [];
+    return { favoriteClasses: fav };
+  } catch (e) {
+    // Firestore failed; try local fallback
+    try {
+      const raw = localStorage.getItem(LOCAL_PREF_KEY);
+      if (raw) {
+        const obj = JSON.parse(raw);
+        const fav = Array.isArray(obj.favoriteClasses) ? obj.favoriteClasses.filter(Boolean) : [];
+        return { favoriteClasses: fav, _local: true };
+      }
+    } catch {}
+    return { favoriteClasses: [], _error: true };
+  }
+}
+
+export async function setMyPrefs(patch = {}) {
+  await waitForTenant();
+  const u = currentUser();
+  if (!u) return { ok: false, reason: 'no-user' };
+  // Merge favoriteClasses only for now (extensible later)
+  const fav = Array.isArray(patch.favoriteClasses) ? Array.from(new Set(patch.favoriteClasses.filter(Boolean))) : undefined;
+  try {
+    const ref = docPath('members', u.uid);
+    const snap = await getDoc(ref).catch(()=>null);
+    let existing = {};
+    if (snap && snap.exists()) existing = snap.data() || {};
+    const prevPrefs = existing.prefs || {};
+    const nextPrefs = { ...prevPrefs };
+    if (fav) nextPrefs.favoriteClasses = fav;
+    await setDoc(ref, { prefs: nextPrefs }, { merge: true });
+    try { localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify({ favoriteClasses: nextPrefs.favoriteClasses || [] })); } catch {}
+    return { ok: true };
+  } catch (e) {
+    // Persist locally only
+    try {
+      if (fav) localStorage.setItem(LOCAL_PREF_KEY, JSON.stringify({ favoriteClasses: fav, _ts: Date.now() }));
+      return { ok: true, localOnly: true };
+    } catch {}
+    return { ok: false, reason: e?.message || 'fail' };
+  }
+}

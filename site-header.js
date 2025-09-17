@@ -117,6 +117,11 @@
                   <path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 21V9h6v12"/>
                 </svg>
               </a>
+              <a href="/prefs.html" class="nav-icon" data-requires="viewer" aria-label="Preferences" title="Preferences">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="ic" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8.4 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8.4a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8c.74.3 1.27 1 1.27 1.82 0 .82-.53 1.52-1.27 1.82Z"/>
+                </svg>
+              </a>
             </nav>
             <div id="authBox" class="auth-inline">
               <div id="schoolBox" class="school-chip" style="display:none;">
@@ -165,6 +170,7 @@
             <a href="/master.html"  data-requires="caller">Master Caller</a>
             <a href="/admin.html"   data-requires="admin">Admin</a>
             <a href="/superintendent.html" data-requires="superintendent">Superintendent</a>
+            <a href="/prefs.html" data-requires="viewer">Preferences</a>
           </nav>
           <div class="menu-auth">
             <button id="hdrSignInGoogle" class="btn" type="button">Sign in with Google</button>
@@ -754,6 +760,7 @@
       '/roles.html',
       '/owner.html',
       '/superintendent.html'
+      ,'/prefs.html'
     ]);
 
     function redirectToLogin(){

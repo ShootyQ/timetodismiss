@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Preferences</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/site-header.js" defer></script>
+  <style>
+    main.prefs-main{ padding:28px 0 40px; }
+    .pref-card{ background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:18px 20px; margin:0 0 24px; box-shadow:0 3px 10px -2px rgba(15,23,42,.06); }
+    .pref-card h2{ margin:0 0 12px; font-size:1.05rem; font-weight:800; }
+    .classes-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(200px,1fr)); gap:8px 12px; margin:12px 0 4px; }
+    .classes-grid label{ display:flex; align-items:center; gap:8px; padding:6px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; cursor:pointer; font-size:.9rem; line-height:1.2; font-weight:600; }
+    .classes-grid label input{ width:18px; height:18px; }
+    .actions-row{ display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 4px; }
+    .save-row{ display:flex; align-items:center; gap:12px; margin-top:12px; }
+    .status-msg{ font-size:.8rem; font-weight:600; }
+    .status-ok{ color:#059669; }
+    .status-warn{ color:#b45309; }
+    .status-err{ color:#dc2626; }
+    .pill{ display:inline-block; padding:2px 8px 3px; background:#e2e8f0; color:#334155; border-radius:999px; font-size:.65rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase; }
+    @media (max-width:700px){ .classes-grid{ grid-template-columns:repeat(auto-fill, minmax(150px,1fr)); } }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container prefs-main">
+    <h1 style="margin:0 0 1rem; font-size:1.4rem; font-weight:900;">Preferences</h1>
+
+    <section class="pref-card" id="favClassesCard">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+        <h2 style="display:flex; align-items:center; gap:10px;">Favorite Classes <span class="pill">Beta</span></h2>
+        <div class="small" style="color:#64748b;">Auto-select these on the Class Board when no filter is set.</div>
+      </div>
+      <div class="actions-row">
+        <button id="favSelectAll" class="btn btn-secondary btn-sm" type="button">Select All</button>
+        <button id="favClear" class="btn btn-outline btn-sm" type="button">Clear</button>
+        <button id="favInvert" class="btn btn-outline btn-sm" type="button">Invert</button>
+      </div>
+      <div id="favClassesGrid" class="classes-grid" aria-label="Favorite classes list"></div>
+      <div class="save-row">
+        <button id="saveFavs" class="btn btn-primary" type="button">Save Favorites</button>
+        <div id="saveStatus" class="status-msg" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section class="pref-card" id="moreSoon">
+      <h2>More coming soon…</h2>
+      <p style="margin:0; font-size:.9rem; line-height:1.4; color:#475569;">Themes, layout, and notification options will appear here as we expand personalization.</p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { init, getClasses, getMyPrefs, setMyPrefs } from '/app.js?v=20';
+    await init();
+
+    const grid = document.getElementById('favClassesGrid');
+    const btnAll = document.getElementById('favSelectAll');
+    const btnClr = document.getElementById('favClear');
+    const btnInv = document.getElementById('favInvert');
+    const btnSave = document.getElementById('saveFavs');
+    const statusEl = document.getElementById('saveStatus');
+
+    function setStatus(text, cls){
+      if (!statusEl) return; statusEl.textContent = text || ''; statusEl.className = 'status-msg ' + (cls || '');
+    }
+
+    async function load(){
+      setStatus('Loading…');
+      let classes = [];
+      try { classes = await getClasses(); } catch (e) { setStatus('Failed to load classes','status-err'); return; }
+      const prefs = await getMyPrefs().catch(()=>({ favoriteClasses: [] }));
+      const favSet = new Set(prefs.favoriteClasses || []);
+      classes.sort((a,b)=> (a.name||a.id).localeCompare(b.name||b.id));
+      grid.innerHTML = classes.map(c => {
+        const checked = favSet.has(c.id) ? 'checked' : '';
+        return `<label><input type="checkbox" value="${c.id}" ${checked} /> <span>${c.name || c.id}</span></label>`;
+      }).join('');
+      if (prefs._local) setStatus('Loaded from local backup (offline mode)','status-warn'); else setStatus('Loaded.','status-ok');
+    }
+
+    function currentSelection(){
+      return Array.from(grid.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
+    }
+    function setSelection(ids){
+      const set = new Set(ids);
+      grid.querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = set.has(cb.value); });
+    }
+
+    btnAll?.addEventListener('click', () => {
+      const all = Array.from(grid.querySelectorAll('input[type="checkbox"]')).map(cb => cb.value); setSelection(all);
+    });
+    btnClr?.addEventListener('click', () => setSelection([]));
+    btnInv?.addEventListener('click', () => {
+      const all = Array.from(grid.querySelectorAll('input[type="checkbox"]'));
+      all.forEach(cb => { cb.checked = !cb.checked; });
+    });
+
+    btnSave?.addEventListener('click', async () => {
+      const favs = currentSelection();
+      setStatus('Saving…'); btnSave.disabled = true;
+      const res = await setMyPrefs({ favoriteClasses: favs });
+      if (res.ok && res.localOnly) setStatus('Saved locally (offline)','status-warn');
+      else if (res.ok) setStatus('Saved.','status-ok');
+      else setStatus('Failed to save','status-err');
+      btnSave.disabled = false;
+    });
+
+    document.addEventListener('sd:claims-ready', () => { load(); }, { once:true });
+    // Also kick a delayed load in case claims event already fired
+    setTimeout(() => { if (!grid.children.length) load(); }, 1200);
+  </script>
+</body>
+</html>
