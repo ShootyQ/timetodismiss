@@ -84,53 +84,56 @@
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
-      // Use the favicon at the project root
       link.href = '/favicon.png';
       document.head.appendChild(link);
     }
   }
 
   function ensureHeaderShell() {
-  if (document.querySelector('header.site-header')) return;
+    if (document.querySelector('header.site-header')) return;
     const header = document.createElement('header');
     header.className = 'site-header';
     header.innerHTML = `
-      <div class="container header-inner" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;">
-        <a href="/index.html" class="brand" style="font-weight:800;text-decoration:none;">Time To Dismiss</a>
-        <nav class="nav" style="display:flex;gap:1rem;flex-wrap:wrap;">
-          <a href="/class.html" class="nav-link" data-requires="viewer">Classes</a>
-          <a href="/master.html"  class="nav-link" data-requires="caller">Master Caller</a>
-          <a href="/admin.html"   class="nav-link" data-requires="admin">Admin</a>
-          <a href="/superintendent.html" class="nav-link" data-requires="superintendent">Superintendent</a>
-        </nav>
-        <div id="authBox" class="auth-inline" style="display:flex;gap:.5rem;align-items:center;">
-          <div id="schoolBox" class="user-chip" style="display:none;align-items:center;gap:.4rem;min-width:0; margin-right:.25rem;">
-            <span class="small muted">School:</span>
-            <span id="schoolName" class="chip" style="font-weight:700; border:1px solid #e5e7eb; padding:.1rem .4rem; border-radius:999px; max-width:24ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-            <select id="schoolSelect" style="display:none; border:1px solid #e5e7eb; border-radius:10px; padding:.25rem .4rem;"></select>
+          <div class="container header-inner">
+            <a href="/index.html" class="brand" title="Home">Time To Dismiss</a>
+            <nav class="nav nav-icons" aria-label="Primary">
+              <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes"><span class="ic">🎓</span></a>
+              <a href="/master.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller"><span class="ic">📣</span></a>
+              <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin"><span class="ic">⚙️</span></a>
+              <a href="/superintendent.html" class="nav-icon" data-requires="superintendent" aria-label="Superintendent" title="Superintendent"><span class="ic">🏫</span></a>
+            </nav>
+            <div id="authBox" class="auth-inline">
+              <div id="schoolBox" class="school-chip" style="display:none;">
+                <select id="schoolSelect" class="school-select" aria-label="Select school" title="Select school"></select>
+                <span id="schoolName" class="sr-only"></span>
+              </div>
+              <div id="signInBtns" class="signin-btns">
+                <button id="signInGoogle" class="btn btn-outline" type="button">Sign in</button>
+                <button id="signInMicrosoft" class="btn btn-outline" type="button">Microsoft</button>
+              </div>
+              <div id="userChip" class="user-chip" style="display:none;">
+                <button id="userAvatarBtn" class="avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Account">
+                  <img id="userPhoto" alt="" />
+                </button>
+                <div id="userPop" class="user-pop" hidden>
+                  <div class="user-row"><span class="label">Signed in</span><span id="userEmail"></span></div>
+                  <div class="user-row"><span class="label">Role</span><span id="roleBadge" class="role-badge"></span></div>
+                  <button id="signOutBtn2" class="btn btn-sm w-100" type="button">Sign out</button>
+                </div>
+                <button id="signOutBtn" class="btn btn--ghost" type="button" style="display:none;">Sign out</button>
+              </div>
+            </div>
           </div>
-          <div id="signInBtns" class="signin-btns" style="display:flex; gap:.5rem; flex-wrap:wrap;">
-            <button id="signInGoogle" class="btn" type="button">Sign in with Google</button>
-            <button id="signInMicrosoft" class="btn btn-outline" type="button">Sign in with Microsoft</button>
-          </div>
-          <div id="userChip" class="user-chip" style="display:none;align-items:center;gap:.5rem;min-width:0;">
-            <img id="userPhoto" alt="" style="width:28px;height:28px;border-radius:999px;display:none;object-fit:cover;" />
-            <span id="userEmail" style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52vw;"></span>
-            <span id="roleBadge" class="role-badge" style="display:none;padding:.1rem .4rem;border-radius:.4rem;font-size:.8rem;border:1px solid currentColor;opacity:.8;"></span>
-            <button id="signOutBtn" class="btn btn--ghost" type="button">Sign out</button>
-          </div>
-        </div>
-      </div>
-      <!-- Compact mobile toolbar -->
-  <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
+          <!-- Compact mobile toolbar -->
+          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
         <button id="hdrMenuBtn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="hdrMenuPanel" title="Menu" aria-label="Open menu">☰</button>
         <button id="hdrAuthBtn" class="icon-btn" type="button" title="Account" aria-label="Account">
           <span id="hdrAuthIcon" aria-hidden="true">👤</span>
           <img id="hdrAuthPhoto" alt="" style="display:none;width:28px;height:28px;border-radius:999px;object-fit:cover;" />
         </button>
-      </div>
-      <div id="hdrMenuScrim" class="hdr-menu-scrim" hidden></div>
-      <aside id="hdrMenuPanel" class="hdr-menu-panel" hidden aria-label="Menu">
+          </div>
+          <div id="hdrMenuScrim" class="hdr-menu-scrim" hidden></div>
+          <aside id="hdrMenuPanel" class="hdr-menu-panel" hidden aria-label="Menu">
         <div class="menu-inner">
           <div class="menu-head">
             <strong>Menu</strong>
@@ -148,9 +151,9 @@
             <button id="hdrSignOut" class="btn btn-outline" type="button" style="display:none;">Sign out</button>
           </div>
         </div>
-      </aside>
+          </aside>
     `;
-    // Build stamp (hidden) for quick verification in DOM and DevTools
+  // Build stamp (hidden) for quick verification in DOM and DevTools
     try {
       const meta = document.createElement('meta');
       meta.name = 'ttd-build';
@@ -339,6 +342,7 @@
     const signInGoogleBtn = header.querySelector('#signInGoogle');
     const signInMsBtn = header.querySelector('#signInMicrosoft');
     const signOutBtn = header.querySelector('#signOutBtn');
+  const signOutBtn2 = header.querySelector('#signOutBtn2');
     const userChip   = header.querySelector('#userChip');
     const userPhoto  = header.querySelector('#userPhoto');
     const userEmail  = header.querySelector('#userEmail');
@@ -588,6 +592,7 @@
   signInGoogleBtn?.addEventListener('click', () => startSignIn('google'));
   signInMsBtn?.addEventListener('click', () => startSignIn('microsoft'));
     signOutBtn.addEventListener('click', () => auth.signOut());
+  signOutBtn2?.addEventListener('click', () => auth.signOut());
     document.querySelectorAll('[data-login]').forEach(el => {
       el.addEventListener('click', (e) => { e.preventDefault(); startSignIn('google'); });
     });
@@ -788,6 +793,26 @@
       // Removed hard domain allowlist check; access is governed by claims/roles
 
       userEmail.textContent = email;
+      if (user.photoURL) { userPhoto.src = user.photoURL; show(userPhoto); } else { hide(userPhoto); }
+  hide(signInBox); show(userChip);
+  // Desktop avatar popover toggle
+  try {
+    const btn = header.querySelector('#userAvatarBtn');
+    const pop = header.querySelector('#userPop');
+    if (btn && pop) {
+      const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded','false'); };
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nowHidden = !pop.hidden; // invert current state
+        pop.hidden = nowHidden;
+        const nowOpen = !pop.hidden; btn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      });
+      document.addEventListener('click', (e) => {
+        if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) close();
+      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    }
+  } catch {}
       if (user.photoURL) { userPhoto.src = user.photoURL; show(userPhoto); } else { hide(userPhoto); }
   hide(signInBox); show(userChip);
 

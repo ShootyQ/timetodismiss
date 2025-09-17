@@ -236,6 +236,8 @@
   }
 
   async function open(){
+    // Guard: only allow when user can call (admin or caller)
+    try { if (!window.SD || !window.SD.canCall) return; } catch {}
     if (!ensureSheet()) return;
     showSheet(true);
     // Escape closes
@@ -439,6 +441,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Escape') { close(); return; }
     // Only allow 's' shortcut to open scanner on master page and when not typing in an input/textarea/contentEditable
     if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Must be signed in with caller/admin capability
+      if (!window.SD || !window.SD.canCall) return;
       const ae = document.activeElement;
       const tag = (ae && ae.tagName) ? ae.tagName.toUpperCase() : '';
       const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable));
@@ -450,6 +454,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 async function open(){
+  // Guard: only allow when user can call (admin or caller)
+  try { if (!window.SD || !window.SD.canCall) return; } catch {}
   visible(true);
   await startCamera();
 }
