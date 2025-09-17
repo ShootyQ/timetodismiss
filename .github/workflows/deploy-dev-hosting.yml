@@ -23,6 +23,17 @@ jobs:
       - name: Install Firebase Tools
         run: npm i -g firebase-tools
 
+      - name: Show Firebase CLI version
+        run: firebase --version
+
+      - name: List Hosting sites (diagnostic)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
+        run: |
+          export GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_key.json
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase --project dismissalcaller hosting:sites:list || true
+
       - name: Deploy to Firebase Hosting (preview dev channel)
         env:
           FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
@@ -30,7 +41,7 @@ jobs:
           echo "Using service account auth via GOOGLE_APPLICATION_CREDENTIALS"
           export GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_key.json
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          firebase --project dismissalcaller hosting:channel:deploy dev --expires 7d --non-interactive
+          firebase --project dismissalcaller hosting:channel:deploy dev --expires 7d --non-interactive --only hosting:app
 
       - name: Post preview URL
         run: |

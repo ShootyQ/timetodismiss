@@ -1,1 +1,10 @@
-{ "projects": { "default": "dismissalcaller" } }
+{
+	"projects": { "default": "dismissalcaller" },
+	"targets": {
+		"dismissalcaller": {
+			"hosting": {
+				"app": ["dismissalcaller"]
+			}
+		}
+	}
+}
