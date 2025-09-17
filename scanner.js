@@ -436,8 +436,16 @@ window.addEventListener('DOMContentLoaded', () => {
   flashBtn?.addEventListener('click', () => setTorch(!torchOn));
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
-    if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) open();
+    if (e.key === 'Escape') { close(); return; }
+    // Only allow 's' shortcut to open scanner on master page and when not typing in an input/textarea/contentEditable
+    if ((e.key === 's' || e.key === 'S') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const ae = document.activeElement;
+      const tag = (ae && ae.tagName) ? ae.tagName.toUpperCase() : '';
+      const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable));
+      const path = location.pathname.replace(/\/+$/, '');
+      const isMasterPage = (path === '/master.html') && !!document.getElementById('openScanner');
+      if (!isTyping && isMasterPage) open();
+    }
   });
 });
 
