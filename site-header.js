@@ -251,6 +251,18 @@
     ensureFavicon();
     ensureHeaderShell();
 
+    // Add subtle shadow once scrolled
+    (function headerStickiness(){
+      const hdr = document.querySelector('header.site-header');
+      if (!hdr) return;
+      const onScroll = () => {
+        if (window.scrollY > 4) hdr.classList.add('is-stuck');
+        else hdr.classList.remove('is-stuck');
+      };
+      onScroll();
+      window.addEventListener('scroll', onScroll, { passive: true });
+    })();
+
     // Inline mobile CSS to avoid stale external CSS blocking the new header and menu polish
     (function ensureMobileHeaderStyles(){
       const id = 'sd-inline-mobile-menu';
