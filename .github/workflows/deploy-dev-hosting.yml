@@ -31,3 +31,8 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_key.json
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GOOGLE_APPLICATION_CREDENTIALS"
           firebase --project dismissalcaller hosting:channel:deploy dev --expires 7d --non-interactive
+
+      - name: Post preview URL
+        run: |
+          echo "Dev preview URL:" >> $GITHUB_STEP_SUMMARY
+          echo "https://dev--dismissalcaller.web.app" >> $GITHUB_STEP_SUMMARY
