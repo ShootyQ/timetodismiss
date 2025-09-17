@@ -454,35 +454,67 @@
 
       if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
 
+      // Build printable markup in isolation to avoid any layout constraints.
       buildPrintArea(items);
-      document.body.classList.add('printing');
-      printArea.classList.remove('hidden');
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR Codes</title>
+        <style>
+          body{margin:0;padding:0;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+          .pa-pages{display:block;}
+          .pa-page{display:grid;break-after:page;page-break-after:always;}
+          .pa-page:last-child{break-after:auto;page-break-after:auto;}
+          .pa-item{display:flex;flex-direction:column;align-items:center;justify-content:center;break-inside:avoid;page-break-inside:avoid;}
+          .pa-label{font-weight:800;font-family:inherit;}
+          .pa-name{font-size:.8rem;color:#334155;text-align:center;}
+          .pa-page{width:8.5in;min-height:11in;box-sizing:border-box;}
+          .pa-avery5160{grid-template-columns:repeat(3,2.625in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
+          .pa-avery5160 .pa-item{width:2.625in;height:1in;padding:0;}
+          .pa-avery5160 .pa-label{font-size:10px;line-height:1;margin-top:1px;}
+          .pa-avery5160 .pa-name{font-size:9px;line-height:1.05;}
+          .pa-avery5163{grid-template-columns:repeat(2,4in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
+          .pa-avery5163 .pa-item{width:4in;height:2in;}
+          .pa-avery5163 .pa-label{font-size:14px;margin-top:4px;}
+          .pa-avery5163 .pa-name{font-size:12px;}
+          .pa-square2{grid-template-columns:repeat(3,2in);column-gap:.2in;row-gap:.2in;padding:.5in;}
+          .pa-square2 .pa-item{width:2in;height:2in;}
+          .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
+          .pa-square3 .pa-item{width:3in;height:3in;}
+          .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
+          @page{size:letter;margin:0;}
+          @media print{body{background:#fff;}}
+        </style>
+      </head><body>${paPages.innerHTML}</body></html>`;
 
-      // Allow layout & QR canvases to render before invoking print (prevents single-page-only issue)
-      const waitForRender = async () => {
-        const targetCodes = items.length; // each item gets one QR
-        // wait up to 1s for canvases/images (especially first time QR lib loads)
-        const start = performance.now();
-        while (performance.now() - start < 1000) {
-          const rendered = paPages.querySelectorAll('.pa-item canvas, .pa-item img').length;
-            if (rendered >= targetCodes) break;
-          await new Promise(r=>requestAnimationFrame(r));
-        }
-        // extra frame to flush layout
-        await new Promise(r=>requestAnimationFrame(r));
-      };
-      try { await waitForRender(); } catch {}
-      // Force reflow
-      void printArea.offsetHeight;
+      // Open new window and let browser paginate content naturally.
+      const w = window.open('', '_blank', 'noopener,noreferrer');
+      if (!w){ alert('Popup blocked. Allow popups to print labels.'); return; }
+      w.document.open();
+      w.document.write(html);
+      w.document.close();
 
-      const cleanup = () => {
-        document.body.classList.remove('printing');
-        printArea.classList.add('hidden');
-        paPages.innerHTML = '';
-        window.removeEventListener('afterprint', cleanup);
+      const tryInjectQR = () => {
+        // For each .pa-qr placeholder, re-generate QR because canvases weren't serialized.
+        const qrs = w.document.querySelectorAll('.pa-qr');
+        let idx=0;
+        const preset = presetInfo(layoutSel.value);
+        const qrPx = toPx(preset.qrIn || 1);
+        const payloads = items.map(it => buildPayload(it, modeStudents.checked));
+        qrs.forEach(host => {
+          const holder = w.document.createElement('div');
+          holder.style.width = qrPx+'px'; holder.style.height = qrPx+'px';
+          host.appendChild(holder);
+          const payload = payloads[idx++] || '';
+          try { new w.QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: (w.QRCode && w.QRCode.CorrectLevel && w.QRCode.CorrectLevel.M) || 2 }); } catch {}
+        });
       };
-      window.addEventListener('afterprint', cleanup);
-      window.print();
+      // Load QR library inside print window
+      const lib = w.document.createElement('script');
+      lib.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      lib.onload = () => { tryInjectQR(); setTimeout(()=>{ w.focus(); w.print(); }, 100); };
+      w.document.head.appendChild(lib);
+      // Fallback: if library blocked, still allow printing (codes missing) after timeout
+      setTimeout(()=>{ if (!w.QRCode){ w.focus(); w.print(); } }, 1500);
+      // Close window after print (user can cancel)
+      w.addEventListener('afterprint', () => { try { w.close(); } catch {} });
     }
 
     // UI wiring

@@ -49,9 +49,10 @@
       <!-- Bulk add -->
       <section class="card">
         <h2 style="margin-top:0">Add members</h2>
-        <div class="rows-toolbar" style="margin-top:0">
+        <div class="rows-toolbar" style="margin-top:0; flex-wrap:wrap;">
           <button id="addRowBtn" class="btn" type="button" aria-label="Add another row">＋ Add row</button>
-          <span class="muted">Enter email + role, then Save.</span>
+          <button id="queueRowsBtn" class="btn" type="button" aria-label="Queue entered rows">Add member(s)</button>
+          <span class="muted">Add rows, click Add member(s), then Save changes to apply.</span>
           <button id="refreshBtn" class="btn" type="button">Refresh</button>
           <span id="ctx" class="muted" style="align-self:center"></span>
         </div>
@@ -210,7 +211,8 @@
     const refreshBtn = document.getElementById('refreshBtn');
     const bulkStatusEl = document.getElementById('bulkStatus');
     const ctxEl = document.getElementById('ctx');
-    const addRowBtn = document.getElementById('addRowBtn');
+  const addRowBtn = document.getElementById('addRowBtn');
+  const queueRowsBtn = document.getElementById('queueRowsBtn');
     const memberRowsEl = document.getElementById('memberRows');
     const saveBtn = document.getElementById('saveChanges');
     const dirtyStatusEl = document.getElementById('dirtyStatus');
@@ -345,7 +347,7 @@
       try { r.querySelector('.member-email')?.focus(); } catch {}
     }
 
-    function queueAdds(){
+    function queueAdds(clearRows=false){
       const rows = Array.from(memberRowsEl?.querySelectorAll('.member-row') || []);
       pendingAdds.length = 0;
       for (const n of rows){
@@ -354,6 +356,7 @@
         if (!email || !emailRe.test(email)) continue;
         pendingAdds.push({ email, role: (role==='admin'||role==='caller'||role==='viewer')?role:'admin' });
       }
+      if (clearRows) memberRowsEl.innerHTML = '';
       markDirty('__adds__', {role:'viewer'}, '__pending__'); // triggers count update only
       dirtyChanges.delete('__adds__'); // ensure not treated as actual role change
       const count = dirtyChanges.size + pendingAdds.length;
@@ -380,7 +383,8 @@
       const ctx = await resolveCtx();
       await loadMembers(ctx);
     });
-    addRowBtn?.addEventListener('click', () => { addMemberRow(); queueAdds(); });
+  addRowBtn?.addEventListener('click', () => { addMemberRow(); });
+  queueRowsBtn?.addEventListener('click', () => { queueAdds(true); addMemberRow(); });
 
     // ——— boot ———
     (async () => {
