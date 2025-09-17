@@ -1,0 +1,34 @@
+name: Deploy to Firebase Hosting (dev channel)
+
+on:
+  push:
+    branches:
+      - dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
+
+      - name: Show Firebase CLI version
+        run: firebase --version
+
+      - name: Deploy to Hosting channel 'dev'
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+        run: |
+          firebase hosting:channel:deploy dev --project dismissalcaller --non-interactive --json | tee deploy-output.json
+          echo "Preview URL(s):"
+          cat deploy-output.json | node -e "let i='';process.stdin.on('data',d=>i+=d).on('end',()=>{try{const o=JSON.parse(i);const u=o?.result?.hosting?.[0]?.details?.urls||[];console.log(u.join('\n')||'No URL found');}catch(e){console.error('Could not parse deploy output');}})"
