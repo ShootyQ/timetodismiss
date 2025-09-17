@@ -106,16 +106,22 @@ body.has-ticker #masterList{ padding-bottom:84px; }
 /* === Icon nav (new) === */
 .nav-icons .nav-icon{
   display:inline-flex; align-items:center; justify-content:center;
-  width:36px; height:36px; border-radius:10px;
-  border:1px solid #e5e7eb; background:#fff; color:#0b132b;
-  box-shadow: 0 2px 8px rgba(2,6,23,.04);
-  transition: transform .06s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease, opacity .2s ease;
+  width:40px; height:40px; border-radius:12px;
+  border:1px solid #e4e7ec; background:#fff; color:#0b132b;
+  box-shadow: 0 2px 6px rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06);
+  transition: transform .08s ease, box-shadow .25s ease, background-color .25s ease, border-color .25s ease, opacity .25s ease;
+  position:relative;
 }
-.nav-icons .nav-icon:hover{ background:#f8fafc; box-shadow:0 6px 18px -8px rgba(2,6,23,.16); transform: translateY(-1px); }
+.nav-icons .nav-icon:hover{ background:#f8fafc; box-shadow:0 8px 22px -10px rgba(2,6,23,.18); transform: translateY(-2px); }
 .nav-icons .nav-icon:active{ transform:translateY(0); box-shadow:0 2px 8px rgba(2,6,23,.08); }
 .nav-icons .nav-icon[aria-hidden="true"],
 .nav-icons .nav-icon.is-disabled{ opacity:.45; pointer-events:none; }
-.nav-icons .nav-icon .ic{ font-size:18px; line-height:1; }
+.nav-icons .nav-icon .ic{ line-height:1; display:block; }
+/* Active underline dot */
+.nav-icons .nav-icon.active::after,
+.nav-icons .nav-icon[aria-current="page"]::after{
+  content:""; position:absolute; bottom:-7px; left:50%; width:8px; height:8px; background:var(--accent); border-radius:50%; transform:translateX(-50%); box-shadow:0 0 0 3px rgba(37,99,235,.25);
+}
 
 /* === School selector (compact) === */
 .school-chip{ display:inline-flex; align-items:center; gap:8px; }
@@ -138,14 +144,26 @@ body.has-ticker #masterList{ padding-bottom:84px; }
 .avatar-btn:hover{ box-shadow:0 6px 18px -8px rgba(2,6,23,.18); }
 #userPhoto{ width:100%; height:100%; border-radius:999px; object-fit:cover; display:block; }
 .user-pop{
-  position:absolute; right:0; top:calc(100% + 8px);
-  background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-  box-shadow: 0 10px 30px rgba(2,6,23,.16);
-  padding:10px; min-width:240px; z-index:1000;
+  position:absolute; right:0; top:calc(100% + 10px);
+  background:#fff; border:1px solid #e4e7ec; border-radius:16px;
+  box-shadow: 0 20px 40px -16px rgba(2,6,23,.28), 0 4px 12px -4px rgba(2,6,23,.18);
+  padding:0; min-width:260px; z-index:1000; overflow:hidden;
 }
-.user-pop .user-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:6px 0; color:#334155; }
-.user-pop .label{ font-weight:700; color:#0b132b; }
-.user-pop .btn{ width:100%; margin-top:6px; }
+.user-pop-inner{ padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px; }
+.user-ident{ display:flex; flex-direction:column; gap:4px; }
+.user-email{ font-weight:700; font-size:.95rem; color:#0b132b; word-break: break-all; }
+.user-role{ font-size:.8rem; opacity:.75; font-weight:600; }
+.user-div{ border:0; height:1px; background:linear-gradient(to right,#e5e7eb,#f8fafc,#e5e7eb); margin:2px 0 4px; }
+.user-pop .btn{ width:100%; }
+.user-pop::before{ right:18px; top:-9px; width:16px; height:16px; }
+
+/* Improve role badge in popover */
+.user-pop .role-badge{ background:#f1f5f9; border:1px solid #e2e8f0; padding:.25rem .5rem; border-radius:8px; font-size:.7rem; letter-spacing:.04em; }
+
+/* Header breathing room */
+.header-inner{ padding:16px 0; }
+.site-header .nav-icons{ gap:12px; }
+.school-select{ min-width:240px; }
 /* small arrow */
 .user-pop::before{
   content:""; position:absolute; right:14px; top:-8px; width:14px; height:14px;

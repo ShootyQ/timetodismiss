@@ -97,10 +97,26 @@
           <div class="container header-inner">
             <a href="/index.html" class="brand" title="Home">Time To Dismiss</a>
             <nav class="nav nav-icons" aria-label="Primary">
-              <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes"><span class="ic">🎓</span></a>
-              <a href="/master.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller"><span class="ic">📣</span></a>
-              <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin"><span class="ic">⚙️</span></a>
-              <a href="/superintendent.html" class="nav-icon" data-requires="superintendent" aria-label="Superintendent" title="Superintendent"><span class="ic">🏫</span></a>
+              <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="ic" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 10.5 12 6l8 4.5-8 4.5-8-4.5Z"/><path d="M6 12v4l6 3 6-3v-4"/>
+                </svg>
+              </a>
+              <a href="/master.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="ic" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 11v2"/><path d="M3 9v6"/><path d="M7 8v8"/><path d="m13 8.5 5-2.5v11l-5-2.5H9a3 3 0 0 1-3-3 3 3 0 0 1 3-3h4Z"/>
+                </svg>
+              </a>
+              <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="ic" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 8.4 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 8.4a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H8a1.65 1.65 0 0 0 1-1.51V2a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V8c.74.3 1.27 1 1.27 1.82 0 .82-.53 1.52-1.27 1.82Z"/>
+                </svg>
+              </a>
+              <a href="/superintendent.html" class="nav-icon" data-requires="superintendent" aria-label="Superintendent" title="Superintendent">
+                <svg viewBox="0 0 24 24" aria-hidden="true" class="ic" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M9 21V9h6v12"/>
+                </svg>
+              </a>
             </nav>
             <div id="authBox" class="auth-inline">
               <div id="schoolBox" class="school-chip" style="display:none;">
@@ -116,9 +132,14 @@
                   <img id="userPhoto" alt="" />
                 </button>
                 <div id="userPop" class="user-pop" hidden>
-                  <div class="user-row"><span class="label">Signed in</span><span id="userEmail"></span></div>
-                  <div class="user-row"><span class="label">Role</span><span id="roleBadge" class="role-badge"></span></div>
-                  <button id="signOutBtn2" class="btn btn-sm w-100" type="button">Sign out</button>
+                  <div class="user-pop-inner">
+                    <div class="user-ident">
+                      <div class="user-email" id="userEmail"></div>
+                      <div class="user-role"><span id="roleBadge" class="role-badge"></span></div>
+                    </div>
+                    <hr class="user-div" />
+                    <button id="signOutBtn2" class="btn btn-sm w-100" type="button">Sign out</button>
+                  </div>
                 </div>
                 <button id="signOutBtn" class="btn btn--ghost" type="button" style="display:none;">Sign out</button>
               </div>
