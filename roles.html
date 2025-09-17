@@ -14,7 +14,7 @@
   <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
   <style>
     .wrap { max-width: 1024px; margin: 24px auto; padding: 12px; }
-    .grid { display:grid; gap:14px; grid-template-columns: 1fr 320px; align-items:start; }
+  .grid { display:grid; gap:14px; grid-template-columns: 1fr 320px; align-items:start; }
     .card { border:1px solid #e5e7eb; border-radius:14px; padding:14px; background:#fff; }
     .muted { color:#64748b; font-size:12px; }
     .input, textarea, select { width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:10px; }
@@ -22,11 +22,11 @@
     .btn { padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; }
     .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn[disabled] { opacity: .6; cursor:not-allowed; }
-    .row, .list-header { display:grid; grid-template-columns: 1fr 90px 90px 90px 90px; gap:10px; align-items:center; }
+  .row, .list-header { display:grid; grid-template-columns: 1fr 180px; gap:10px; align-items:center; }
     .row { padding:10px 12px; border-bottom:1px solid #f1f5f9; }
-    .list-header { padding:10px 12px; background:#f8fafc; font-weight:600; border:1px solid #e5e7eb; border-bottom:none; border-top-left-radius:14px; border-top-right-radius:14px; }
+  .list-header { padding:10px 12px; background:#f8fafc; font-weight:600; border:1px solid #e5e7eb; border-bottom:none; border-top-left-radius:14px; border-top-right-radius:14px; }
     .list { border:1px solid #e5e7eb; border-top:none; border-bottom-left-radius:14px; border-bottom-right-radius:14px; }
-    .role-cell { text-align:center; }
+  .role-cell { text-align:left; }
   .status { font-size:12px; white-space:pre-wrap; border:1px dashed #cbd5e1; border-radius:10px; padding:8px 10px; background:#f8fafc; }
   .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #e5e7eb; margin-left:6px; }
   /* Multi-row add */
@@ -49,30 +49,13 @@
       <!-- Bulk add -->
       <section class="card">
         <h2 style="margin-top:0">Add members</h2>
-        <label class="muted" for="bulk">Paste emails (one per line, or comma/space separated). Optional per-line role with comma:<br>
-          <code>person@example.com, caller</code> · roles: <code>viewer</code>, <code>caller</code>, <code>admin</code>
-        </label>
-        <textarea id="bulk" placeholder="jane@school.org
-john@school.org, caller
-lead@school.org, admin"></textarea>
-
-        <div style="display:flex; gap:10px; margin-top:10px">
-          <select id="bulkRole" class="input" style="max-width:220px" aria-label="Default role for pasted emails">
-            <option value="viewer">Viewer (default)</option>
-            <option value="caller">Caller</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button id="bulkAddBtn" class="btn primary">Add</button>
-          <button id="refreshBtn" class="btn">Refresh access</button>
+        <div class="rows-toolbar" style="margin-top:0">
+          <button id="addRowBtn" class="btn" type="button" aria-label="Add another row">＋ Add row</button>
+          <span class="muted">Enter email + role, then Save.</span>
+          <button id="refreshBtn" class="btn" type="button">Refresh</button>
           <span id="ctx" class="muted" style="align-self:center"></span>
         </div>
-
-        <div class="rows-toolbar">
-          <button id="addRowBtn" class="btn" type="button" aria-label="Add another row">＋ Add row</button>
-          <span class="muted">Or add by rows (defaults to Admin).</span>
-        </div>
-        <div id="memberRows" class="member-rows" aria-live="polite"></div>
-
+        <div id="memberRows" class="member-rows" aria-live="polite" style="margin-top:8px"></div>
         <div id="bulkStatus" class="status" style="margin-top:10px; display:none"></div>
       </section>
 
@@ -92,12 +75,13 @@ lead@school.org, admin"></textarea>
     <!-- Roster -->
     <div class="list-header">
       <div>User</div>
-      <div class="role-cell">Viewer</div>
-      <div class="role-cell">Caller</div>
-      <div class="role-cell">Admin</div>
-      <div class="role-cell">Remove</div>
+      <div class="role-cell">Role</div>
     </div>
     <div id="list" class="list"></div>
+    <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
+      <button id="saveChanges" class="btn primary" disabled>Save changes</button>
+      <span id="dirtyStatus" class="muted"></span>
+    </div>
   </main>
 
   <script type="module">
@@ -223,14 +207,13 @@ lead@school.org, admin"></textarea>
 
     // ——— elements ———
     const listEl = document.getElementById('list');
-    const bulkEl = document.getElementById('bulk');
-    const bulkRoleEl = document.getElementById('bulkRole');
-    const bulkAddBtn = document.getElementById('bulkAddBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const bulkStatusEl = document.getElementById('bulkStatus');
     const ctxEl = document.getElementById('ctx');
-  const addRowBtn = document.getElementById('addRowBtn');
-  const memberRowsEl = document.getElementById('memberRows');
+    const addRowBtn = document.getElementById('addRowBtn');
+    const memberRowsEl = document.getElementById('memberRows');
+    const saveBtn = document.getElementById('saveChanges');
+    const dirtyStatusEl = document.getElementById('dirtyStatus');
 
     // ——— context ———
     async function resolveCtx() {
@@ -245,6 +228,19 @@ lead@school.org, admin"></textarea>
     }
 
     // ——— roster UI ———
+    const dirtyChanges = new Map(); // memberId -> { member, newRole }
+    function markDirty(id, member, role){
+      const orig = roleFromMember(member);
+      if (role === orig) {
+        dirtyChanges.delete(id);
+      } else {
+        dirtyChanges.set(id, { member, newRole: role });
+      }
+      const count = dirtyChanges.size + (pendingAdds.length);
+      saveBtn.disabled = count === 0;
+      dirtyStatusEl.textContent = count ? `${count} change${count===1?'':'s'} not saved` : '';
+    }
+
     function renderRow(member, ctx) {
       const role = roleFromMember(member);
       const id = member.id || member.uid;
@@ -255,16 +251,19 @@ lead@school.org, admin"></textarea>
           <div>${escapeHtml(member.displayName || member.email || 'Unknown')}</div>
           <div class="muted">${escapeHtml(member.email || '')}</div>
         </div>
-        ${['viewer','caller','admin','none'].map(opt => `
-          <div class="role-cell">
-            <input type="radio" name="r-${id}" value="${opt}" ${role===opt ? 'checked' : ''}>
-          </div>`).join('')}
+        <div class="role-cell">
+          <select class="input role-select" data-id="${id}">
+            <option value="viewer" ${role==='viewer'?'selected':''}>Viewer</option>
+            <option value="caller" ${role==='caller'?'selected':''}>Caller</option>
+            <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+            <option value="none" ${role==='none'?'selected':''}>Remove</option>
+          </select>
+        </div>
       `;
-      row.querySelectorAll(`input[name="r-${id}"]`).forEach(input => {
-        input.addEventListener('change', async () => {
-          if (!input.checked) return;
-          await saveRole(ctx, member, input.value);
-        });
+      row.querySelector('.role-select')?.addEventListener('change', (e)=>{
+        const select = e.target;
+        const newRole = select.value;
+        markDirty(id, member, newRole);
       });
       return row;
     }
@@ -279,44 +278,39 @@ lead@school.org, admin"></textarea>
       members.forEach(m => listEl.appendChild(renderRow(m, ctx)));
     }
 
-    async function saveRole(ctx, member, roleChoice) {
+    async function persistChanges(ctx){
+      if (!dirtyChanges.size && pendingAdds.length===0) return;
+      saveBtn.disabled = true;
+      dirtyStatusEl.textContent = 'Saving…';
       const call = await httpsCallable('setSchoolMemberRoles');
-      const roles = (roleChoice === 'none') ? {} : roleToBools(roleChoice);
-      await call({
-        orgId: ctx.orgId,
-        schoolId: ctx.schoolId,
-        user: { uid: member.uid || member.id, email: member.email || null },
-        roles
-      });
+      let ok=0, fail=0;
+      // Adds
+      for (const entry of pendingAdds){
+        try {
+          await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { email: entry.email }, roles: roleToBools(entry.role) });
+          ok++;
+        } catch(e){ fail++; }
+      }
+      // Updates/removals
+      for (const { member, newRole } of dirtyChanges.values()){
+        try {
+          const roles = (newRole==='none') ? {} : roleToBools(newRole);
+          await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { uid: member.uid || member.id, email: member.email||null }, roles });
+          ok++;
+        } catch(e){ fail++; }
+      }
+      dirtyChanges.clear();
+      pendingAdds.length = 0;
       const a = await getAuth();
-      if (a.currentUser) await a.currentUser.getIdToken(true);
+      if (a.currentUser) try { await a.currentUser.getIdToken(true); } catch {}
       await loadMembers(ctx);
+      dirtyStatusEl.textContent = `Saved. OK: ${ok}${fail?`, Failed: ${fail}`:''}`;
+      saveBtn.disabled = true;
     }
 
     // ——— bulk add ———
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-    function parseBulk(text, defaultRole) {
-      const out = [];
-      const raw = (text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      for (const line of raw) {
-        // support comma or whitespace/semicolon separated emails on one line
-        const parts = line.split(/[,\t;]+/).map(s=>s.trim()).filter(Boolean);
-        // case A: "email, role"
-        if (parts.length >= 2 && emailRe.test(parts[0])) {
-          const role = String(parts[1]).toLowerCase();
-          const r = (role === 'admin' || role === 'caller' || role === 'viewer') ? role : defaultRole;
-          out.push({ email: parts[0].toLowerCase(), role: r });
-        } else {
-          // treat the whole line as a bag of emails
-          const emails = line.split(/[,\s;]+/).map(s=>s.trim()).filter(Boolean);
-          for (const e of emails) if (emailRe.test(e)) out.push({ email: e.toLowerCase(), role: defaultRole });
-        }
-      }
-      // dedupe by email (last wins)
-      const map = new Map();
-      for (const item of out) map.set(item.email, item);
-      return Array.from(map.values());
-    }
+    const pendingAdds = []; // {email, role}
 
     // Row-based add helpers
     function renderMemberRow(pref={}){
@@ -351,73 +345,20 @@ lead@school.org, admin"></textarea>
       try { r.querySelector('.member-email')?.focus(); } catch {}
     }
 
-    async function bulkAdd(ctx) {
-      const defaultRole = bulkRoleEl.value || 'viewer';
-      // Parse textarea + rows and merge (rows win)
-      const entriesFromPaste = parseBulk(bulkEl.value, defaultRole);
+    function queueAdds(){
       const rows = Array.from(memberRowsEl?.querySelectorAll('.member-row') || []);
-      const entriesFromRows = [];
+      pendingAdds.length = 0;
       for (const n of rows){
         const email = String(n.querySelector('.member-email')?.value || '').trim().toLowerCase();
         const role = String(n.querySelector('.member-role')?.value || 'admin').trim().toLowerCase();
-        if (!email) continue;
-        if (!emailRe.test(email)) continue;
-        const r = (role === 'admin' || role === 'caller' || role === 'viewer') ? role : 'admin';
-        entriesFromRows.push({ email, role: r });
+        if (!email || !emailRe.test(email)) continue;
+        pendingAdds.push({ email, role: (role==='admin'||role==='caller'||role==='viewer')?role:'admin' });
       }
-      const map = new Map();
-      for (const e of entriesFromPaste) map.set(e.email, e);
-      for (const e of entriesFromRows) map.set(e.email, e);
-      const entries = Array.from(map.values());
-      if (!entries.length) {
-        showStatus('Nothing to add. Enter rows or paste emails first.');
-        return;
-      }
-
-      bulkAddBtn.disabled = true;
-      showStatus(`Adding ${entries.length} member(s)…`);
-
-      const call = await httpsCallable('setSchoolMemberRoles');
-
-      // simple concurrency limiter
-      const limit = 5;
-      let idx = 0, ok = 0, fail = 0;
-      const results = [];
-
-      async function runOne(entry) {
-        try {
-          await call({
-            orgId: ctx.orgId,
-            schoolId: ctx.schoolId,
-            user: { email: entry.email },
-            roles: roleToBools(entry.role)
-          });
-          results.push(`✔ ${entry.email}  (${entry.role})`);
-          ok++;
-        } catch (e) {
-          results.push(`✖ ${entry.email}  (${entry.role})  — ${e?.message || e}`);
-          fail++;
-        } finally {
-          idx++;
-          showStatus(`Processed ${idx}/${entries.length}\n` + results.slice(-6).join('\n'));
-        }
-      }
-
-      const queue = entries.slice();
-      const workers = new Array(Math.min(limit, queue.length)).fill(0).map(async () => {
-        while (queue.length) await runOne(queue.shift());
-      });
-      await Promise.all(workers);
-
-      // refresh acting admin claims + list
-      const a = await getAuth();
-      if (a.currentUser) await a.currentUser.getIdToken(true);
-      await loadMembers(ctx);
-
-  showStatus(`Done. Added: ${ok}, Failed: ${fail}\n` + results.join('\n'));
-  bulkAddBtn.disabled = false;
-  if (memberRowsEl) memberRowsEl.innerHTML = '';
-  addMemberRow();
+      markDirty('__adds__', {role:'viewer'}, '__pending__'); // triggers count update only
+      dirtyChanges.delete('__adds__'); // ensure not treated as actual role change
+      const count = dirtyChanges.size + pendingAdds.length;
+      saveBtn.disabled = count===0;
+      dirtyStatusEl.textContent = count ? `${count} change${count===1?'':'s'} not saved` : '';
     }
 
     function showStatus(text) {
@@ -426,9 +367,12 @@ lead@school.org, admin"></textarea>
     }
 
     // ——— events ———
-    bulkAddBtn.addEventListener('click', async () => {
+    saveBtn.addEventListener('click', async () => {
       const ctx = await resolveCtx();
-      await bulkAdd(ctx);
+      queueAdds();
+      await persistChanges(ctx);
+      if (memberRowsEl) memberRowsEl.innerHTML='';
+      addMemberRow();
     });
     refreshBtn.addEventListener('click', async () => {
       const a = await getAuth();
@@ -436,7 +380,7 @@ lead@school.org, admin"></textarea>
       const ctx = await resolveCtx();
       await loadMembers(ctx);
     });
-  addRowBtn?.addEventListener('click', () => addMemberRow());
+    addRowBtn?.addEventListener('click', () => { addMemberRow(); queueAdds(); });
 
     // ——— boot ———
     (async () => {

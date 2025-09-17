@@ -433,7 +433,7 @@
       }
     }
 
-    function printNow(){
+    async function printNow(){
       const useStudents = modeStudents.checked;
       const all = getAllItems();
       const keys = new Set(selected);
@@ -454,9 +454,26 @@
 
       if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
 
-  buildPrintArea(items);
+      buildPrintArea(items);
       document.body.classList.add('printing');
       printArea.classList.remove('hidden');
+
+      // Allow layout & QR canvases to render before invoking print (prevents single-page-only issue)
+      const waitForRender = async () => {
+        const targetCodes = items.length; // each item gets one QR
+        // wait up to 1s for canvases/images (especially first time QR lib loads)
+        const start = performance.now();
+        while (performance.now() - start < 1000) {
+          const rendered = paPages.querySelectorAll('.pa-item canvas, .pa-item img').length;
+            if (rendered >= targetCodes) break;
+          await new Promise(r=>requestAnimationFrame(r));
+        }
+        // extra frame to flush layout
+        await new Promise(r=>requestAnimationFrame(r));
+      };
+      try { await waitForRender(); } catch {}
+      // Force reflow
+      void printArea.offsetHeight;
 
       const cleanup = () => {
         document.body.classList.remove('printing');
@@ -525,7 +542,7 @@
       grid.querySelectorAll('.qr-item input[type="checkbox"]').forEach(cb => cb.checked = false);
     });
 
-    btnPrint.addEventListener('click', printNow);
+  btnPrint.addEventListener('click', () => { try { printNow(); } catch(e){ console.error(e); } });
 
     // CSV helpers
     csvLoad.addEventListener('click', () => {
