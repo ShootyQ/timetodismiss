@@ -43,7 +43,7 @@
       <div class="actions-row" id="favActions" style="display:none;">
         <button id="favSelectAll" class="btn btn-secondary btn-sm" type="button">Select All</button>
         <button id="favClear" class="btn btn-outline btn-sm" type="button">Clear</button>
-        <button id="favInvert" class="btn btn-outline btn-sm" type="button">Invert</button>
+  <!-- Invert removed as requested -->
       </div>
       <div id="favClassesGrid" class="classes-grid" aria-label="Favorite classes list"></div>
       <div class="save-row">
@@ -53,8 +53,13 @@
     </section>
 
     <section class="pref-card" id="moreSoon">
-      <h2>More coming soon…</h2>
-      <p style="margin:0; font-size:.9rem; line-height:1.4; color:#475569;">Themes, layout, and notification options will appear here as we expand personalization.</p>
+      <h2>Sound Alert</h2>
+      <p style="margin:0 0 10px; font-size:.85rem; line-height:1.4; color:#475569;">Choose the sound that plays when a student is called (applies to this account on this device).</p>
+      <div id="soundList" role="radiogroup" aria-label="Call alert sound" style="display:grid; gap:8px; grid-template-columns:repeat(auto-fill,minmax(240px,1fr));"></div>
+      <div style="margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button id="saveSound" class="btn btn-primary btn-sm" type="button">Save Sound</button>
+        <div id="soundStatus" class="status-msg" aria-live="polite"></div>
+      </div>
     </section>
   </main>
 
@@ -65,7 +70,6 @@
     const grid = document.getElementById('favClassesGrid');
     const btnAll = document.getElementById('favSelectAll');
     const btnClr = document.getElementById('favClear');
-    const btnInv = document.getElementById('favInvert');
     const btnSave = document.getElementById('saveFavs');
     const statusEl = document.getElementById('saveStatus');
     const actionsRow = document.getElementById('favActions');
@@ -73,6 +77,50 @@
     const schoolWrap = document.getElementById('schoolSelectWrap');
     const schoolStatus = document.getElementById('schoolStatus');
     const emailBox = document.getElementById('userEmailBox');
+
+    // Sound preference elements
+    const soundList = document.getElementById('soundList');
+    const saveSoundBtn = document.getElementById('saveSound');
+    const soundStatus = document.getElementById('soundStatus');
+    const SOUND_OPTIONS = [
+      { file:'dingdingding.mp3', label:'Ding Ding Ding' },
+      { file:'catmewo.mp3', label:'Cat Meow' },
+      { file:'solidsnakealert.mp3', label:'Stealth Alert' },
+      { file:'videogamefail.mp3', label:'Retro Fail Chime' }
+    ];
+    function renderSoundOptions(current){
+      if (!soundList) return;
+      soundList.innerHTML = SOUND_OPTIONS.map(opt => {
+        const checked = current === opt.file ? 'checked' : '';
+        return `<label style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; cursor:pointer; font-size:.8rem; font-weight:600;">
+          <input type="radio" name="soundSel" value="${opt.file}" ${checked} />
+          <span style="flex:1 1 auto;">${opt.label}</span>
+          <button type="button" class="btn btn-xs btn-outline" data-sample="${opt.file}">Play</button>
+        </label>`;
+      }).join('');
+    }
+    function currentSound(){
+      const sel = soundList?.querySelector('input[name="soundSel"]:checked');
+      return sel ? sel.value : '';
+    }
+    soundList?.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-sample]');
+      if (!btn) return;
+      const f = btn.getAttribute('data-sample');
+      if (!f) return;
+      const a = new Audio(`/sounds/${f}`);
+      a.currentTime = 0; a.play().catch(()=>{});
+    });
+    saveSoundBtn?.addEventListener('click', async () => {
+      const file = currentSound();
+      if (!file){ soundStatus.textContent='Choose a sound first'; soundStatus.className='status-msg status-warn'; return; }
+      saveSoundBtn.disabled = true; soundStatus.textContent='Saving…'; soundStatus.className='status-msg';
+      const res = await setMyPrefs({ sound: file });
+      if (res.ok && res.localOnly){ soundStatus.textContent='Saved locally (offline)'; soundStatus.className='status-msg status-warn'; }
+      else if (res.ok){ soundStatus.textContent='Saved.'; soundStatus.className='status-msg status-ok'; }
+      else { soundStatus.textContent='Failed to save'; soundStatus.className='status-msg status-err'; }
+      saveSoundBtn.disabled = false;
+    });
 
     let currentSchoolId = null;
     let loading = false;
@@ -87,11 +135,10 @@
         emailBox.textContent = (claims.email || (window.firebase?.auth?.()?.currentUser?.email)) || '';
         const sids = Array.isArray(claims.schoolIds) ? claims.schoolIds.slice() : (claims.schoolId ? [claims.schoolId] : []);
         const orgIds = Array.isArray(claims.orgIds) ? claims.orgIds.slice() : (claims.orgId ? [claims.orgId] : []);
-        // Populate select if more than one school
         if (sids.length > 1) {
-          schoolSel.innerHTML = '';
-          sids.forEach(id => { const opt = document.createElement('option'); opt.value = id; opt.textContent = id; schoolSel.appendChild(opt); });
-          schoolWrap.style.display = 'flex';
+          schoolSel.innerHTML='';
+          sids.forEach(id => { const opt = document.createElement('option'); opt.value=id; opt.textContent=id; schoolSel.appendChild(opt); });
+          schoolWrap.style.display='flex';
           currentSchoolId = sids[0];
         } else {
           currentSchoolId = sids[0] || window.SD?.schoolId || null;
@@ -116,6 +163,11 @@
         }).join('');
         actionsRow.style.display='flex';
         if (prefs._local) setStatus('Loaded (local only)','status-warn'); else setStatus('Loaded.','status-ok');
+        // Load global sound preference once
+        try {
+          const gp = await getMyPrefs().catch(()=>({}));
+          renderSoundOptions(gp.sound || '');
+        } catch { renderSoundOptions(''); }
       } catch (e) {
         setStatus('Failed: '+(e.message||'error'),'status-err');
       } finally { loading=false; }
@@ -133,10 +185,6 @@
       const all = Array.from(grid.querySelectorAll('input[type="checkbox"]')).map(cb => cb.value); setSelection(all);
     });
     btnClr?.addEventListener('click', () => setSelection([]));
-    btnInv?.addEventListener('click', () => {
-      const all = Array.from(grid.querySelectorAll('input[type="checkbox"]'));
-      all.forEach(cb => { cb.checked = !cb.checked; });
-    });
 
     btnSave?.addEventListener('click', async () => {
       const favs = currentSelection();

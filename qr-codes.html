@@ -433,7 +433,7 @@
       }
     }
 
-    async function printNow(){
+    function printNow(printWin){
       const useStudents = modeStudents.checked;
       const all = getAllItems();
       const keys = new Set(selected);
@@ -452,7 +452,11 @@
         }
       }
 
-      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+      if (!items.length){
+        try { printWin?.close(); } catch {}
+        alert('Nothing to print. Select items or clear the filter.');
+        return;
+      }
 
       // Build printable markup in isolation to avoid any layout constraints.
       buildPrintArea(items);
@@ -485,11 +489,13 @@
       </head><body>${paPages.innerHTML}</body></html>`;
 
       // Open new window and let browser paginate content naturally.
-      const w = window.open('', '_blank', 'noopener,noreferrer');
+      const w = printWin;
       if (!w){ alert('Popup blocked. Allow popups to print labels.'); return; }
-      w.document.open();
-      w.document.write(html);
-      w.document.close();
+      try {
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+      } catch(e){ console.error('Print window write failed', e); }
 
       const tryInjectQR = () => {
         // For each .pa-qr placeholder, re-generate QR because canvases weren't serialized.
@@ -574,7 +580,14 @@
       grid.querySelectorAll('.qr-item input[type="checkbox"]').forEach(cb => cb.checked = false);
     });
 
-  btnPrint.addEventListener('click', () => { try { printNow(); } catch(e){ console.error(e); } });
+    btnPrint.addEventListener('click', () => {
+      // Open the window immediately on the trusted click event BEFORE any async/confirm work
+      const w = window.open('about:blank','qrprint','noopener,noreferrer');
+      if(!w){ alert('Popup blocked. Allow popups to print labels.'); return; }
+      // Temporary content to reassure user if building takes a moment
+      try { w.document.write('<!doctype html><title>Preparing…</title><body style="font:14px system-ui; padding:20px;">Preparing labels…</body>'); } catch {}
+      try { printNow(w); } catch(e){ console.error(e); try { w.close(); } catch{} }
+    });
 
     // CSV helpers
     csvLoad.addEventListener('click', () => {

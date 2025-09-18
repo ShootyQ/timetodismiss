@@ -584,6 +584,7 @@ export async function setSchoolUser(uid, payload = {}) {
 // Backward compat: accept legacy members/{uid}.prefs.favoriteClasses (school-agnostic)
 // Local fallback per school: key TTD_FAV_CLASSES_LOCAL__<schoolId>
 const LOCAL_PREF_KEY_PREFIX = 'TTD_FAV_CLASSES_LOCAL__';
+const LOCAL_SOUND_KEY = 'TTD_SOUND_PREF';
 
 function currentUser() {
   try { return (typeof auth !== 'undefined') ? auth.currentUser : null; } catch { return null; }
@@ -607,17 +608,28 @@ export async function getMyPrefs(schoolIdOverride) {
     } else if (Array.isArray(prefs.favoriteClasses)) { // legacy
       fav = prefs.favoriteClasses.filter(Boolean);
     }
-    return { favoriteClasses: fav };
+    let sound = '';
+    if (typeof prefs.sound === 'string' && prefs.sound.trim()) sound = prefs.sound.trim();
+    // Local fallback for sound (global, not per-school)
+    if (!sound) {
+      try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+    }
+    return { favoriteClasses: fav, sound };
   } catch (e) {
     try {
       const raw = localStorage.getItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'));
       if (raw) {
         const obj = JSON.parse(raw);
         const fav = Array.isArray(obj.favoriteClasses) ? obj.favoriteClasses.filter(Boolean) : [];
-        return { favoriteClasses: fav, _local: true };
+        // Sound fallback (stored separately)
+        let sound = '';
+        try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+        return { favoriteClasses: fav, sound, _local: true };
       }
     } catch {}
-    return { favoriteClasses: [], _error: true };
+    let sound = '';
+    try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+    return { favoriteClasses: [], sound, _error: true };
   }
 }
 
@@ -627,6 +639,7 @@ export async function setMyPrefs(patch = {}, schoolIdOverride) {
   if (!u) return { ok: false, reason: 'no-user' };
   const sid = schoolIdOverride || globalThis.SD?.schoolId;
   const fav = Array.isArray(patch.favoriteClasses) ? Array.from(new Set(patch.favoriteClasses.filter(Boolean))) : undefined;
+  const sound = (typeof patch.sound === 'string' && patch.sound.trim()) ? patch.sound.trim() : undefined;
   try {
     const ref = docPath('members', u.uid);
     const snap = await getDoc(ref).catch(()=>null);
@@ -642,13 +655,18 @@ export async function setMyPrefs(patch = {}, schoolIdOverride) {
       // No school context (edge) – store at legacy root for safety
       prevPrefs.favoriteClasses = fav;
     }
+    if (sound) {
+      prevPrefs.sound = sound; // global sound preference
+    }
     const nextPrefs = { ...prevPrefs, bySchool };
     await setDoc(ref, { prefs: nextPrefs }, { merge: true });
     try { localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav || [] })); } catch {}
+    if (sound) { try { localStorage.setItem(LOCAL_SOUND_KEY, sound); } catch {} }
     return { ok: true };
   } catch (e) {
     try {
       if (fav) localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav, _ts: Date.now() }));
+      if (sound) localStorage.setItem(LOCAL_SOUND_KEY, sound);
       return { ok: true, localOnly: true };
     } catch {}
     return { ok: false, reason: e?.message || 'fail' };

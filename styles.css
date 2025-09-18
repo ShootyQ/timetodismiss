@@ -205,7 +205,8 @@ body.has-ticker #masterList{ padding-bottom:84px; }
 
 /* ---------- Homepage (Hero / Features / How / Footer) ---------- */
 .hero{
-  padding: 90px 0 56px;
+  /* Reduced vertical space per request */
+  padding: 58px 0 40px;
   background:#ffffff;
   border-bottom:1px solid #f1f5f9;
 }
