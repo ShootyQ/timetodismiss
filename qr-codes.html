@@ -433,31 +433,13 @@
       }
     }
 
-    function printNow(printWin){
-      const useStudents = modeStudents.checked;
-      const all = getAllItems();
-      const keys = new Set(selected);
-      let items = [];
-
-      if (keys.size){
-        items = all.filter(it => keys.has(getKey(it, useStudents)));
-      } else {
-        const filtered = currentFilterList();
-        // If user has an active filter and filtered is subset of all, confirm scope
-        if ((q.value||'').trim() && filtered.length < all.length){
-          const goFiltered = confirm(`Print only the ${filtered.length} filtered items?\nChoose Cancel to print all ${all.length}.`);
-          items = goFiltered ? filtered : all;
-        } else {
-          items = all; // default: print everything
-        }
-      }
-
-      if (!items.length){
+    function printNow(printWin, items){
+      if (!Array.isArray(items) || !items.length){
         try { printWin?.close(); } catch {}
         alert('Nothing to print. Select items or clear the filter.');
         return;
       }
-
+      const useStudents = modeStudents.checked;
       // Build printable markup in isolation to avoid any layout constraints.
       buildPrintArea(items);
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR Codes</title>
@@ -581,12 +563,35 @@
     });
 
     btnPrint.addEventListener('click', () => {
-      // Open the window immediately on the trusted click event BEFORE any async/confirm work
-      const w = window.open('about:blank','qrprint','noopener,noreferrer');
-      if(!w){ alert('Popup blocked. Allow popups to print labels.'); return; }
-      // Temporary content to reassure user if building takes a moment
+      // Determine items FIRST (with confirm if needed) while still in user gesture
+      const useStudents = modeStudents.checked;
+      const all = getAllItems();
+      const keys = new Set(selected);
+      let items = [];
+      if (keys.size){
+        items = all.filter(it => keys.has(getKey(it, useStudents)));
+      } else {
+        const filtered = currentFilterList();
+        if ((q.value||'').trim() && filtered.length < all.length){
+          const msg = `Print only the ${filtered.length} filtered items?\nChoose Cancel to print all ${all.length}.`;
+            if (confirm(msg)) items = filtered; else items = all;
+        } else {
+          items = all;
+        }
+      }
+      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+      // Open the window immediately after decisions
+      let w = window.open('about:blank','qrprint');
+      if(!w){
+        // Fallback: build hidden iframe and use its print (no popup required)
+        const iframe = document.createElement('iframe');
+        iframe.style.position='fixed'; iframe.style.width='0'; iframe.style.height='0'; iframe.style.opacity='0'; iframe.style.pointerEvents='none';
+        document.body.appendChild(iframe);
+        try { printNow(iframe.contentWindow, items); } catch(e){ console.error(e); }
+        return;
+      }
       try { w.document.write('<!doctype html><title>Preparing…</title><body style="font:14px system-ui; padding:20px;">Preparing labels…</body>'); } catch {}
-      try { printNow(w); } catch(e){ console.error(e); try { w.close(); } catch{} }
+      try { printNow(w, items); } catch(e){ console.error(e); try { w.close(); } catch{} }
     });
 
     // CSV helpers
