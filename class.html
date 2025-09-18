@@ -504,8 +504,8 @@
         const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
         const isPending = enrouteTimers.has(s.id);
         const actionHtml = isPending
-          ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button>`
-          : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button>`;
+          ? `<button class=\"btn btn-outline btn-xs\" data-act=\"cancel-enroute\" data-id=\"${s.id}\">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`
+          : `<button class=\"btn btn-secondary btn-xs\" data-act=\"enroute\" data-id=\"${s.id}\">En Route</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`;
         const barHtml = isPending
           ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
           : '';
