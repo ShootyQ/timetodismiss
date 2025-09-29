@@ -450,19 +450,39 @@
           renderBody();
         }, (err) => { console.error('[students] listener error:', err); });
       } else if (e === 'classes'){
-        let triedOrder = false;
-        try {
-          const qyOrd = query(colPath('classes'), orderBy('order','asc'));
-          unsub = onSnapshot(qyOrd, (snap) => {
-            rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-            renderBody();
-          });
-          triedOrder = true;
-        } catch (e2){ console.warn('[classes] order query failed, fallback to name', e2?.message||e2); }
-        if (!triedOrder){
-          const qyNm = query(colPath('classes'), orderBy('name','asc'));
-          unsub = onSnapshot(qyNm, (snap) => { rows = snap.docs.map(d=>({ id:d.id, ...d.data() })); renderBody(); });
-        }
+        // Prefer explicit numeric order, but gracefully fallback if index/permission/other error.
+        const startOrderListener = () => {
+          try {
+            const qyOrd = query(colPath('classes'), orderBy('order','asc'));
+            unsub = onSnapshot(qyOrd, (snap) => {
+              rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+              // If empty but we previously had data, keep previous until fallback? For now just render.
+              renderBody();
+              // If we got zero docs AND no order field likely exists, we still show empty; a timeout below triggers fallback.
+            }, (err) => {
+              console.warn('[classes] order listener runtime error; falling back to name ordering:', err?.message||err);
+              startNameListener();
+            });
+            // Safety fallback: if after a short delay no rows populated but we suspect existing classes from cached list
+            setTimeout(() => { if (rows.length === 0) {
+              try { startNameListener(); } catch {}
+            } }, 2000);
+          } catch (e2){
+            console.warn('[classes] order query failed synchronously, fallback to name', e2?.message||e2);
+            startNameListener();
+          }
+        };
+        const startNameListener = () => {
+          try {
+            const qyNm = query(colPath('classes'), orderBy('name','asc'));
+            try { unsub(); } catch {}
+            unsub = onSnapshot(qyNm, (snap) => {
+              rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+              renderBody();
+            }, (err2) => console.error('[classes] name listener error:', err2));
+          } catch (e3){ console.error('[classes] name fallback failed:', e3?.message||e3); }
+        };
+        startOrderListener();
       } else {
         unsub = onCarGroups((list) => { rows = list; renderBody(); });
       }
@@ -496,7 +516,12 @@
         { value: '', label: 'All classes' },
         ...classes
           .slice()
-          .sort((a,b) => (a.name||a.id||'').localeCompare(b.name||b.id||''))
+          .sort((a,b) => {
+            const ao = (typeof a.order === 'number') ? a.order : 999999;
+            const bo = (typeof b.order === 'number') ? b.order : 999999;
+            if (ao !== bo) return ao - bo;
+            return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+          })
           .map(c => ({ value: String(c.id), label: String(c.name || c.id) }))
       ];
       classSel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
@@ -835,14 +860,19 @@
         } else if (ent === 'classes'){
           const keyEl = document.getElementById('classKey');
           const nameEl = document.getElementById('className');
+          const orderEl = document.getElementById('classOrder');
           const key  = (keyEl?.value||'').trim();
           const name = (nameEl?.value||'').trim();
+          const orderRaw = (orderEl?.value||'').trim();
           if (!key) return setToast('Class ID is required.', true);
           const payload = { id: key, name: name || key, title: name || key, updatedAt: serverTimestamp() };
+          if (orderRaw !== ''){
+            const ord = parseInt(orderRaw,10);
+            if (!isNaN(ord)) payload.order = ord;
+          }
           if (editingId){
             await setDoc(docPath('classes', editingId), payload, { merge: true });
             setToast('Class updated.');
-            // Re-enable ID for future adds and exit edit
             try { keyEl?.removeAttribute('disabled'); } catch {}
             exitEditMode();
           } else {
