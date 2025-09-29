@@ -601,18 +601,21 @@
   // Load class list and build picker (compat path under orgs/{org}/schools/{school}/classes)
   await awaitClaimsReady();
       let classes = [];
-      try {
-        classes = await fetchClassesCompat();
-      } catch (e) {
+      try { classes = await fetchClassesCompat(); }
+      catch (e) {
         console.error('[TTD] Failed to load classes via compat path:', e);
-        // Fallback to app.js helper if available
         try { classes = await getClasses(); } catch {}
       }
-      const byId = new Map(classes.map(c => [c.id, c]));
+      const orderedClasses = classes.slice().sort((a,b) => {
+        const ao = (typeof a.order === 'number') ? a.order : 999999;
+        const bo = (typeof b.order === 'number') ? b.order : 999999;
+        if (ao !== bo) return ao - bo;
+        return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+      });
+      const byId = new Map(orderedClasses.map(c => [c.id, c]));
 
-  // Render compact checkbox chips
-      const sorted = [...classes].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-      chipsEl.innerHTML = sorted.map(c => `
+      // Render compact checkbox chips respecting explicit order
+      chipsEl.innerHTML = orderedClasses.map(c => `
         <label class="chip"><input type="checkbox" value="${c.id}" /> <span>${c.name || c.id}</span></label>
       `).join('');
 
@@ -646,9 +649,7 @@
             }
           }
         } catch {}
-        if (!initial.size) {
-          classes.forEach(c => initial.add(c.id));
-        }
+        if (!initial.size) { orderedClasses.forEach(c => initial.add(c.id)); }
       }
 
       // Start with no classes checked in the UI; we'll apply initial after building controls
@@ -848,11 +849,9 @@
         }
         ids.forEach(id => subscribeClass(id));
 
-        const ordered = ids
-          .map(id => ({ id, name: byId.get(id)?.name || id }))
-          .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-        ordered.forEach(({id}) => {
-          const sec = sections.get(id)?.root;
+        orderedClasses.forEach(c => {
+          if (!ids.includes(c.id)) return;
+          const sec = sections.get(c.id)?.root;
           if (sec) host.appendChild(sec);
         });
         // Ensure the global section stays at the very top when visible
@@ -885,9 +884,9 @@
           })();
         }
       });
-      btnAll.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+  btnAll.addEventListener('click', () => setSelection(orderedClasses.map(c => c.id)));
       btnClr.addEventListener('click', () => setSelection([]));
-      sheetAll?.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+  sheetAll?.addEventListener('click', () => setSelection(orderedClasses.map(c => c.id)));
       sheetClr?.addEventListener('click', () => setSelection([]));
       sheetDone?.addEventListener('click', () => {
         chipSheet?.classList.remove('open');
