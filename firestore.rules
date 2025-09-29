@@ -48,6 +48,15 @@ service cloud.firestore {
              request.resource.data.updatedAt == request.time;
     }
 
+    // Allow a teacher (not necessarily caller/admin) to update ONLY preferredName or callSound (plus updatedAt)
+    // if the student is in one of the teacher's assigned classes listed in the member doc.
+    function isTeacherForStudent(orgId, schoolId) {
+      // Fetch the teacher's membership doc once; if missing fields, deny.
+      return isAuthed() &&
+             get(/databases/$(database)/documents/orgs/$(orgId)/schools/$(schoolId)/members/$(request.auth.uid)).data.teacher.classIds.hasAny([resource.data.classId]) &&
+             request.resource.data.diff(resource.data).changedKeys().hasOnly(['preferredName','callSound','updatedAt']);
+    }
+
     // ───────────── Orgs & Schools ─────────────
     match /orgs/{orgId} {
       // Owner can always see; others must be scoped to the org
@@ -88,7 +97,8 @@ service cloud.firestore {
         // STUDENTS
         match /students/{studentId} {
           allow get, list: if isAuthed() && inSchool(orgId, schoolId);
-          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute());
+          // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
+          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId));
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
         }
 

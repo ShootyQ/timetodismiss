@@ -299,7 +299,7 @@
       } catch (e){ console.warn('[prefs] loadTeacherStudents failed', e); }
     }
 
-    async function saveTeacherOverrides(){
+  async function saveTeacherOverrides(){
       const host = document.getElementById('teacherStudents');
       const status = document.getElementById('teacherSaveStatus');
       if (!host || !status) return;
@@ -312,6 +312,7 @@
         const orgId = window.SD?.orgId; const schoolId = currentSchoolId;
         if (!orgId || !schoolId) throw new Error('Missing context');
         const patches = [];
+        const updated = [];
         inputs.forEach(inp => {
           const id = inp.getAttribute('data-stu-pref');
           if (!id) return;
@@ -323,13 +324,21 @@
           // Maintain legacy name logic: if preferred set and different, keep original name as fallback
           const original = base.name || '';
           const payload = { updatedAt: serverTimestamp() };
-          if (prefName){ payload.preferredName = prefName; } else { payload.preferredName = ''; }
-          if (sound){ payload.callSound = sound; } else { payload.callSound = FieldValue ? undefined : ''; }
+          // Always write preferredName (empty string clears it)
+          payload.preferredName = prefName;
+          // Always write callSound; empty clears it
+          payload.callSound = sound;
           // Keep display name synergy via existing board logic (board reads preferredName)
           patches.push({ ref, payload });
+          updated.push({ id, preferredName: prefName, callSound: sound });
         });
         // Batch naive (sequential to avoid import writeBatch overhead here)
         for (const p of patches){ await setDoc(p.ref, p.payload, { merge:true }); }
+        // Refresh local cache so UI stays sticky after reload
+        updated.forEach(u => {
+          const idx = teacherStudentCache.findIndex(s => s.id === u.id);
+            if (idx >= 0) teacherStudentCache[idx] = { ...teacherStudentCache[idx], preferredName: u.preferredName, callSound: u.callSound };
+        });
         status.textContent='Saved.'; status.className='status-msg status-ok';
       } catch (e){ status.textContent='Save failed: '+(e.message||'error'); status.className='status-msg status-err'; }
     }
