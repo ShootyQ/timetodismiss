@@ -47,6 +47,22 @@
   .nowrap{ white-space:nowrap; }
   .mono-small{ font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.7rem; letter-spacing:.5px; }
   .col-group{ display:flex; flex-wrap:wrap; gap:8px; }
+  /* Inline modal (dialog mimic) */
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,.55); backdrop-filter:saturate(140%) blur(2px); display:none; align-items:flex-start; justify-content:center; padding:5vh 20px; z-index:400; overflow:auto; }
+  .modal-backdrop.show{ display:flex; animation:fadeIn .18s ease; }
+  .modal-panel{ background:#fff; border-radius:16px; width:100%; max-width:880px; padding:24px 26px 30px; box-shadow:0 10px 28px -6px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.05); position:relative; }
+  .modal-panel h2{ margin-top:0; font-size:1.35rem; }
+  .modal-close{ position:absolute; top:10px; right:10px; border:none; background:transparent; font-size:1.2rem; cursor:pointer; line-height:1; padding:4px 8px; border-radius:8px; }
+  .modal-close:hover{ background:#f1f5f9; }
+  .btn-danger{ background:#dc2626; color:#fff; }
+  .btn-danger:hover{ background:#b91c1c; color:#fff; }
+  .del-confirm-wrap{ display:flex; gap:6px; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:translateY(0);} }
+  .edit-grid{ display:grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap:14px 16px; margin:6px 0 4px; }
+  .edit-grid .field{ margin:0; }
+  .modal-actions{ display:flex; gap:10px; margin-top:18px; align-items:center; }
+  .separator-line{ height:1px; background:#e5e7eb; margin:18px 0 12px; }
+  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
   </style>
 </head>
 <body class="sd-body">
@@ -91,6 +107,22 @@
       </div>
     </section>
   </main>
+
+  <!-- Student Edit Modal -->
+  <div id="studentEditModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="studentEditTitle" aria-hidden="true">
+    <div class="modal-panel" role="document">
+      <button class="modal-close" type="button" aria-label="Close" data-edit-close>&times;</button>
+      <h2 id="studentEditTitle">Edit Student</h2>
+      <form id="studentEditForm" novalidate>
+        <div id="studentEditFields" class="edit-grid"></div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="studentSaveBtn">Save</button>
+          <button type="button" class="btn btn-ghost" data-edit-close>Cancel</button>
+          <span class="small" id="editHint">Update the student details then Save.</span>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script type="module">
   import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=21';
@@ -463,40 +495,50 @@
       renderBody();
     });
 
+    // --- Delete + Edit (modal) handlers ---
     tbody.addEventListener('click', async (e) => {
-      const del = e.target.closest('button[data-del]');
-      const edt = e.target.closest('button[data-edit]');
       const ent = entitySel.value;
-      if (del){
-        const id = del.getAttribute('data-del');
+      const confirmBtn = e.target.closest('button[data-del-confirm]');
+      const cancelBtn  = e.target.closest('button[data-del-cancel]');
+      if (confirmBtn){
+        const id = confirmBtn.getAttribute('data-del-confirm');
         if (!id) return;
-        if (!confirm(`Delete ${ent.slice(0,-1)} “${id}”?`)) return;
-        try{
+        try {
           if (ent === 'students') await deleteDoc(docPath('students', id));
           else if (ent === 'classes') await deleteDoc(docPath('classes', id));
           else await deleteDoc(docPath('carGroups', id));
           setToast('Deleted.');
-        } catch (err){ console.error(err); setToast('Delete failed: ' + (err?.message||'Unknown'), true); }
+        } catch(err){ console.error(err); setToast('Delete failed: ' + (err?.message||'Unknown'), true); }
         return;
       }
-  if (edt){
+      if (cancelBtn){
+        // Restore original action buttons
+        const cell = cancelBtn.closest('.actions');
+        const id = cancelBtn.getAttribute('data-del-cancel');
+        if (cell && id){
+          cell.innerHTML = `<button class="btn btn-sm" data-edit="${id}">Edit</button><button class="btn btn-sm btn-outline" data-del="${id}">Delete</button>`;
+        }
+        return;
+      }
+      const del = e.target.closest('button[data-del]');
+      if (del){
+        const id = del.getAttribute('data-del');
+        if (!id) return;
+        // Swap to confirmation UI
+        const cell = del.closest('.actions');
+        if (cell){
+          cell.innerHTML = `<div class="del-confirm-wrap"><button class="btn btn-sm btn-danger" data-del-confirm="${id}">Confirm</button><button class="btn btn-sm btn-ghost" data-del-cancel="${id}">Cancel</button></div>`;
+        }
+        return;
+      }
+      const edt = e.target.closest('button[data-edit]');
+      if (edt){
         const id = edt.getAttribute('data-edit');
         if (!id) return;
-        try{
+        try {
           if (ent === 'students'){
-            const snap = await getDoc(docPath('students', id));
-            if (!snap.exists()) { setToast('Student not found', true); return; }
-            editingId = id;
-            renderForm();
-            const d = snap.data() || {};
-            document.getElementById('firstName').value      = d.firstName || '';
-            document.getElementById('lastName').value       = d.lastName || '';
-            document.getElementById('preferredName').value  = d.preferredName || '';
-            document.getElementById('studentId').value      = d.id || '';
-            document.getElementById('classId').value        = d.classId || '';
-            document.getElementById('carTag').value         = (d.carTag || d.tag || '').toString().toUpperCase();
-            document.getElementById('busId').value          = d.busId || '';
-            document.getElementById('laneId').value         = d.laneId || '';
+            openStudentEdit(id);
+            return; // handled by modal
           } else if (ent === 'classes'){
             const snap = await getDoc(docPath('classes', id));
             if (!snap.exists()) { setToast('Class not found', true); return; }
@@ -505,6 +547,8 @@
             const d = snap.data() || {};
             document.getElementById('classKey').value  = id;
             document.getElementById('className').value = d.name || d.title || '';
+            try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+            setToast('Editing class…');
           } else { // families
             const snap = await getDoc(docPath('carGroups', id));
             if (!snap.exists()) { setToast('Family not found', true); return; }
@@ -514,11 +558,89 @@
             document.getElementById('famId').value   = id;
             document.getElementById('famName').value = d.name || '';
             document.getElementById('famTags').value = (d.tags||[]).join(' ');
+            try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+            setToast('Editing family…');
           }
-          try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
-          setToast('Editing…');
-        } catch (err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+        } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
       }
+    });
+
+    // ---- Student Edit Modal Logic ----
+    const studentEditModal = document.getElementById('studentEditModal');
+    const studentEditForm  = document.getElementById('studentEditForm');
+    const studentEditFields= document.getElementById('studentEditFields');
+    let activeEditStudentId = null;
+    let lastFocusEl = null;
+
+    function buildStudentField(label, id, value='', placeholder='', extra=''){
+      return `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${escapeHtml(value)}" ${extra} placeholder="${escapeHtml(placeholder)}" /></div>`;
+    }
+    function buildStudentSelect(label, id, value=''){
+      return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${getClassOptionsHtml(value)}</select></div>`;
+    }
+    async function openStudentEdit(id){
+      lastFocusEl = document.activeElement;
+      activeEditStudentId = id;
+      setToast('Loading…');
+      try {
+        const snap = await getDoc(docPath('students', id));
+        if (!snap.exists()){ setToast('Student not found', true); return; }
+        const d = snap.data() || {};
+        // Ensure classes available for select
+        if (!classes || classes.length === 0){ try { await refreshClasses(); } catch {} }
+        studentEditFields.innerHTML = `
+          ${buildStudentField('First Name','edit_firstName', d.firstName||'', 'e.g., Maria')}
+          ${buildStudentField('Last Name','edit_lastName', d.lastName||'', 'e.g., Lopez')}
+          ${buildStudentField('Preferred Name (optional)','edit_preferredName', d.preferredName||'', 'e.g., Mimi')}
+          ${buildStudentField('Student ID','edit_studentId', d.id||'', '')}
+          ${buildStudentSelect('Class','edit_classId', d.classId||'')}
+          ${buildStudentField('Car Tag','edit_carTag', (d.carTag||d.tag||'').toString().toUpperCase(), 'A12')}
+          ${buildStudentField('Bus ID','edit_busId', d.busId||'', '27')}
+          ${buildStudentField('Lane ID','edit_laneId', d.laneId||'', 'N1')}
+        `;
+        showStudentModal();
+        try { document.getElementById('edit_firstName')?.focus(); } catch {}
+        setToast('Editing…');
+      } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+    }
+    function showStudentModal(){
+      studentEditModal.classList.add('show');
+      studentEditModal.removeAttribute('aria-hidden');
+      document.body.style.overflow = 'hidden';
+      // basic focus trap
+      document.addEventListener('keydown', escHandler);
+    }
+    function closeStudentModal(){
+      studentEditModal.classList.remove('show');
+      studentEditModal.setAttribute('aria-hidden','true');
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', escHandler);
+      activeEditStudentId = null;
+      try { lastFocusEl?.focus(); } catch {}
+    }
+    function escHandler(ev){ if (ev.key === 'Escape'){ closeStudentModal(); } }
+    studentEditModal.addEventListener('click', (ev) => { if (ev.target === studentEditModal) closeStudentModal(); });
+    studentEditModal.querySelectorAll('[data-edit-close]').forEach(btn => btn.addEventListener('click', () => closeStudentModal()));
+    studentEditForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!activeEditStudentId) return;
+      try {
+        const firstName     = (document.getElementById('edit_firstName')?.value||'').trim();
+        const lastName      = (document.getElementById('edit_lastName')?.value||'').trim();
+        const preferredName = (document.getElementById('edit_preferredName')?.value||'').trim();
+        const idVal         = (document.getElementById('edit_studentId')?.value||'').trim();
+        const classId       = (document.getElementById('edit_classId')?.value||'').trim();
+        const carTag        = (document.getElementById('edit_carTag')?.value||'').trim().toUpperCase();
+        const busId         = (document.getElementById('edit_busId')?.value||'').trim();
+        const laneId        = (document.getElementById('edit_laneId')?.value||'').trim();
+        if (!firstName && !preferredName) return setToast('First or Preferred name required.', true);
+        if (!classId) return setToast('Class is required.', true);
+        const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+        const payload = { firstName, lastName, preferredName, name: legacyName, id: idVal, classId, carTag, busId, laneId, updatedAt: serverTimestamp() };
+        await setDoc(docPath('students', activeEditStudentId), payload, { merge:true });
+        setToast('Student updated.');
+        closeStudentModal();
+      } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
     });
 
     form.addEventListener('submit', async (e) => {
