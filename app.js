@@ -24,6 +24,8 @@ export async function init() {
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-279958XEND"
   };
+  // Make accessible for diagnostics (roles.html debug panel, etc.)
+  try { if (!window.firebaseConfig) window.firebaseConfig = firebaseConfig; } catch {}
 
   // Reuse existing app if compat (site-header.js) already initialized it
   try {

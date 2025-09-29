@@ -84,6 +84,10 @@
       <button id="saveChanges" class="btn primary" disabled>Save changes</button>
       <span id="dirtyStatus" class="muted"></span>
     </div>
+    <details id="debugPanel" style="margin-top:18px;">
+      <summary style="cursor:pointer;">Debug Info</summary>
+      <pre id="debugInfo" style="background:#f1f5f9; padding:10px; border-radius:10px; max-height:240px; overflow:auto; font-size:11px; line-height:1.3;"></pre>
+    </details>
   </main>
 
   <script type="module">
@@ -149,7 +153,7 @@
       if (!(isCompatReady()) && !(await hasModularApp())) await ensureApp();
       if (isCompatReady()) return window.firebase.auth();
       if (!authMod) {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js');
+  const m = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js');
         authMod = m.getAuth();
       }
       return authMod;
@@ -164,10 +168,10 @@
         };
       }
       if (!functionsMod) {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-functions.js');
+  const m = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
         functionsMod = m.getFunctions();
       }
-      const { httpsCallable: call } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-functions.js');
+  const { httpsCallable: call } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
       return (data) => call(functionsMod, name)(data).then(r => r.data);
     }
     async function currentUser() {
@@ -181,7 +185,7 @@
         const t = await u.getIdTokenResult(force);
         return t.claims || {};
       } else {
-        const { getIdTokenResult } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js');
+  const { getIdTokenResult } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js');
         const t = await getIdTokenResult(u, force);
         return t.claims || {};
       }
@@ -192,6 +196,23 @@
       if (claims.role && String(claims.role).toLowerCase() === 'admin') return true;
       if (claims.roles && (claims.roles.admin === true || (Array.isArray(claims.roles) && claims.roles.includes('admin')))) return true;
       return false;
+    }
+    async function updateDebug(claims, ctx){
+      try {
+        const u = await currentUser();
+        const info = {
+          build: '2025-09-08-ROLES3',
+          origin: location.origin,
+          projectId: (window.firebaseConfig && window.firebaseConfig.projectId) || 'dismissalcaller',
+          ctx,
+          user: u ? { uid: u.uid, email: u.email } : null,
+          claims,
+          classesCacheCount: classesCache.length,
+          hasSetTeacherClassesCallable: typeof (await httpsCallable('setTeacherClasses')) === 'function'
+        };
+        const el = document.getElementById('debugInfo');
+        if (el) el.textContent = JSON.stringify(info, null, 2);
+      } catch (e){ /* ignore */ }
     }
     const roleToBools = (role) => {
       role = String(role || 'viewer').toLowerCase();
@@ -358,20 +379,63 @@
       const call = await httpsCallable('setSchoolMemberRoles');
       const classCall = await httpsCallable('setTeacherClasses');
       let ok=0, fail=0;
+      let roleCallableFailed = false;
       // Adds
       for (const entry of pendingAdds){
         try {
+          if (roleCallableFailed) throw new Error('skip-callable');
           await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { email: entry.email }, roles: roleToBools(entry.role) });
           ok++;
-        } catch(e){ fail++; }
+        } catch(e){
+          console.warn('[roles] add via callable failed; attempting direct Firestore write', e?.message||e);
+          roleCallableFailed = true;
+          try {
+            const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const rolesObj = roleToBools(entry.role);
+            const tmpUserId = `pending_${entry.email}`; // temporary id until user signs in; will be replaced by real uid later
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', tmpUserId);
+            await setDoc(ref, {
+              scope: 'school',
+              uid: tmpUserId,
+              email: entry.email,
+              roles: rolesObj,
+              status: 'active',
+              updatedAt: serverTimestamp(),
+              createdAt: serverTimestamp()
+            }, { merge: true });
+            ok++;
+          } catch(fe){ console.warn('[roles] direct add write failed', fe); fail++; }
+        }
       }
       // Updates/removals
       for (const { member, newRole } of dirtyChanges.values()){
         try {
           const roles = (newRole==='none') ? {} : roleToBools(newRole);
+          if (roleCallableFailed) throw new Error('skip-callable');
           await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { uid: member.uid || member.id, email: member.email||null }, roles });
           ok++;
-        } catch(e){ fail++; }
+        } catch(e){
+          console.warn('[roles] role change callable failed; attempting direct Firestore write', e?.message||e);
+          roleCallableFailed = true;
+          try {
+            const { getFirestore, doc, setDoc, serverTimestamp, deleteField } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const id = member.uid || member.id;
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', id);
+            const roles = (newRole==='none') ? {} : roleToBools(newRole);
+            const status = (newRole==='none') ? 'removed' : 'active';
+            await setDoc(ref, {
+              scope: 'school',
+              uid: id,
+              email: member.email || '',
+              roles,
+              status,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+            ok++;
+          } catch(fe){ console.warn('[roles] direct role write failed', fe); fail++; }
+        }
       }
       // Class assignments
       for (const [memberId, classIds] of teacherClassChanges.entries()){
@@ -381,22 +445,18 @@
           ok++;
         } catch(e){
           console.warn('[roles] class assignment failed', memberId, e);
-          // Fallback: if function not found (not yet deployed), attempt direct Firestore write (admin-only rules allow)
-          let fallbackTried = false;
+          let fallbackSuccess = false;
           try {
-            const msg = (e && (e.code||e.message||'')).toString().toLowerCase();
-            if (/not[- ]found/.test(msg) || /unimplemented/.test(msg)) {
-              const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-              const db = getFirestore();
-              const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', memberId);
-              await setDoc(ref, { teacher: { classIds: classIds.slice() }, updatedAt: serverTimestamp() }, { merge: true });
-              console.log('[roles] fallback direct Firestore write succeeded for', memberId);
-              ok++;
-              fallbackTried = true;
-            }
+            // Try direct Firestore write regardless of error type (covers CORS / internal / not-found)
+            const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', memberId);
+            await setDoc(ref, { teacher: { classIds: classIds.slice() }, updatedAt: serverTimestamp() }, { merge: true });
+            console.log('[roles] fallback direct Firestore write succeeded for', memberId);
+            ok++;
+            fallbackSuccess = true;
           } catch(fe){ console.warn('[roles] fallback Firestore write failed', fe); }
-          if (!fallbackTried) fail++;
-          // Surface error details in status element for quick diagnosis
+          if (!fallbackSuccess) fail++;
           const errTxt = (e && (e.message || e.code)) ? (e.code? e.code+': ':'') + e.message : String(e);
           dirtyStatusEl.textContent = `Last error saving classes for ${memberId}: ${errTxt}`;
         }
@@ -519,6 +579,7 @@
       ctxEl.textContent = `Org: ${ctx.orgId} • School: ${(window.SD && window.SD.schoolName) || ctx.schoolId}`;
       await loadMembers(ctx);
       addMemberRow();
+      try { const claims = await getClaims(); await updateDebug(claims, ctx); } catch {}
     })();
 
     // Live-update banner when user switches school
@@ -527,6 +588,7 @@
       if (!d.orgId || !d.schoolId) return;
       ctxEl.textContent = `Org: ${d.orgId} • School: ${d.schoolName || d.schoolId}`;
       await loadMembers({ orgId: d.orgId, schoolId: d.schoolId });
+      try { const claims = await getClaims(); await updateDebug(claims, { orgId: d.orgId, schoolId: d.schoolId }); } catch {}
     });
   </script>
 </body>
