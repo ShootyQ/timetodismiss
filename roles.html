@@ -22,7 +22,7 @@
     .btn { padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; }
     .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn[disabled] { opacity: .6; cursor:not-allowed; }
-  .row, .list-header { display:grid; grid-template-columns: 1fr 180px; gap:10px; align-items:center; }
+  .row, .list-header { display:grid; grid-template-columns: 1fr 180px 260px; gap:10px; align-items:center; }
     .row { padding:10px 12px; border-bottom:1px solid #f1f5f9; }
   .list-header { padding:10px 12px; background:#f8fafc; font-weight:600; border:1px solid #e5e7eb; border-bottom:none; border-top-left-radius:14px; border-top-right-radius:14px; }
     .list { border:1px solid #e5e7eb; border-top:none; border-bottom-left-radius:14px; border-bottom-right-radius:14px; }
@@ -77,6 +77,7 @@
     <div class="list-header">
       <div>User</div>
       <div class="role-cell">Role</div>
+      <div>Classes</div>
     </div>
     <div id="list" class="list"></div>
     <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
@@ -231,16 +232,38 @@
 
     // ——— roster UI ———
     const dirtyChanges = new Map(); // memberId -> { member, newRole }
+    let classesCache = [];
+    const teacherClassChanges = new Map(); // memberId -> [classIds]
+    function updateDirtyStatus(){
+      const total = dirtyChanges.size + pendingAdds.length + teacherClassChanges.size;
+      saveBtn.disabled = total === 0;
+      dirtyStatusEl.textContent = total ? `${total} change${total===1?'':'s'} not saved` : '';
+    }
     function markDirty(id, member, role){
       const orig = roleFromMember(member);
-      if (role === orig) {
-        dirtyChanges.delete(id);
-      } else {
-        dirtyChanges.set(id, { member, newRole: role });
-      }
-      const count = dirtyChanges.size + (pendingAdds.length);
-      saveBtn.disabled = count === 0;
-      dirtyStatusEl.textContent = count ? `${count} change${count===1?'':'s'} not saved` : '';
+      if (role === orig) dirtyChanges.delete(id); else dirtyChanges.set(id, { member, newRole: role });
+      updateDirtyStatus();
+    }
+    function markClassDirty(id, member, classIds){
+      teacherClassChanges.set(id, classIds);
+      updateDirtyStatus();
+    }
+    async function loadClasses(ctx){
+      try {
+        const call = await httpsCallable('listSchoolClasses');
+        const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
+        classesCache = (res?.classes||[]).slice().sort((a,b)=>{
+          const ao = (typeof a.order==='number')?a.order:999999;
+          const bo = (typeof b.order==='number')?b.order:999999;
+            if (ao!==bo) return ao-bo;
+          return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+        });
+      } catch (e){ console.warn('[roles] failed to load classes', e); classesCache = []; }
+    }
+    function renderClassSelect(member){
+      const assigned = Array.isArray(member.classIds)?member.classIds:[];
+      const opts = classesCache.map(c=>`<option value="${escapeHtml(c.id)}"${assigned.includes(c.id)?' selected':''}>${escapeHtml(c.name||c.id)}</option>`).join('');
+      return `<select multiple data-class-select="${escapeHtml(member.id||member.uid)}" size="${Math.min(6,Math.max(3,classesCache.length))}" style="width:100%; padding:6px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:12px;">${opts}</select><div class=\"muted\" style=\"margin-top:4px; font-size:11px;\">Ctrl/Cmd+Click to multi-select.</div>`;
     }
 
     function renderRow(member, ctx) {
@@ -261,16 +284,25 @@
             <option value="none" ${role==='none'?'selected':''}>Remove</option>
           </select>
         </div>
+        <div>${renderClassSelect(member)}</div>
       `;
       row.querySelector('.role-select')?.addEventListener('change', (e)=>{
         const select = e.target;
         const newRole = select.value;
         markDirty(id, member, newRole);
       });
+      const clsSelect = row.querySelector('[data-class-select]');
+      if (clsSelect){
+        clsSelect.addEventListener('change', ()=>{
+          const chosen = Array.from(clsSelect.selectedOptions).map(o=>o.value);
+          markClassDirty(id, member, chosen);
+        });
+      }
       return row;
     }
 
     async function loadMembers(ctx) {
+      if (!classesCache.length) await loadClasses(ctx);
       const call = await httpsCallable('listSchoolMembers');
   const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
   const members = (res?.members || []).sort((a,b)=>
@@ -281,10 +313,11 @@
     }
 
     async function persistChanges(ctx){
-      if (!dirtyChanges.size && pendingAdds.length===0) return;
+      if (!dirtyChanges.size && pendingAdds.length===0 && teacherClassChanges.size===0) return;
       saveBtn.disabled = true;
       dirtyStatusEl.textContent = 'Saving…';
       const call = await httpsCallable('setSchoolMemberRoles');
+      const classCall = await httpsCallable('setTeacherClasses');
       let ok=0, fail=0;
       // Adds
       for (const entry of pendingAdds){
@@ -301,8 +334,16 @@
           ok++;
         } catch(e){ fail++; }
       }
+      // Class assignments
+      for (const [memberId, classIds] of teacherClassChanges.entries()){
+        try {
+          await classCall({ orgId: ctx.orgId, schoolId: ctx.schoolId, memberId, classIds });
+          ok++;
+        } catch(e){ console.warn('[roles] class assignment failed', e); fail++; }
+      }
       dirtyChanges.clear();
       pendingAdds.length = 0;
+      teacherClassChanges.clear();
       const a = await getAuth();
       if (a.currentUser) try { await a.currentUser.getIdToken(true); } catch {}
       await loadMembers(ctx);

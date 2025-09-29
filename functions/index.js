@@ -453,6 +453,56 @@ async function computeClaims(uid, email) {
     return { ok: true, members };
   });
 
+  // List classes for a school (ordered) — lightweight read used by roles UI
+  exports.listSchoolClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const { orgId, schoolId } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+    const claims = req.auth.token || {};
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin or higher required.');
+    const col = db.collection(`orgs/${orgId}/schools/${schoolId}/classes`);
+    let docs = [];
+    try {
+      const snap = await col.orderBy('order','asc').get();
+      docs = snap.docs;
+    } catch (e){
+      // fallback name
+      try { const snap2 = await col.orderBy('name','asc').get(); docs = snap2.docs; }
+      catch { const snap3 = await col.get(); docs = snap3.docs; }
+    }
+    const classes = docs.map(d => {
+      const data = d.data() || {};
+      const out = { id: d.id, name: data.name || data.title || d.id };
+      if (typeof data.order === 'number') out.order = data.order;
+      return out;
+    }).sort((a,b)=>{
+      const ao = (typeof a.order==='number')?a.order:999999;
+      const bo = (typeof b.order==='number')?b.order:999999;
+      if (ao!==bo) return ao-bo;
+      return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+    });
+    return { ok: true, classes };
+  });
+
+  // Assign classes to a teacher/member
+  // Stores at members/{uid}.teacher.classIds (array)
+  exports.setTeacherClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const { orgId, schoolId, memberId, classIds } = req.data || {};
+    if (!orgId || !schoolId || !memberId) throw new HttpsError('invalid-argument', 'orgId, schoolId, memberId required.');
+    if (classIds && !Array.isArray(classIds)) throw new HttpsError('invalid-argument', 'classIds must be array.');
+    const claims = req.auth.token || {};
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin or higher required.');
+    const ref = db.doc(`orgs/${orgId}/schools/${schoolId}/members/${memberId}`);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Member not found.');
+    const clean = (classIds||[]).map(c=>String(c||'').trim()).filter(Boolean);
+    await ref.set({ teacher: { classIds: clean }, updatedAt: ts() }, { merge: true });
+    return { ok: true, classIds: clean };
+  });
+
   // Invite then set initial role (writes members/; claims applied immediately)
   exports.inviteUser = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
     assertAuthed(req);
