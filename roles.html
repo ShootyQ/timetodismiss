@@ -323,12 +323,34 @@
       );
       listEl.innerHTML = '';
       members.forEach(m => listEl.appendChild(renderRow(m, ctx)));
+      // Fallback: if no member has classIds populated (possibly functions not yet deployed), try direct Firestore fetch
+      const anyWith = members.some(m => Array.isArray(m.classIds) && m.classIds.length);
+      if (!anyWith) {
+        try {
+          const { getFirestore, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const db = getFirestore();
+          await Promise.all(members.map(async (m) => {
+            const mid = m.uid || m.id; if (!mid) return;
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', mid);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              const data = snap.data() || {};
+              if (Array.isArray(data?.teacher?.classIds) && data.teacher.classIds.length){
+                m.classIds = data.teacher.classIds.filter(Boolean);
+              }
+            }
+          }));
+          // Re-render class selects with updated assignments
+          listEl.innerHTML='';
+          members.forEach(m => listEl.appendChild(renderRow(m, ctx)));
+        } catch (e){ console.warn('[roles] teacher class fallback fetch failed', e); }
+      }
     }
 
     async function persistChanges(ctx){
       if (!dirtyChanges.size && pendingAdds.length===0 && teacherClassChanges.size===0) return;
       saveBtn.disabled = true;
-      dirtyStatusEl.textContent = 'Saving…';
+      dirtyStatusEl.textContent = `Saving… (roles ${dirtyChanges.size}, adds ${pendingAdds.length}, class sets ${teacherClassChanges.size})`;
       const call = await httpsCallable('setSchoolMemberRoles');
       const classCall = await httpsCallable('setTeacherClasses');
       let ok=0, fail=0;
