@@ -245,7 +245,11 @@
       updateDirtyStatus();
     }
     function markClassDirty(id, member, classIds){
-      teacherClassChanges.set(id, classIds);
+      // Avoid marking dirty if nothing changed compared to current member.classIds
+      const prev = Array.isArray(member.classIds) ? member.classIds.slice().sort() : [];
+      const next = classIds.slice().sort();
+      const same = prev.length === next.length && prev.every((v,i)=>v===next[i]);
+      if (same) teacherClassChanges.delete(id); else teacherClassChanges.set(id, classIds);
       updateDirtyStatus();
     }
     async function loadClasses(ctx){
@@ -372,7 +376,8 @@
       // Class assignments
       for (const [memberId, classIds] of teacherClassChanges.entries()){
         try {
-          await classCall({ orgId: ctx.orgId, schoolId: ctx.schoolId, memberId, classIds });
+          const resp = await classCall({ orgId: ctx.orgId, schoolId: ctx.schoolId, memberId, classIds });
+          console.log('[roles] setTeacherClasses ok', memberId, resp);
           ok++;
         } catch(e){ console.warn('[roles] class assignment failed', e); fail++; }
       }
@@ -383,6 +388,10 @@
       if (a.currentUser) try { await a.currentUser.getIdToken(true); } catch {}
       await loadMembers(ctx);
       dirtyStatusEl.textContent = `Saved. OK: ${ok}${fail?`, Failed: ${fail}`:''}`;
+      if (!fail) {
+        dirtyStatusEl.classList.add('status-ok');
+        setTimeout(()=>dirtyStatusEl.classList.remove('status-ok'), 2500);
+      }
       saveBtn.disabled = true;
     }
 
