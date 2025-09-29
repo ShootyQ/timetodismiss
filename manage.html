@@ -16,8 +16,8 @@
     .title-actions{ display:flex; align-items:center; gap:8px; }
     .toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
     .toolbar input, .toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
-    .grid2{ display:grid; grid-template-columns: 1.5fr .8fr; gap:14px; }
-    @media (max-width: 900px){ .grid2{ grid-template-columns: 1fr; } }
+    /* Layout: form now full width above table */
+    .stack{ display:flex; flex-direction:column; gap:16px; }
     .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; }
   .table{ width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
     .table th, .table td{ padding:.6rem .75rem; text-align:left; }
@@ -35,12 +35,18 @@
   /* Multi-add rows */
   .rows-toolbar{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; }
   .student-rows{ display:flex; flex-direction:column; gap:10px; }
-  .student-row{ display:grid; grid-template-columns: 1.4fr .9fr 1fr .8fr auto; gap:10px; align-items:end; }
+  .student-row{ display:grid; grid-template-columns: 1fr 1fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr auto; gap:10px; align-items:end; }
   .student-row .field{ margin:0; }
   .row-actions{ display:flex; align-items:center; gap:6px; padding-bottom:6px; }
-  @media (max-width: 1100px){ .student-row{ grid-template-columns: 1fr 1fr; } .student-row .row-actions{ grid-column: 1 / -1; } }
+  @media (max-width: 1400px){ .student-row{ grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr; } }
+  @media (max-width: 1100px){ .student-row{ grid-template-columns: 1fr 1fr 1fr; } }
+  @media (max-width: 800px){ .student-row{ grid-template-columns: 1fr 1fr; } }
   .field input, .field select{ width:100%; min-width:0; }
   #tenantInfo{ margin-left:8px; color: var(--muted); }
+  .grid-scroll{ overflow:auto; }
+  .nowrap{ white-space:nowrap; }
+  .mono-small{ font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.7rem; letter-spacing:.5px; }
+  .col-group{ display:flex; flex-wrap:wrap; gap:8px; }
   </style>
 </head>
 <body class="sd-body">
@@ -67,16 +73,9 @@
   <span id="toast" class="small ml-auto"></span>
     </section>
 
-    <section class="grid2">
-      <div class="card">
-        <table class="table" aria-label="Roster list">
-          <thead><tr id="thead"></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-
+    <section class="stack">
       <form id="addForm" class="card" aria-labelledby="add-h">
-  <h2 id="add-h" class="page-title t-sm-title">Add</h2>
+        <h2 id="add-h" class="page-title t-sm-title">Add</h2>
         <div id="formFields"></div>
         <div class="actions">
           <button id="addBtn" type="submit" class="btn btn-primary">Add</button>
@@ -84,6 +83,12 @@
         </div>
         <p class="small" id="hint">Select an entity to add items to your roster.</p>
       </form>
+      <div class="card grid-scroll">
+        <table class="table" aria-label="Roster list">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
@@ -149,7 +154,7 @@
   let classFilter = '';
 
     const headersMap = {
-      students: ['Name','ID','Class','Tag',''],
+      students: ['Preferred / Name','ID','Class','Tag','Bus','Lane','Updated',''],
       classes:  ['Class ID','Name',''],
       families: ['Family ID','Name','Tags','']
     };
@@ -193,17 +198,21 @@
       list.forEach(r => {
         const tr = document.createElement('tr');
         if (e === 'students'){
-          const tag = r.carTag || '';
-          tr.innerHTML = `
-            <td>${escapeHtml(r.name||'')}</td>
-            <td>${escapeHtml(r.studentId||'')}</td>
-            <td>${escapeHtml(resolveClassName(r.classId)||r.classId||'')}</td>
-            <td>${escapeHtml(tag||'')}</td>
-            <td class="actions">
-              <button class="btn btn-sm" data-edit="${r._docId}">Edit</button>
-              <button class="btn btn-sm btn-outline" data-del="${r._docId}">Delete</button>
-            </td>
-          `;
+            const tag = r.carTag || '';
+            const display = r.displayName || r.name || '';
+            tr.innerHTML = `
+              <td>${escapeHtml(display)}</td>
+              <td class="mono-small">${escapeHtml(r.studentId||'')}</td>
+              <td>${escapeHtml(resolveClassName(r.classId)||r.classId||'')}</td>
+              <td>${escapeHtml(tag||'')}</td>
+              <td class="mono-small">${escapeHtml(r.busId||'')}</td>
+              <td class="mono-small">${escapeHtml(r.laneId||'')}</td>
+              <td class="mono-small">${escapeHtml(r._updated||'')}</td>
+              <td class="actions">
+                <button class="btn btn-sm" data-edit="${r._docId}">Edit</button>
+                <button class="btn btn-sm btn-outline" data-del="${r._docId}">Delete</button>
+              </td>
+            `;
         } else if (e === 'classes'){
           tr.innerHTML = `
             <td>${escapeHtml(r.id)}</td>
@@ -235,35 +244,38 @@
       if (e === 'students'){
         const classOpts = classes.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name||c.id)}</option>`).join('');
         if (editingId){
-          // Single-row edit mode: use a single Name field (we primarily store 'name')
+          // Edit mode: structured fields
           formFields.innerHTML = `
-            <div class="field"><label for="nameFull">Name</label><input id="nameFull" autocomplete="name" required /></div>
-            <div class="field"><label for="studentId">Student ID (optional)</label><input id="studentId" inputmode="text" /></div>
-            <div class="field"><label for="classId">Class</label><select id="classId">${classOpts}</select></div>
-            <div class="field"><label for="carTag">Car Tag</label><input id="carTag" placeholder="e.g., A12" /></div>
+            <div class="col-group">
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="firstName">First Name</label><input id="firstName" autocomplete="given-name" /></div>
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="lastName">Last Name</label><input id="lastName" autocomplete="family-name" /></div>
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="preferredName">Preferred Name (optional)</label><input id="preferredName" autocomplete="nickname" /></div>
+              <div class="field" style="flex:0 1 140px; min-width:120px;"><label for="studentId">Student ID</label><input id="studentId" inputmode="text" /></div>
+              <div class="field" style="flex:0 1 160px; min-width:140px;"><label for="classId">Class</label><select id="classId">${classOpts}</select></div>
+              <div class="field" style="flex:0 1 140px; min-width:120px;"><label for="carTag">Car Tag</label><input id="carTag" placeholder="e.g., A12" /></div>
+              <div class="field" style="flex:0 1 120px; min-width:110px;"><label for="busId">Bus ID</label><input id="busId" placeholder="e.g., 27" /></div>
+              <div class="field" style="flex:0 1 120px; min-width:110px;"><label for="laneId">Lane ID</label><input id="laneId" placeholder="e.g., N1" /></div>
+            </div>
           `;
-          document.getElementById('nameFull')?.focus();
+          document.getElementById('firstName')?.focus();
           titleEl.textContent = 'Edit Student';
-          // Keep the primary button labeled "Add" per request; do not change to Save/Update
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
           document.getElementById('hint').textContent = 'Edit details, then submit.';
         } else {
-          // Multi-add mode: Name + (optional) ID, Class, Tag rows
+          // Multi-add mode with structured fields per row
           formFields.innerHTML = `
             <div class="rows-toolbar">
               <button id="addRowBtn" type="button" class="btn btn-outline btn-sm" aria-label="Add another row">＋ Add row</button>
-              <span class="small">Add multiple students at once. Name and Class are required per row.</span>
+              <span class="small">Add multiple students. First & Class required. Preferred overrides display.</span>
             </div>
             <div id="studentRows" class="student-rows" aria-live="polite"></div>
           `;
-          // Seed with one empty row
           try { addStudentRow(); } catch {}
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
           document.getElementById('hint').textContent = 'Adds one or more students with status set to waiting.';
-          // Wire row add/remove
           const addRowBtn = document.getElementById('addRowBtn');
           addRowBtn?.addEventListener('click', () => addStudentRow());
         }
@@ -330,17 +342,21 @@
       row.className = 'student-row';
       row.setAttribute('data-idx', String(idx));
       row.innerHTML = `
-        <div class="field"><label for="name_${idx}">Name</label><input id="name_${idx}" name="name" autocomplete="name" value="${escapeHtml(pref.name||'')}" /></div>
+        <div class="field"><label for="firstName_${idx}">First</label><input id="firstName_${idx}" name="firstName" autocomplete="given-name" value="${escapeHtml(pref.firstName||'')}" /></div>
+        <div class="field"><label for="lastName_${idx}">Last</label><input id="lastName_${idx}" name="lastName" autocomplete="family-name" value="${escapeHtml(pref.lastName||'')}" /></div>
+        <div class="field"><label for="preferredName_${idx}">Preferred</label><input id="preferredName_${idx}" name="preferredName" autocomplete="nickname" value="${escapeHtml(pref.preferredName||'')}" /></div>
         <div class="field"><label for="studentId_${idx}">Student ID</label><input id="studentId_${idx}" name="studentId" inputmode="text" value="${escapeHtml(pref.id||'')}" /></div>
         <div class="field"><label for="classId_${idx}">Class</label><select id="classId_${idx}" name="classId">${getClassOptionsHtml(pref.classId||'')}</select></div>
         <div class="field"><label for="carTag_${idx}">Car Tag</label><input id="carTag_${idx}" name="carTag" placeholder="e.g., A12" value="${escapeHtml((pref.carTag||'').toString().toUpperCase())}" /></div>
+        <div class="field"><label for="busId_${idx}">Bus</label><input id="busId_${idx}" name="busId" placeholder="e.g., 27" value="${escapeHtml(pref.busId||'')}" /></div>
+        <div class="field"><label for="laneId_${idx}">Lane</label><input id="laneId_${idx}" name="laneId" placeholder="e.g., N1" value="${escapeHtml(pref.laneId||'')}" /></div>
         <div class="row-actions">
           <button type="button" class="btn btn-ghost btn-sm remove-row" aria-label="Remove row">Remove</button>
         </div>
       `;
       rowsHost.appendChild(row);
       // Focus first field of the new row
-      try { row.querySelector('input[name="name"]').focus(); } catch {}
+      try { row.querySelector('input[name="firstName"]').focus(); } catch {}
       // Delegate remove
       row.querySelector('.remove-row')?.addEventListener('click', () => {
         rowsHost.removeChild(row);
@@ -365,12 +381,30 @@
         unsub = onSnapshot(qy, (snap) => {
           rows = snap.docs.map(d => {
             const data = d.data() || {};
+            const first = data.firstName || '';
+            const last = data.lastName || '';
+            const pref = data.preferredName || '';
+            const composite = pref || (first || last ? (first + (last?(' ' + last):'')) : (data.name||''));
+            let updatedIso = '';
+            try {
+              let ts = null;
+              if (data.updatedAt?.toDate) ts = data.updatedAt.toDate();
+              else if (data.updatedAt?.toMillis) ts = new Date(data.updatedAt.toMillis());
+              if (ts) updatedIso = ts.toLocaleDateString(undefined,{month:'numeric',day:'numeric'}) + ' ' + ts.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+            } catch {}
             return {
               _docId: d.id,
               name: data.name || '',
+              firstName: first,
+              lastName: last,
+              preferredName: pref,
+              displayName: composite,
               studentId: data.id || '',
               classId: data.classId || '',
-              carTag: (data.carTag || data.tag || '').toString().toUpperCase()
+              carTag: (data.carTag || data.tag || '').toString().toUpperCase(),
+              busId: data.busId || '',
+              laneId: data.laneId || '',
+              _updated: updatedIso
             };
           });
           renderBody();
@@ -455,10 +489,14 @@
             editingId = id;
             renderForm();
             const d = snap.data() || {};
-    document.getElementById('nameFull').value = d.name || [d.lastName, d.firstName].filter(Boolean).join(', ');
-    document.getElementById('studentId').value = d.id || '';
-            document.getElementById('classId').value   = d.classId || '';
-            document.getElementById('carTag').value    = (d.carTag || d.tag || '').toString().toUpperCase();
+            document.getElementById('firstName').value      = d.firstName || '';
+            document.getElementById('lastName').value       = d.lastName || '';
+            document.getElementById('preferredName').value  = d.preferredName || '';
+            document.getElementById('studentId').value      = d.id || '';
+            document.getElementById('classId').value        = d.classId || '';
+            document.getElementById('carTag').value         = (d.carTag || d.tag || '').toString().toUpperCase();
+            document.getElementById('busId').value          = d.busId || '';
+            document.getElementById('laneId').value         = d.laneId || '';
           } else if (ent === 'classes'){
             const snap = await getDoc(docPath('classes', id));
             if (!snap.exists()) { setToast('Class not found', true); return; }
@@ -490,20 +528,27 @@
         if (ent === 'students'){
           const rowsHost = document.getElementById('studentRows');
           if (editingId || !rowsHost){
-            // Single-row path (edit mode or legacy single form)
-            const name = (document.getElementById('nameFull')?.value||'').trim();
-            const id   = (document.getElementById('studentId')?.value||'').trim();
-            const classId = (document.getElementById('classId')?.value||'').trim();
-            const carTag  = (document.getElementById('carTag')?.value||'').trim().toUpperCase();
-            if (!name) return setToast('Name is required.', true);
+            // Single-row path (edit mode)
+            const firstName    = (document.getElementById('firstName')?.value||'').trim();
+            const lastName     = (document.getElementById('lastName')?.value||'').trim();
+            const preferredName= (document.getElementById('preferredName')?.value||'').trim();
+            const idVal        = (document.getElementById('studentId')?.value||'').trim();
+            const classId      = (document.getElementById('classId')?.value||'').trim();
+            const carTag       = (document.getElementById('carTag')?.value||'').trim().toUpperCase();
+            const busId        = (document.getElementById('busId')?.value||'').trim();
+            const laneId       = (document.getElementById('laneId')?.value||'').trim();
+            if (!firstName && !preferredName) return setToast('First or Preferred name required.', true);
             if (!classId) return setToast('Class is required.', true);
+            // Maintain legacy 'name' for now (preferred > first+last)
+            const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+            const payload = { firstName, lastName, preferredName, name: legacyName, id: idVal, classId, carTag, busId, laneId, updatedAt: serverTimestamp() };
             if (editingId){
-              const payload = { name, id, classId, carTag, updatedAt: serverTimestamp() };
               await setDoc(docPath('students', editingId), payload, { merge: true });
               setToast('Student updated.');
               exitEditMode();
             } else {
-              const payload = { name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+              payload.status = 'waiting';
+              payload.createdAt = serverTimestamp();
               await addDoc(colPath('students'), payload);
               setToast('Student added.');
               form.reset();
@@ -514,16 +559,21 @@
             const rows = Array.from(rowsHost.querySelectorAll('.student-row'));
             const toCreate = [];
             for (const row of rows){
-              const name      = (row.querySelector('input[name="name"]')?.value||'').trim();
+              const firstName      = (row.querySelector('input[name="firstName"]')?.value||'').trim();
+              const lastName       = (row.querySelector('input[name="lastName"]')?.value||'').trim();
+              const preferredName  = (row.querySelector('input[name="preferredName"]')?.value||'').trim();
               const id        = (row.querySelector('input[name="studentId"]')?.value||'').trim();
               const classId   = (row.querySelector('select[name="classId"]')?.value||'').trim();
               const carTag    = (row.querySelector('input[name="carTag"]')?.value||'').trim().toUpperCase();
+              const busId     = (row.querySelector('input[name="busId"]')?.value||'').trim();
+              const laneId    = (row.querySelector('input[name="laneId"]')?.value||'').trim();
               // Skip completely empty rows
-              const hasAny = name || id || classId || carTag;
+              const hasAny = firstName || preferredName || id || classId || carTag || lastName || busId || laneId;
               if (!hasAny) continue;
-              if (!name) return setToast('Name is required for each filled row.', true);
+              if (!firstName && !preferredName) return setToast('Name (First or Preferred) required each row.', true);
               if (!classId) return setToast('Class is required for each filled row.', true);
-              toCreate.push({ name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+              const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+              toCreate.push({ firstName, lastName, preferredName, name: legacyName, id, classId, carTag, busId, laneId, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
             }
             if (toCreate.length === 0){ setToast('Nothing to add. Fill at least one row.', true); return; }
             await Promise.all(toCreate.map(p => addDoc(colPath('students'), p)));
