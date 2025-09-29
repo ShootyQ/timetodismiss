@@ -249,16 +249,29 @@
       updateDirtyStatus();
     }
     async function loadClasses(ctx){
+      classesCache = [];
+      let loaded = false;
       try {
         const call = await httpsCallable('listSchoolClasses');
         const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
-        classesCache = (res?.classes||[]).slice().sort((a,b)=>{
-          const ao = (typeof a.order==='number')?a.order:999999;
-          const bo = (typeof b.order==='number')?b.order:999999;
-            if (ao!==bo) return ao-bo;
-          return (a.name||a.id||'').localeCompare(b.name||b.id||'');
-        });
-      } catch (e){ console.warn('[roles] failed to load classes', e); classesCache = []; }
+        if (res && Array.isArray(res.classes) && res.classes.length){
+          classesCache = res.classes;
+          loaded = true;
+        }
+      } catch (e){ console.warn('[roles] listSchoolClasses callable not available yet or failed:', e?.message||e); }
+      if (!loaded){
+        // Fallback to client helper getClasses()
+        try {
+          const mod = await import('/app.js?v=21');
+          if (typeof mod.getClasses === 'function') {
+            classesCache = await mod.getClasses();
+            loaded = true;
+          }
+        } catch (e2){ console.warn('[roles] fallback getClasses() failed', e2?.message||e2); }
+      }
+      // Final normalize & sort
+      classesCache = (classesCache||[]).slice().map(c=>({ id:c.id, name:c.name||c.title||c.id, order: typeof c.order==='number'?c.order:undefined }))
+        .sort((a,b)=>{ const ao=(typeof a.order==='number')?a.order:999999; const bo=(typeof b.order==='number')?b.order:999999; if(ao!==bo) return ao-bo; return (a.name||a.id||'').localeCompare(b.name||b.id||''); });
     }
     function renderClassSelect(member){
       const assigned = Array.isArray(member.classIds)?member.classIds:[];

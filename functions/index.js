@@ -447,6 +447,7 @@ async function computeClaims(uid, email) {
         roles: { admin: f.admin, caller: f.caller, viewer: f.viewer },
         status: x.status || 'active',
         updatedAt: x.updatedAt || null,
+        classIds: Array.isArray(x?.teacher?.classIds) ? x.teacher.classIds.filter(Boolean) : []
       };
     });
 
