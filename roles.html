@@ -379,7 +379,27 @@
           const resp = await classCall({ orgId: ctx.orgId, schoolId: ctx.schoolId, memberId, classIds });
           console.log('[roles] setTeacherClasses ok', memberId, resp);
           ok++;
-        } catch(e){ console.warn('[roles] class assignment failed', e); fail++; }
+        } catch(e){
+          console.warn('[roles] class assignment failed', memberId, e);
+          // Fallback: if function not found (not yet deployed), attempt direct Firestore write (admin-only rules allow)
+          let fallbackTried = false;
+          try {
+            const msg = (e && (e.code||e.message||'')).toString().toLowerCase();
+            if (/not[- ]found/.test(msg) || /unimplemented/.test(msg)) {
+              const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+              const db = getFirestore();
+              const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', memberId);
+              await setDoc(ref, { teacher: { classIds: classIds.slice() }, updatedAt: serverTimestamp() }, { merge: true });
+              console.log('[roles] fallback direct Firestore write succeeded for', memberId);
+              ok++;
+              fallbackTried = true;
+            }
+          } catch(fe){ console.warn('[roles] fallback Firestore write failed', fe); }
+          if (!fallbackTried) fail++;
+          // Surface error details in status element for quick diagnosis
+          const errTxt = (e && (e.message || e.code)) ? (e.code? e.code+': ':'') + e.message : String(e);
+          dirtyStatusEl.textContent = `Last error saving classes for ${memberId}: ${errTxt}`;
+        }
       }
       dirtyChanges.clear();
       pendingAdds.length = 0;
