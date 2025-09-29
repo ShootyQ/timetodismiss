@@ -227,7 +227,8 @@
     window.addEventListener('resize', applyGridSize);
     loadGridPrefs();
 
-    function ding(){ try { new Audio('/chime.mp3').play().catch(()=>{}); } catch(e){} }
+  // Removed sound feedback for callers (silent operations)
+  function ding(){ /* no-op */ }
 
     // Call Ride Share by tag — mirrors master.html fallback chain
     async function callRideShareByTag(tag){
@@ -329,7 +330,7 @@
       const rs = e.target.closest('button[data-rs-tag]');
       if (rs) {
         const tag = rs.getAttribute('data-rs-tag');
-        callRideShareByTag(tag).then(()=>showToast('Ride share called')).catch(err => console.error('[tiles] RS call failed', err));
+  callRideShareByTag(tag).then(()=>showToast('Ride share called')).catch(err => console.error('[tiles] RS call failed', err));
         return;
       }
       const btn = e.target.closest('.tile-btn[data-id]');

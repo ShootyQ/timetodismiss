@@ -186,31 +186,8 @@
     }
 
     // ======= Rendering =======
-    // Sound preference (with autoplay-safe priming)
-    let playSound = () => { try { new Audio('/chime.mp3').play().catch(()=>{}); } catch{} };
-    let _soundLoaded = false;
-    async function loadSoundPref(retry=false){
-      try {
-        const mod = await import('/app.js?v=21');
-        if (!mod?.getMyPrefs) return;
-        const prefs = await mod.getMyPrefs().catch(()=>({}));
-        if (prefs.sound){
-          const file = prefs.sound;
-          const audio = new Audio('/sounds/' + encodeURIComponent(file));
-          audio.preload='auto';
-          playSound = () => { try { audio.currentTime=0; audio.play().catch(()=>{}); } catch{} };
-          _soundLoaded = true;
-        }
-      } catch(e){ if(!retry) setTimeout(()=>loadSoundPref(true), 1200); }
-    }
-    function primeAudioOnce(){
-      if (primeAudioOnce._done) return; primeAudioOnce._done = true;
-      try { playSound(); } catch{}
-      ['click','keydown','touchstart'].forEach(evt => document.removeEventListener(evt, primeAudioOnce));
-    }
-    ['click','keydown','touchstart'].forEach(evt => document.addEventListener(evt, primeAudioOnce, { passive:true }));
-    loadSoundPref();
-    function ding(){ playSound(); }
+    // Sound removed for caller UI (silent operations by design now)
+    function ding() { /* intentionally no-op */ }
   const rank = s => ({ called:0, waiting:1, en_route:2, picked_up:99, absent:100 }[s] ?? 50);
 
     function renderStudents() {

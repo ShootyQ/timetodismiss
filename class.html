@@ -118,6 +118,40 @@
   import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus } from '/app.js?v=20';
     await init();
 
+    // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
+    let CALL_SOUND_FILE = null;
+    let CALL_SOUND_LOADED = false;
+    async function loadCallSoundPref(force=false){
+      if (CALL_SOUND_LOADED && !force) return;
+      try {
+        const mod = await import('/app.js?v=20');
+        if (mod && typeof mod.getMyPrefs === 'function') {
+          const prefs = await mod.getMyPrefs().catch(()=>({}));
+          if (prefs && prefs.sound) {
+            CALL_SOUND_FILE = prefs.sound;
+          } else {
+            try { const ls = localStorage.getItem('TTD_SOUND_PREF'); if (ls) CALL_SOUND_FILE = ls; } catch {}
+          }
+        }
+      } catch {}
+      CALL_SOUND_LOADED = true;
+    }
+    function playCallSound(){
+      if (!CALL_SOUND_FILE){
+        // Fallback oscillator
+        try { ding(); } catch {}
+        return;
+      }
+      try {
+        const a = new Audio('/sounds/' + CALL_SOUND_FILE);
+        a.currentTime = 0;
+        a.play().catch(()=>{ try { ding(); } catch {}; });
+      } catch { try { ding(); } catch {} }
+    }
+    // Kick off loading immediately and also refresh once claims (and thus prefs path) are ready
+    loadCallSoundPref();
+    document.addEventListener('sd:claims-ready', () => { loadCallSoundPref(true); }, { once:true });
+
     // --- params ---
     const params = new URLSearchParams(location.search);
     const singleClassId = params.get('classId');
@@ -770,7 +804,8 @@
               if (after === 'called') {
                 const label = s.carTag ? (s.name + ' — ' + s.carTag) : s.name;
                 showToast(label);
-        ding();
+    // Use preferred sound
+    playCallSound();
         if (document.visibilityState === 'visible') tryBuzz();
         calledAt.set(s.id, Date.now());
         overdueBeeped.delete(s.id);
