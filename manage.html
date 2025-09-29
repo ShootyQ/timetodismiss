@@ -50,6 +50,8 @@
   /* Inline modal (dialog mimic) */
   .modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,.55); backdrop-filter:saturate(140%) blur(2px); display:none; align-items:flex-start; justify-content:center; padding:5vh 20px; z-index:400; overflow:auto; }
   .modal-backdrop.show{ display:flex; animation:fadeIn .18s ease; }
+  /* Re-enable pointer events (global stylesheet disables overlays by default) */
+  .modal-backdrop.show{ pointer-events:auto !important; }
   .modal-panel{ background:#fff; border-radius:16px; width:100%; max-width:880px; padding:24px 26px 30px; box-shadow:0 10px 28px -6px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.05); position:relative; }
   .modal-panel h2{ margin-top:0; font-size:1.35rem; }
   .modal-close{ position:absolute; top:10px; right:10px; border:none; background:transparent; font-size:1.2rem; cursor:pointer; line-height:1; padding:4px 8px; border-radius:8px; }
@@ -586,12 +588,21 @@
         const snap = await getDoc(docPath('students', id));
         if (!snap.exists()){ setToast('Student not found', true); return; }
         const d = snap.data() || {};
+        // Legacy fallback: derive first/last from legacy name if structured fields absent
+        let first = d.firstName || '';
+        let last  = d.lastName  || '';
+        if (!first && !last && typeof d.name === 'string' && d.name.trim()){
+          const parts = d.name.trim().split(/\s+/);
+            if (parts.length === 1) first = parts[0];
+            else if (parts.length >= 2){ first = parts[0]; last = parts.slice(1).join(' '); }
+        }
+        const pref  = d.preferredName || '';
         // Ensure classes available for select
         if (!classes || classes.length === 0){ try { await refreshClasses(); } catch {} }
         studentEditFields.innerHTML = `
-          ${buildStudentField('First Name','edit_firstName', d.firstName||'', 'e.g., Maria')}
-          ${buildStudentField('Last Name','edit_lastName', d.lastName||'', 'e.g., Lopez')}
-          ${buildStudentField('Preferred Name (optional)','edit_preferredName', d.preferredName||'', 'e.g., Mimi')}
+          ${buildStudentField('First Name','edit_firstName', first, 'e.g., Maria')}
+          ${buildStudentField('Last Name','edit_lastName', last, 'e.g., Lopez')}
+          ${buildStudentField('Preferred Name (optional)','edit_preferredName', pref, 'e.g., Mimi')}
           ${buildStudentField('Student ID','edit_studentId', d.id||'', '')}
           ${buildStudentSelect('Class','edit_classId', d.classId||'')}
           ${buildStudentField('Car Tag','edit_carTag', (d.carTag||d.tag||'').toString().toUpperCase(), 'A12')}
