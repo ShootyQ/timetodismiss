@@ -115,7 +115,7 @@
   </section>
 
   <script type="module">
-  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus } from '/app.js?v=20';
+  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=20';
     await init();
 
     // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
@@ -593,11 +593,47 @@
       if (s) { s.root.remove(); sections.delete(classId); }
     }
 
+    // Live nickname map (studentId -> nickname) for current teacher
+    const nicknameMap = {};
+    let unsubscribeNicknames = null;
+
+    function applyNickname(originalName, preferredName, studentId){
+      const nick = nicknameMap[studentId];
+      return nick || preferredName || originalName;
+    }
+
     onAuthChanged(async (user) => {
       if (!user) {
         location.replace('/master.html#login');
         return;
       }
+
+      // Start nickname listener once auth and tenant claims are ready
+      try {
+        if (unsubscribeNicknames) { try { unsubscribeNicknames(); } catch {} }
+        unsubscribeNicknames = onMyNicknames((map) => {
+          // Replace contents atomically
+          for (const k of Object.keys(nicknameMap)) delete nicknameMap[k];
+          Object.assign(nicknameMap, map);
+          // Trigger a lightweight re-render of visible names
+          try {
+            document.querySelectorAll('.student[data-id] .name').forEach(span => {
+              const li = span.closest('.student');
+              const sid = li?.getAttribute('data-id');
+              if (!sid) return;
+              // Attempt to capture original base name from data-base-name attr or set it once
+              let base = span.getAttribute('data-base-name');
+              if (!base) {
+                base = span.textContent || '';
+                span.setAttribute('data-base-name', base);
+              }
+              // preferredName fallback isn't in DOM, so we just trust current base as original sans nick; this is fine because we only overwrite when nickname exists
+              const nick = nicknameMap[sid];
+              span.textContent = nick || base;
+            });
+          } catch {}
+        });
+      } catch (e) { console.warn('[TTD] nickname listener failed:', e); }
 
   // Load class list and build picker (compat path under orgs/{org}/schools/{school}/classes)
   await awaitClaimsReady();
@@ -710,8 +746,8 @@
           const list = (students||[]).map(s => {
             let preferred = null;
             try { if (s.preferredName && typeof s.preferredName === 'string') preferred = s.preferredName.trim(); } catch {}
-            const displayName = preferred || s.name;
-            return { ...s, displayName };
+            const displayName = applyNickname(s.name, preferred, s.id);
+            return { ...s, displayName, _preferred: preferred };
           });
           // Partition and stable-sort; keep 'absent' rows at the bottom with distinct style
           const called = [];
@@ -767,7 +803,7 @@
               : '';
             return `
               <li class="student called${enter}" data-id="${s.id}" data-status="called">
-                <span class="name">${s.displayName || s.name}</span>
+                <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                 ${tag}
                 <span class="status">Called</span>
                 <span class="inline-actions">${actionHtml}</span>
@@ -784,7 +820,7 @@
             const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
             return `
               <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
-                <span class="name">${s.displayName || s.name}</span>
+                <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                 ${tag}
                 <span class="status">${statusLabel}</span>
               </li>`;
@@ -797,7 +833,7 @@
               const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
               return `
                 <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
-                  <span class=\"name\">${s.displayName || s.name}</span>
+                  <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/"/g,'&quot;')}\">${s.displayName || s.name}</span>
                   ${tag}
                   <span class=\"status\">Absent</span>
                 </li>`;

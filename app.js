@@ -674,3 +674,51 @@ export async function setMyPrefs(patch = {}, schoolIdOverride) {
     return { ok: false, reason: e?.message || 'fail' };
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Per-teacher student nicknames (private to teacher)                  */
+/* ------------------------------------------------------------------ */
+
+import { onSnapshot as _onSnapshot, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+// Listen to current user's nickname docs: /members/{uid}/nicknames/{studentId}
+// cb receives an object map { studentId: nickname }
+export function onMyNicknames(cb){
+  let unsub = () => {};
+  (async () => {
+    try {
+      await waitForTenant();
+      const u = currentUser(); if (!u) return;
+      const sid = globalThis.SD?.schoolId; const oid = globalThis.SD?.orgId;
+      if (!sid || !oid) return;
+      const colRef = collection(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames');
+      unsub = _onSnapshot(colRef, (snap) => {
+        const map = {};
+        snap.docs.forEach(d => {
+          const data = d.data() || {};
+          const name = (data.name || '').trim();
+          if (name) map[d.id] = name;
+        });
+        try { cb(map); } catch {}
+      }, (err) => console.error('[onMyNicknames] listener error:', err));
+    } catch (e) { console.error('[onMyNicknames] init failed:', e); }
+  })();
+  return () => { try { unsub(); } catch {} };
+}
+
+// Set or clear a nickname for a student. Empty/blank nickname deletes the doc.
+export async function setMyNickname(studentId, nickname){
+  await waitForTenant();
+  const u = currentUser(); if (!u) throw new Error('no-user');
+  const sid = globalThis.SD?.schoolId; const oid = globalThis.SD?.orgId;
+  if (!sid || !oid) throw new Error('missing tenant');
+  const trimmed = (nickname || '').trim();
+  const ref = doc(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames', studentId);
+  if (!trimmed){
+    try { await deleteDoc(ref); } catch {}
+    return { ok: true, deleted: true };
+  }
+  if (trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
+  await setDoc(ref, { name: trimmed, updatedAt: serverTimestamp() }, { merge: true });
+  return { ok: true };
+}

@@ -86,6 +86,21 @@ service cloud.firestore {
           allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)) || (isAdmin() && inSchool(orgId, schoolId)));
           // CHANGED: allow writes by admins/sup/owners scoped to school (to support admin UI)
           allow create, update, delete: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+
+          // Per-teacher private nicknames for students (viewer+ allowed for own subcollection)
+          // Path: orgs/{orgId}/schools/{schoolId}/members/{memberId}/nicknames/{studentId}
+          match /nicknames/{studentId} {
+            // Only the owning teacher (memberId == auth.uid) may read/write; must belong to school
+            allow get, list: if isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId);
+            allow create, update: if isAuthed()
+                                   && request.auth.uid == memberId
+                                   && inSchool(orgId, schoolId)
+                                   && request.resource.data.keys().hasOnly(['name','updatedAt'])
+                                   && request.resource.data.name is string
+                                   && request.resource.data.name.matches('^.{1,60}$')
+                                   && request.resource.data.updatedAt == request.time;
+            allow delete: if isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId);
+          }
         }
 
         // CLASSES
