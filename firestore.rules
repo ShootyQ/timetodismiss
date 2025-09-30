@@ -84,8 +84,15 @@ service cloud.firestore {
                         (isAdmin() && inSchool(orgId, schoolId))
                       );
           allow list: if isAuthed() && (isOwner() || (isSup() && inOrg(orgId)) || (isAdmin() && inSchool(orgId, schoolId)));
-          // CHANGED: allow writes by admins/sup/owners scoped to school (to support admin UI)
-          allow create, update, delete: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+       // Admin / superintendent / owner full writes; plus self limited prefs-only update
+       allow create, update: if (
+         isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId)
+       ) || (
+         // Self updating only prefs key (no role/status tampering)
+         isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId) &&
+         request.resource.data.diff(resource.data).changedKeys().hasOnly(['prefs'])
+       );
+       allow delete: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
 
           // Per-teacher private nicknames for students (viewer+ allowed for own subcollection)
           // Path: orgs/{orgId}/schools/{schoolId}/members/{memberId}/nicknames/{studentId}
@@ -95,9 +102,9 @@ service cloud.firestore {
             allow create, update: if isAuthed()
                                    && request.auth.uid == memberId
                                    && inSchool(orgId, schoolId)
-                                   && request.resource.data.keys().hasOnly(['name','updatedAt'])
-                                   && request.resource.data.name is string
-                                   && request.resource.data.name.matches('^.{1,60}$')
+                                   && request.resource.data.keys().hasOnly(['name','sound','updatedAt'])
+                                   && ( !('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 60) )
+                                   && ( !('sound' in request.resource.data) || (request.resource.data.sound is string && request.resource.data.sound.size() <= 80) )
                                    && request.resource.data.updatedAt == request.time;
             allow delete: if isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId);
           }
