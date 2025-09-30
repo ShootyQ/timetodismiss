@@ -115,16 +115,17 @@
   </section>
 
   <script type="module">
-  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=21';
+  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=22';
     await init();
 
-    // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
-    let CALL_SOUND_FILE = null;
+  // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
+  // Private per-student override precedence: nickname.sound > student.callSound > user global.
+  let CALL_SOUND_FILE = null;
     let CALL_SOUND_LOADED = false;
     async function loadCallSoundPref(force=false){
       if (CALL_SOUND_LOADED && !force) return;
       try {
-  const mod = await import('/app.js?v=21');
+  const mod = await import('/app.js?v=22');
         if (mod && typeof mod.getMyPrefs === 'function') {
           const prefs = await mod.getMyPrefs().catch(()=>({}));
           if (prefs && prefs.sound) {
@@ -138,7 +139,10 @@
     }
     // Play a call sound considering a per-student override (student.callSound) first, then user/global pref, then oscillator fallback
     function playCallSound(student){
-      const file = (student && student.callSound) || CALL_SOUND_FILE;
+      // nicknameMap entries now objects: { name, sound }
+      let nickSound = null;
+      try { if (student && nicknameMap[student.id] && nicknameMap[student.id].sound) nickSound = nicknameMap[student.id].sound; } catch {}
+      const file = nickSound || (student && student.callSound) || CALL_SOUND_FILE;
       if (!file){
         try { ding(); } catch {}
         return;
@@ -594,12 +598,13 @@
     }
 
     // Live nickname map (studentId -> nickname) for current teacher
-    const nicknameMap = {};
+  const nicknameMap = {}; // studentId -> { name?, sound? }
     let unsubscribeNicknames = null;
 
     function applyNickname(originalName, preferredName, studentId){
-      const nick = nicknameMap[studentId];
-      return nick || preferredName || originalName;
+      const entry = nicknameMap[studentId];
+      const nickName = entry && entry.name ? entry.name : undefined;
+      return nickName || preferredName || originalName;
     }
 
     onAuthChanged(async (user) => {
@@ -612,24 +617,17 @@
       try {
         if (unsubscribeNicknames) { try { unsubscribeNicknames(); } catch {} }
         unsubscribeNicknames = onMyNicknames((map) => {
-          // Replace contents atomically
           for (const k of Object.keys(nicknameMap)) delete nicknameMap[k];
           Object.assign(nicknameMap, map);
-          // Trigger a lightweight re-render of visible names
           try {
             document.querySelectorAll('.student[data-id] .name').forEach(span => {
               const li = span.closest('.student');
               const sid = li?.getAttribute('data-id');
               if (!sid) return;
-              // Attempt to capture original base name from data-base-name attr or set it once
               let base = span.getAttribute('data-base-name');
-              if (!base) {
-                base = span.textContent || '';
-                span.setAttribute('data-base-name', base);
-              }
-              // preferredName fallback isn't in DOM, so we just trust current base as original sans nick; this is fine because we only overwrite when nickname exists
-              const nick = nicknameMap[sid];
-              span.textContent = nick || base;
+              if (!base) { base = span.textContent || ''; span.setAttribute('data-base-name', base); }
+              const entry = nicknameMap[sid];
+              span.textContent = (entry && entry.name) ? entry.name : base;
             });
           } catch {}
         });
@@ -677,7 +675,7 @@
       } else {
         // Try favorites
         try {
-          const mod = await import('/app.js?v=21');
+          const mod = await import('/app.js?v=22');
           if (mod && typeof mod.getMyPrefs === 'function') {
             const prefs = await mod.getMyPrefs().catch(()=>({favoriteClasses:[]}));
             if (prefs.favoriteClasses && prefs.favoriteClasses.length) {

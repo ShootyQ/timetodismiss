@@ -682,7 +682,7 @@ export async function setMyPrefs(patch = {}, schoolIdOverride) {
 import { onSnapshot as _onSnapshot, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
 // Listen to current user's nickname docs: /members/{uid}/nicknames/{studentId}
-// cb receives an object map { studentId: nickname }
+// cb receives an object map { studentId: { name: string|undefined, sound: string|undefined } }
 export function onMyNicknames(cb){
   let unsub = () => {};
   (async () => {
@@ -696,8 +696,12 @@ export function onMyNicknames(cb){
         const map = {};
         snap.docs.forEach(d => {
           const data = d.data() || {};
-          const name = (data.name || '').trim();
-          if (name) map[d.id] = name;
+          let name = '';
+          try { if (data.name && typeof data.name === 'string') name = data.name.trim(); } catch {}
+          let sound = '';
+            try { if (data.sound && typeof data.sound === 'string') sound = data.sound.trim(); } catch {}
+          // Always include object even if name empty (allows sound-only override)
+          map[d.id] = { name: name || undefined, sound: sound || undefined };
         });
         try { cb(map); } catch {}
       }, (err) => console.error('[onMyNicknames] listener error:', err));
@@ -706,19 +710,25 @@ export function onMyNicknames(cb){
   return () => { try { unsub(); } catch {} };
 }
 
-// Set or clear a nickname for a student. Empty/blank nickname deletes the doc.
-export async function setMyNickname(studentId, nickname){
+// Set or clear a nickname (and optional private sound) for a student.
+// If both nickname and sound are empty/blank, the doc is deleted.
+export async function setMyNickname(studentId, nickname, sound){
   await waitForTenant();
   const u = currentUser(); if (!u) throw new Error('no-user');
   const sid = globalThis.SD?.schoolId; const oid = globalThis.SD?.orgId;
   if (!sid || !oid) throw new Error('missing tenant');
   const trimmed = (nickname || '').trim();
+  const trimmedSound = (sound || '').trim();
   const ref = doc(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames', studentId);
-  if (!trimmed){
+  if (!trimmed && !trimmedSound){
     try { await deleteDoc(ref); } catch {}
     return { ok: true, deleted: true };
   }
-  if (trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
-  await setDoc(ref, { name: trimmed, updatedAt: serverTimestamp() }, { merge: true });
+  if (trimmed && trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
+  if (trimmedSound && trimmedSound.length > 80) throw new Error('Sound id too long (max 80 chars)');
+  const payload = { updatedAt: serverTimestamp() };
+  if (trimmed) payload.name = trimmed;
+  if (trimmedSound) payload.sound = trimmedSound;
+  await setDoc(ref, payload, { merge: true });
   return { ok: true };
 }

@@ -83,7 +83,7 @@
     // Load /app.js AFTER listeners are in place
   (async () => {
       try {
-    const mod = await import('/app.js?v=21');
+  const mod = await import('/app.js?v=22');
         api = mod;
         try { await mod.init?.(); } catch(e) { console.warn('[master] init() failed (continuing):', e?.message || e); }
         apiReady = true;

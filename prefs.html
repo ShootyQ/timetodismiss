@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Time To Dismiss — Preferences</title>
+   <title>Time To Dismiss — Preferences</title>
   <link rel="stylesheet" href="/styles.css" />
   <script src="/site-header.js" defer></script>
   <style>
@@ -62,19 +62,20 @@
       </div>
     </section>
 
-    <section class="pref-card" id="teacherTools" style="display:none;" aria-live="polite">
-      <h2 style="margin-top:0; display:flex; gap:8px; align-items:center;">Teacher Tools <span class="pill">New</span></h2>
-      <p style="margin:0 0 12px; font-size:.8rem; color:#475569;">Update preferred display names and choose a per-student sound (overrides board sound). Only students in your assigned classes are shown.</p>
-      <div id="teacherStudents" style="display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(280px,1fr));"></div>
-      <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <button id="saveTeacherPrefs" class="btn btn-primary btn-sm" type="button">Save Student Overrides</button>
-        <div id="teacherSaveStatus" class="status-msg" aria-live="polite"></div>
-      </div>
-    </section>
+      <section class="pref-card" id="teacherTools" style="display:none;" aria-live="polite">
+        <h2 style="margin-top:0; display:flex; gap:8px; align-items:center;">Teacher Tools <span class="pill">New</span></h2>
+        <p style="margin:0 0 12px; font-size:.8rem; color:#475569;">Set a public preferred name (all staff) and a private nickname + private sound (only you). Nickname + sound override only your view & alerts.</p>
+        <div style="font-size:.65rem; color:#64748b; margin:-4px 0 10px;">Legend: Preferred = shared across staff; Nickname = private to you; Student Sound = public per-student; Nickname Sound = private to you.</div>
+        <div id="teacherStudents" style="display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));"></div>
+        <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button id="saveTeacherPrefs" class="btn btn-primary btn-sm" type="button">Save Public Preferred & Sounds</button>
+          <div id="teacherSaveStatus" class="status-msg" aria-live="polite"></div>
+        </div>
+      </section>
   </main>
 
   <script type="module">
-  import { init, getClassesForSchool, getMyPrefs, setMyPrefs } from '/app.js?v=21';
+  import { init, getClassesForSchool, getMyPrefs, setMyPrefs, onMyNicknames, setMyNickname } from '/app.js?v=22';
   // We will lazy import Firestore for teacher tools when needed.
     await init();
 
@@ -138,6 +139,8 @@
     let loading = false;
   let teacherAssignedClassIds = []; // populated if user has teacher assignments
   let teacherStudentCache = [];      // loaded student rows
+  const teacherNicknames = {};       // studentId -> { name?, sound? }
+  let unsubscribeNicknames = null;
 
     function setStatus(text, cls){
       if (!statusEl) return; statusEl.textContent = text || ''; statusEl.className = 'status-msg ' + (cls || '');
@@ -191,6 +194,7 @@
         await detectTeacherAssignments();
         if (teacherAssignedClassIds.length){
           document.getElementById('teacherTools').style.display='block';
+          try { ensureNicknameListener(); } catch {}
           await loadTeacherStudents();
         } else {
           document.getElementById('teacherTools').style.display='none';
@@ -260,7 +264,7 @@
         host.innerHTML = '<div class="small" style="color:#475569;">No students in your assigned classes yet.</div>';
         return;
       }
-      host.innerHTML = teacherStudentCache.map(s => {
+       host.innerHTML = teacherStudentCache.map(s => {
         const safeId = s.id;
         const baseName = s.name || '';
         const currentPref = s.preferredName || '';
@@ -275,6 +279,53 @@
           ${soundSel}
         </div>`;
       }).join('');
+        host.innerHTML = teacherStudentCache.map(s => {
+          const safeId = s.id;
+          const baseName = s.name || '';
+          const currentPref = s.preferredName || '';
+          const currentSound = s.callSound || '';
+          const nickEntry = teacherNicknames[safeId] || {};
+          const privateNick = nickEntry.name || '';
+          const privateSound = nickEntry.sound || '';
+          const soundSel = `<select data-stu-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
+            + '<option value="">(Default)</option>'
+            + STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===currentSound?' selected':''}>${o.label}</option>`).join('')
+            + '</select>';
+          const nickSoundSel = `<select data-stu-nick-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
+            + '<option value="">(Default / none)</option>'
+            + STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===privateSound?' selected':''}>${o.label}</option>`).join('')
+            + '</select>';
+          return `<div style="border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:6px;">
+            <div style="font-weight:600; font-size:.8rem; color:#1e293b;">${baseName || 'Student'} <span style="color:#64748b; font-weight:500;">${s.classId?('• '+s.classId):''}</span></div>
+            <input data-stu-pref="${safeId}" type="text" placeholder="Preferred (shared)" value="${currentPref?currentPref.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;" />
+            ${soundSel}
+            <input data-stu-nick="${safeId}" type="text" placeholder="Private nickname" value="${privateNick?privateNick.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem; background:#fffef7;" />
+            ${nickSoundSel}
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="btn btn-xs btn-outline" data-test-play="${safeId}">Test Nick Sound</button>
+              <button type="button" class="btn btn-xs btn-outline" data-test-stu-play="${safeId}">Test Stu Sound</button>
+            </div>
+          </div>`;
+        }).join('');
+        // Attach testers
+        host.querySelectorAll('button[data-test-play]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-test-play');
+            const sel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
+            const file = sel ? sel.value : '';
+            if (!file) return;
+            try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
+          });
+        });
+        host.querySelectorAll('button[data-test-stu-play]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-test-stu-play');
+              const sel = host.querySelector(`[data-stu-sound="${id}"]`);
+              const file = sel ? sel.value : '';
+              if (!file) return;
+              try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
+          });
+        });
     }
 
     async function loadTeacherStudents(){
@@ -319,6 +370,11 @@
           const prefName = inp.value.trim();
           const soundSel = host.querySelector(`[data-stu-sound="${id}"]`);
           const sound = soundSel ? (soundSel.value || '') : '';
+            // Private nickname + sound
+            const nickInp = host.querySelector(`[data-stu-nick="${id}"]`);
+            const nickVal = nickInp ? nickInp.value.trim() : '';
+            const nickSoundSel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
+            const nickSound = nickSoundSel ? (nickSoundSel.value || '') : '';
           const ref = doc(db, 'orgs', orgId, 'schools', schoolId, 'students', id);
           const base = teacherStudentCache.find(s => s.id === id) || {};
           // Maintain legacy name logic: if preferred set and different, keep original name as fallback
@@ -331,6 +387,8 @@
           // Keep display name synergy via existing board logic (board reads preferredName)
           patches.push({ ref, payload });
           updated.push({ id, preferredName: prefName, callSound: sound });
+            // Fire-and-forget nickname update (private) separate from public patch
+            setMyNickname(id, nickVal, nickSound).catch(e => console.warn('setMyNickname failed', id, e));
         });
         // Batch naive (sequential to avoid import writeBatch overhead here)
         for (const p of patches){ await setDoc(p.ref, p.payload, { merge:true }); }
@@ -344,6 +402,18 @@
     }
 
     document.getElementById('saveTeacherPrefs')?.addEventListener('click', saveTeacherOverrides);
+      // Start nickname listener when teacher tools visible
+      function ensureNicknameListener(){
+        if (unsubscribeNicknames) return;
+        try {
+          unsubscribeNicknames = onMyNicknames(map => {
+            // Update local structure and re-render (preserve focus values)
+            Object.keys(teacherNicknames).forEach(k => delete teacherNicknames[k]);
+            Object.assign(teacherNicknames, map);
+            renderTeacherStudents();
+          });
+        } catch (e){ console.warn('nickname listener failed', e); }
+      }
 
     if (window.SD?.claims) initPage();
     else document.addEventListener('sd:claims-ready', initPage, { once:true });
