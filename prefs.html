@@ -68,7 +68,7 @@
         <div id="teacherStudents" style="display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));"></div>
         <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           <button id="saveTeacherPrefs" class="btn btn-primary btn-sm" type="button">Save Nicknames</button>
-          <div id="teacherSaveStatus" class="status-msg" aria-live="polite"></div>
+           <div id="teacherSaveStatus" class="status-msg" aria-live="polite"></div>
         </div>
       </section>
   </main>
@@ -100,14 +100,27 @@
       { file:'videogamefail.mp3', label:'Retro Fail Chime' }
     ];
     const STUDENT_SOUND_OPTIONS = SOUND_OPTIONS; // reuse
+
+    function escapeHtml(value){
+      if (value == null) return '';
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
     function renderSoundOptions(current){
       if (!soundList) return;
       soundList.innerHTML = SOUND_OPTIONS.map(opt => {
         const checked = current === opt.file ? 'checked' : '';
+        const safeFile = escapeHtml(opt.file);
+        const safeLabel = escapeHtml(opt.label);
         return `<label style="display:flex; align-items:center; gap:8px; padding:8px 10px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; cursor:pointer; font-size:.8rem; font-weight:600;">
-          <input type="radio" name="soundSel" value="${opt.file}" ${checked} />
-          <span style="flex:1 1 auto;">${opt.label}</span>
-          <button type="button" class="btn btn-xs btn-outline" data-sample="${opt.file}">Play</button>
+          <input type="radio" name="soundSel" value="${safeFile}" ${checked} />
+          <span style="flex:1 1 auto;">${safeLabel}</span>
+          <button type="button" class="btn btn-xs btn-outline" data-sample="${safeFile}">Play</button>
         </label>`;
       }).join('');
     }
@@ -136,6 +149,7 @@
 
     let currentSchoolId = null;
     let loading = false;
+    let loadSeq = 0;
   let teacherAssignedClassIds = []; // populated if user has teacher assignments
   let teacherStudentCache = [];      // loaded student rows
   const teacherNicknames = {};       // studentId -> { name?, sound? }
@@ -143,6 +157,20 @@
 
     function setStatus(text, cls){
       if (!statusEl) return; statusEl.textContent = text || ''; statusEl.className = 'status-msg ' + (cls || '');
+    }
+
+    function resetTeacherState(){
+      if (typeof unsubscribeNicknames === 'function') {
+        try { unsubscribeNicknames(); } catch {}
+      }
+      unsubscribeNicknames = null;
+      teacherAssignedClassIds = [];
+      teacherStudentCache = [];
+      Object.keys(teacherNicknames).forEach(k => delete teacherNicknames[k]);
+      const teacherHost = document.getElementById('teacherStudents');
+      if (teacherHost) teacherHost.innerHTML = '';
+      const tools = document.getElementById('teacherTools');
+      if (tools) tools.style.display = 'none';
     }
 
     async function loadSchoolsFromClaims(){
@@ -155,22 +183,31 @@
           schoolSel.innerHTML='';
           sids.forEach(id => { const opt = document.createElement('option'); opt.value=id; opt.textContent=id; schoolSel.appendChild(opt); });
           schoolWrap.style.display='flex';
-          currentSchoolId = sids[0];
+          currentSchoolId = sids.includes(window.SD?.schoolId) ? window.SD.schoolId : sids[0];
         } else {
           currentSchoolId = sids[0] || window.SD?.schoolId || null;
+          if (currentSchoolId) schoolSel.value = currentSchoolId;
+        }
+        if (currentSchoolId) {
+          schoolSel.value = currentSchoolId;
+          if (window.SD) window.SD.schoolId = currentSchoolId;
         }
         return { schoolIds: sids, orgIds };
       } catch { return { schoolIds: [], orgIds: [] }; }
     }
 
     async function loadClassesAndPrefs(){
-      if (!currentSchoolId) { setStatus('No school context','status-warn'); return; }
-      if (loading) return; loading = true;
+      const requestId = ++loadSeq;
+      const schoolId = currentSchoolId;
+      if (!schoolId) { setStatus('No school context','status-warn'); return; }
+      loading = true;
       setStatus('Loading classes…'); actionsRow.style.display='none'; grid.innerHTML='';
       try {
-        const classes = await getClassesForSchool(currentSchoolId).catch(()=>[]);
-        if (!classes.length) { setStatus('No classes found','status-warn'); loading=false; return; }
-        const prefs = await getMyPrefs(currentSchoolId).catch(()=>({ favoriteClasses: [] }));
+        const classes = await getClassesForSchool(schoolId).catch(()=>[]);
+        if (requestId !== loadSeq) return;
+        if (!classes.length) { setStatus('No classes found','status-warn'); return; }
+        const prefs = await getMyPrefs(schoolId).catch(()=>({ favoriteClasses: [] }));
+        if (requestId !== loadSeq) return;
         const favSet = new Set(prefs.favoriteClasses || []);
         classes.sort((a,b)=> {
           const ao = (typeof a.order === 'number') ? a.order : 999999;
@@ -178,16 +215,24 @@
           if (ao !== bo) return ao - bo;
           return (a.name||a.id).localeCompare(b.name||b.id);
         });
+        if (requestId !== loadSeq) return;
         grid.innerHTML = classes.map(c => {
           const checked = favSet.has(c.id) ? 'checked' : '';
-          return `<label><input type="checkbox" value="${c.id}" ${checked} /> <span>${c.name || c.id}</span></label>`;
+          const safeId = escapeHtml(c.id);
+          const safeName = escapeHtml(c.name || c.id);
+          return `<label><input type="checkbox" value="${safeId}" ${checked} /> <span>${safeName}</span></label>`;
         }).join('');
         actionsRow.style.display='flex';
         if (prefs._local) setStatus('Loaded (local only)','status-warn'); else setStatus('Loaded.','status-ok');
         // Load global sound preference once (no school context)
-        try { const gp = await getMyPrefs().catch(()=>({})); renderSoundOptions(gp.sound || ''); } catch { renderSoundOptions(''); }
+        try {
+          const gp = await getMyPrefs().catch(()=>({}));
+          if (requestId !== loadSeq) return;
+          renderSoundOptions(gp.sound || '');
+        } catch { if (requestId === loadSeq) renderSoundOptions(''); }
         // Teacher assignments
         await detectTeacherAssignments();
+        if (requestId !== loadSeq) return;
         if (teacherAssignedClassIds.length){
           document.getElementById('teacherTools').style.display='block';
           ensureNicknameListener();
@@ -197,7 +242,10 @@
         }
       } catch (e) {
         setStatus('Failed: '+(e.message||'error'),'status-err');
-      } finally { loading=false; }
+      } finally { if (requestId === loadSeq) loading=false; }
+    }
+    function currentSelection(){
+      return Array.from(grid.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
     }
     function setSelection(ids){
       const set = new Set(ids);
@@ -219,6 +267,18 @@
       btnSave.disabled = false;
     });
     // Removed public student sound tester
+    schoolSel?.addEventListener('change', async () => {
+      const newId = schoolSel.value || null;
+      if (!newId || newId === currentSchoolId) return;
+      currentSchoolId = newId;
+      resetTeacherState();
+      if (window.SD) {
+        window.SD.schoolId = newId;
+      }
+      document.dispatchEvent(new CustomEvent('sd:school-changed', { detail: { schoolId: newId, orgId: window.SD?.orgId } }));
+      await loadClassesAndPrefs();
+    });
+
     async function initPage(){
       await loadSchoolsFromClaims();
       await loadClassesAndPrefs();
@@ -251,21 +311,28 @@
         return;
       }
         host.innerHTML = teacherStudentCache.map(s => {
-          const safeId = s.id;
-          const baseName = s.name || '';
-          const nickEntry = teacherNicknames[safeId] || {};
-          const privateNick = nickEntry.name || '';
+          const studentId = s.id || '';
+          const safeIdAttr = escapeHtml(studentId);
+          const baseName = escapeHtml(s.name || '');
+          const classLabel = s.classId ? escapeHtml(s.classId) : '';
+          const nickEntry = teacherNicknames[studentId] || {};
+          const privateNick = escapeHtml(nickEntry.name || '');
           const privateSound = nickEntry.sound || '';
-          const nickSoundSel = `<select data-stu-nick-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
+          const nickSoundSel = `<select data-stu-nick-sound="${safeIdAttr}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
             + '<option value="">(Default / none)</option>'
-            + STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===privateSound?' selected':''}>${o.label}</option>`).join('')
+            + STUDENT_SOUND_OPTIONS.map(o => {
+                const safeFile = escapeHtml(o.file);
+                const safeLabel = escapeHtml(o.label);
+                const sel = o.file === privateSound ? ' selected' : '';
+                return `<option value="${safeFile}"${sel}>${safeLabel}</option>`;
+              }).join('')
             + '</select>';
           return `<div style="border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:6px;">
-            <div style="font-weight:600; font-size:.8rem; color:#1e293b;">${baseName || 'Student'} <span style="color:#64748b; font-weight:500;">${s.classId?('• '+s.classId):''}</span></div>
-            <input data-stu-nick="${safeId}" type="text" placeholder="Private nickname" value="${privateNick?privateNick.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem; background:#fffef7;" />
+            <div style="font-weight:600; font-size:.8rem; color:#1e293b;">${baseName || 'Student'} <span style="color:#64748b; font-weight:500;">${classLabel ? ('• ' + classLabel) : ''}</span></div>
+            <input data-stu-nick="${safeIdAttr}" type="text" placeholder="Private nickname" value="${privateNick}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem; background:#fffef7;" />
             ${nickSoundSel}
             <div style="display:flex; gap:6px;">
-              <button type="button" class="btn btn-xs btn-outline" data-test-play="${safeId}">Test Nick Sound</button>
+              <button type="button" class="btn btn-xs btn-outline" data-test-play="${safeIdAttr}">Test Nick Sound</button>
             </div>
           </div>`;
         }).join('');
@@ -273,7 +340,7 @@
         host.querySelectorAll('button[data-test-play]').forEach(btn => {
           btn.addEventListener('click', () => {
             const id = btn.getAttribute('data-test-play');
-            const sel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
+            const sel = Array.from(host.querySelectorAll('[data-stu-nick-sound]')).find(el => el.getAttribute('data-stu-nick-sound') === id);
             const file = sel ? sel.value : '';
             if (!file) return;
             try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
@@ -317,7 +384,7 @@
           const id = inp.getAttribute('data-stu-nick');
           if (!id) return;
           const nickVal = inp.value.trim();
-          const nickSoundSel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
+          const nickSoundSel = Array.from(host.querySelectorAll('[data-stu-nick-sound]')).find(el => el.getAttribute('data-stu-nick-sound') === id);
           const nickSound = nickSoundSel ? (nickSoundSel.value || '') : '';
           ops.push(setMyNickname(id, nickVal, nickSound));
         });
