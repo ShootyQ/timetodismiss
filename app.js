@@ -733,8 +733,15 @@ export async function setMyNickname(studentId, nickname, sound){
   if (trimmedSound) payload.sound = trimmedSound;
   try {
     await setDoc(ref, payload, { merge: true });
-    try { console.debug('[nicknames] setMyNickname success', { studentId, payload }); } catch {}
-    return { ok: true };
+    // Read-back verification (helps detect if write was only cached locally or rules blocked silently)
+    let exists = false, stored = null;
+    try {
+      const snap = await getDoc(ref);
+      exists = snap.exists();
+      stored = exists ? snap.data() : null;
+    } catch (vr) { console.warn('[nicknames] verification read failed', vr); }
+    try { console.debug('[nicknames] setMyNickname success', { studentId, path: ref.path, payload, exists, stored }); } catch {}
+    return { ok: true, path: ref.path, exists };
   } catch (e){
     console.error('[nicknames] setMyNickname failed', studentId, e);
     throw e;
