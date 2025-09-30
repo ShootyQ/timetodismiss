@@ -550,46 +550,56 @@
 
     // Replace old admin-only visibility with role-driven nav
     function setRoleLinksFromClaims(token) {
-      const isAdmin  = !!token?.claims?.admin;
-      const isCaller = !!token?.claims?.caller;
-      const isViewer = !!token?.claims?.viewer;
-      const isSup    = !!token?.claims?.superintendent;
+        // Determine role flags (superintendent implicitly inherits viewer access to base pages)
+        const isAdmin  = !!token?.claims?.admin;
+        const isCaller = !!token?.claims?.caller;
+        const isSup    = !!token?.claims?.superintendent;
+        const isViewerExplicit = !!token?.claims?.viewer;
+        const isViewer = isAdmin || isCaller || isSup || isViewerExplicit; // consolidated viewer capability
 
-      const canCall  = isAdmin || isCaller;
-      const canView  = isAdmin || isCaller || isViewer;
+        // Capability groupings
+        const canCall  = isAdmin || isCaller; // master caller page
+        const canView  = isViewer;            // classes + prefs
 
-      const show = (els, ok) => els.forEach(el => {
-        el.style.pointerEvents = ok ? '' : 'none';
-        el.style.opacity = ok ? '' : '0.45';
-        el.setAttribute('aria-hidden', ok ? 'false' : 'true');
-      });
-      // Superintendent: fully hide/show the link
-      const toggleHidden = (selector, ok) => {
-        document.querySelectorAll(selector).forEach(el => {
-          el.hidden = !ok; el.setAttribute('aria-hidden', ok ? 'false' : 'true');
+        // Hide ALL gated links first
+        const gated = document.querySelectorAll('[data-requires]');
+        gated.forEach(el => {
+          el.hidden = true;
+          el.setAttribute('aria-hidden','true');
+          el.style.display = 'none';
         });
-      };
 
-      show([...document.querySelectorAll('[data-requires="admin"]')],  isAdmin);
-      show([...document.querySelectorAll('[data-requires="caller"]')], canCall);
-      show([...document.querySelectorAll('[data-requires="viewer"]')], canView);
-      toggleHidden('[data-requires="superintendent"]', isSup);
+        // Show helpers
+        function reveal(selector){
+          document.querySelectorAll(selector).forEach(el => {
+            el.hidden = false;
+            el.setAttribute('aria-hidden','false');
+            el.style.display = ''; // let CSS/flex handle spacing
+            el.style.opacity = '';
+            el.style.pointerEvents = '';
+          });
+        }
 
-      // Role badge label
-  const badges = [];
-      if (isAdmin)  badges.push('Admin');
-      if (isCaller) badges.push('Caller');
-      if (isViewer && !isAdmin && !isCaller) badges.push('Viewer');
-  if (isSup) badges.push('Superintendent');
-      roleBadge.textContent = badges.join(' · ');
-      roleBadge.style.display = badges.length ? '' : 'none';
+        if (canView) reveal('[data-requires="viewer"]'); // classes + prefs
+        if (canCall) reveal('[data-requires="caller"]'); // master caller
+        if (isAdmin) reveal('[data-requires="admin"]');   // admin tools
+        if (isSup)   reveal('[data-requires="superintendent"]');
 
-      // Publish flags
-      window.SD = window.SD || {};
-  window.SD.roles   = { admin: isAdmin, caller: isCaller, viewer: isViewer, superintendent: isSup };
-      window.SD.canCall = canCall;
-      window.SD.canView = canView;
-      window.SD.canAdmin = isAdmin;
+        // Role badge label (ordered hierarchy)
+        const badges = [];
+        if (isSup)    badges.push('Superintendent');
+        if (isAdmin)  badges.push('Admin');
+        else if (isCaller) badges.push('Caller');
+        else if (isViewerExplicit) badges.push('Viewer');
+        roleBadge.textContent = badges.join(' · ');
+        roleBadge.style.display = badges.length ? '' : 'none';
+
+        // Publish flags
+        window.SD = window.SD || {};
+        window.SD.roles   = { admin: isAdmin, caller: isCaller, viewer: isViewer, superintendent: isSup };
+        window.SD.canCall = canCall;
+        window.SD.canView = canView;
+        window.SD.canAdmin = isAdmin;
     }
 
     // Make sign-in callable from other pages
