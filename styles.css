@@ -1180,6 +1180,20 @@ body.has-ticker #masterList {
   .hdr-menu-panel .menu-head{ padding:10px 12px; }
 }
 
+/* --- Header polish: remove borders around icon buttons & school selector (desktop) --- */
+header.site-header .nav-icons .nav-icon,
+header.site-header .avatar-btn{
+  border:0 !important;
+}
+header.site-header .nav-icons .nav-icon{ box-shadow:0 4px 14px -4px rgba(15,23,42,.18), 0 1px 3px rgba(15,23,42,.08); }
+header.site-header .nav-icons .nav-icon:hover{ box-shadow:0 14px 30px -8px rgba(15,23,42,.32), 0 6px 14px -4px rgba(15,23,42,.18); }
+/* School select chip: borderless pill with subtle shadow */
+.school-select{
+  border:0 !important;
+  box-shadow:0 4px 14px -4px rgba(15,23,42,.14), 0 1px 3px rgba(15,23,42,.08);
+}
+.school-select:focus{ outline:3px solid var(--ring); outline-offset:2px; }
+
 /* ---------- Homepage utilities ---------- */
 .section-title{ margin:0 0 .5rem 0; font-size:1.25rem; }
 .section-title--spaced{ margin:1rem 0 .5rem 0; }
