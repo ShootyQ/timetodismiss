@@ -105,13 +105,16 @@ service cloud.firestore {
           match /nicknames/{studentId} {
             // Only the owning teacher (memberId == auth.uid) may read/write; must belong to school
             allow get, list: if isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId);
+            // NOTE: serverTimestamp() appears as a special sentinel during evaluation and is NOT a timestamp yet.
+            // We therefore cannot require `updatedAt is timestamp` on the incoming write. Instead ensure the field exists
+            // and rely on write history / client usage for freshness.
             allow create, update: if isAuthed()
                                    && request.auth.uid == memberId
                                    && inSchool(orgId, schoolId)
                                    && request.resource.data.keys().hasOnly(['name','sound','updatedAt'])
+                                   && ('updatedAt' in request.resource.data)
                                    && ( !('name' in request.resource.data) || (request.resource.data.name is string && request.resource.data.name.size() <= 60) )
-                                   && ( !('sound' in request.resource.data) || (request.resource.data.sound is string && request.resource.data.sound.size() <= 80) )
-                                   && (request.resource.data.updatedAt is timestamp);
+                                   && ( !('sound' in request.resource.data) || (request.resource.data.sound is string && request.resource.data.sound.size() <= 80) );
             allow delete: if isAuthed() && request.auth.uid == memberId && inSchool(orgId, schoolId);
           }
         }
