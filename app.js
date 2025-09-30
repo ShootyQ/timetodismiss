@@ -729,6 +729,12 @@ export async function setMyNickname(studentId, nickname, sound){
   const payload = { updatedAt: serverTimestamp() };
   if (trimmed) payload.name = trimmed;
   if (trimmedSound) payload.sound = trimmedSound;
-  await setDoc(ref, payload, { merge: true });
-  return { ok: true };
+  try {
+    await setDoc(ref, payload, { merge: true });
+    try { console.debug('[nicknames] setMyNickname success', { studentId, payload }); } catch {}
+    return { ok: true };
+  } catch (e){
+    console.error('[nicknames] setMyNickname failed', studentId, e);
+    throw e;
+  }
 }

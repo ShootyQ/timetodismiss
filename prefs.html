@@ -250,46 +250,22 @@
         host.innerHTML = '<div class="small" style="color:#475569;">No students in your assigned classes yet.</div>';
         return;
       }
-       host.innerHTML = teacherStudentCache.map(s => {
-        const safeId = s.id;
-        const baseName = s.name || '';
-        const currentPref = s.preferredName || '';
-        const currentSound = s.callSound || '';
-        const soundSel = `<select data-stu-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">` +
-          '<option value="">(Default)</option>' +
-          STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===currentSound?' selected':''}>${o.label}</option>`).join('') +
-          '</select>';
-        return `<div style="border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:6px;">
-          <div style="font-weight:600; font-size:.8rem; color:#1e293b;">${baseName || 'Student'} <span style="color:#64748b; font-weight:500;">${s.classId?('• '+s.classId):''}</span></div>
-          <input data-stu-pref="${safeId}" type="text" placeholder="Preferred name" value="${currentPref?currentPref.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.75rem;" />
-          ${soundSel}
-        </div>`;
-      }).join('');
         host.innerHTML = teacherStudentCache.map(s => {
           const safeId = s.id;
           const baseName = s.name || '';
-          const currentPref = s.preferredName || '';
-          const currentSound = s.callSound || '';
           const nickEntry = teacherNicknames[safeId] || {};
           const privateNick = nickEntry.name || '';
           const privateSound = nickEntry.sound || '';
-          const soundSel = `<select data-stu-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
-            + '<option value="">(Default)</option>'
-            + STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===currentSound?' selected':''}>${o.label}</option>`).join('')
-            + '</select>';
           const nickSoundSel = `<select data-stu-nick-sound="${safeId}" style="width:100%; padding:4px 6px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;">`
             + '<option value="">(Default / none)</option>'
             + STUDENT_SOUND_OPTIONS.map(o => `<option value="${o.file}"${o.file===privateSound?' selected':''}>${o.label}</option>`).join('')
             + '</select>';
           return `<div style="border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:6px;">
             <div style="font-weight:600; font-size:.8rem; color:#1e293b;">${baseName || 'Student'} <span style="color:#64748b; font-weight:500;">${s.classId?('• '+s.classId):''}</span></div>
-            <input data-stu-pref="${safeId}" type="text" placeholder="Preferred (shared)" value="${currentPref?currentPref.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem;" />
-            ${soundSel}
             <input data-stu-nick="${safeId}" type="text" placeholder="Private nickname" value="${privateNick?privateNick.replace(/&/g,'&amp;').replace(/</g,'&lt;'):''}" style="padding:6px 8px; border:1px solid #cbd5e1; border-radius:8px; font-size:.7rem; background:#fffef7;" />
             ${nickSoundSel}
             <div style="display:flex; gap:6px;">
               <button type="button" class="btn btn-xs btn-outline" data-test-play="${safeId}">Test Nick Sound</button>
-              <button type="button" class="btn btn-xs btn-outline" data-test-stu-play="${safeId}">Test Stu Sound</button>
             </div>
           </div>`;
         }).join('');
@@ -303,15 +279,7 @@
             try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
           });
         });
-        host.querySelectorAll('button[data-test-stu-play]').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.getAttribute('data-test-stu-play');
-              const sel = host.querySelector(`[data-stu-sound="${id}"]`);
-              const file = sel ? sel.value : '';
-              if (!file) return;
-              try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
-          });
-        });
+        // Removed public student sound tester
     }
 
     async function loadTeacherStudents(){
