@@ -186,7 +186,7 @@
 
     async function loadApi(){
       if (window.app) return window.app;
-  try { return await import('/app.js?v=22'); } catch (e) { console.warn('Import /app.js failed', e); }
+  try { return await import('/app.js?v=23'); } catch (e) { console.warn('Import /app.js failed', e); }
       try { return await import('./app.js'); } catch (e) { console.warn('Import ./app.js failed', e); }
       return {};
     }

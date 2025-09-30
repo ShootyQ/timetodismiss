@@ -107,8 +107,8 @@
     async function ensureApp(){
       if (isCompatReady() || await hasModularApp()) return true;
       const attempts = [
-  './app.js?v=22','/app.js?v=22',
-  './app.js?v=22','/app.js?v=22',
+  './app.js?v=23','/app.js?v=23',
+  './app.js?v=23','/app.js?v=23',
         './app.js','/app.js'
       ];
       for (const p of attempts){
@@ -287,7 +287,7 @@
       if (!loaded){
         // Fallback to client helper getClasses()
         try {
-          const mod = await import('/app.js?v=22');
+          const mod = await import('/app.js?v=23');
           if (typeof mod.getClasses === 'function') {
             classesCache = await mod.getClasses();
             loaded = true;

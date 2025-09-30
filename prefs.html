@@ -63,19 +63,18 @@
     </section>
 
       <section class="pref-card" id="teacherTools" style="display:none;" aria-live="polite">
-        <h2 style="margin-top:0; display:flex; gap:8px; align-items:center;">Teacher Tools <span class="pill">New</span></h2>
-        <p style="margin:0 0 12px; font-size:.8rem; color:#475569;">Set a public preferred name (all staff) and a private nickname + private sound (only you). Nickname + sound override only your view & alerts.</p>
-        <div style="font-size:.65rem; color:#64748b; margin:-4px 0 10px;">Legend: Preferred = shared across staff; Nickname = private to you; Student Sound = public per-student; Nickname Sound = private to you.</div>
+        <h2 style="margin-top:0; display:flex; gap:8px; align-items:center;">Class Nicknames <span class="pill">Private</span></h2>
+        <p style="margin:0 0 12px; font-size:.8rem; color:#475569;">Set a private nickname & optional private sound for your assigned students. Only you see & hear these overrides. Clear to remove.</p>
         <div id="teacherStudents" style="display:grid; gap:10px; grid-template-columns:repeat(auto-fill,minmax(320px,1fr));"></div>
         <div style="margin-top:14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button id="saveTeacherPrefs" class="btn btn-primary btn-sm" type="button">Save Public Preferred & Sounds</button>
+          <button id="saveTeacherPrefs" class="btn btn-primary btn-sm" type="button">Save Nicknames</button>
           <div id="teacherSaveStatus" class="status-msg" aria-live="polite"></div>
         </div>
       </section>
   </main>
 
   <script type="module">
-  import { init, getClassesForSchool, getMyPrefs, setMyPrefs, onMyNicknames, setMyNickname } from '/app.js?v=22';
+  import { init, getClassesForSchool, getMyPrefs, setMyPrefs, onMyNicknames, setMyNickname } from '/app.js?v=23';
   // We will lazy import Firestore for teacher tools when needed.
     await init();
 
@@ -169,7 +168,7 @@
       if (loading) return; loading = true;
       setStatus('Loading classes…'); actionsRow.style.display='none'; grid.innerHTML='';
       try {
-  const classes = await getClassesForSchool(currentSchoolId).catch(()=>[]);
+        const classes = await getClassesForSchool(currentSchoolId).catch(()=>[]);
         if (!classes.length) { setStatus('No classes found','status-warn'); loading=false; return; }
         const prefs = await getMyPrefs(currentSchoolId).catch(()=>({ favoriteClasses: [] }));
         const favSet = new Set(prefs.favoriteClasses || []);
@@ -185,16 +184,13 @@
         }).join('');
         actionsRow.style.display='flex';
         if (prefs._local) setStatus('Loaded (local only)','status-warn'); else setStatus('Loaded.','status-ok');
-        // Load global sound preference once
-        try {
-          const gp = await getMyPrefs().catch(()=>({}));
-          renderSoundOptions(gp.sound || '');
-        } catch { renderSoundOptions(''); }
-        // Attempt teacher assignment discovery (claims currently don't carry these; fetch member doc)
+        // Load global sound preference once (no school context)
+        try { const gp = await getMyPrefs().catch(()=>({})); renderSoundOptions(gp.sound || ''); } catch { renderSoundOptions(''); }
+        // Teacher assignments
         await detectTeacherAssignments();
         if (teacherAssignedClassIds.length){
           document.getElementById('teacherTools').style.display='block';
-          try { ensureNicknameListener(); } catch {}
+          ensureNicknameListener();
           await loadTeacherStudents();
         } else {
           document.getElementById('teacherTools').style.display='none';
@@ -202,10 +198,6 @@
       } catch (e) {
         setStatus('Failed: '+(e.message||'error'),'status-err');
       } finally { loading=false; }
-    }
-
-    function currentSelection(){
-      return Array.from(grid.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
     }
     function setSelection(ids){
       const set = new Set(ids);
@@ -226,13 +218,7 @@
       else setStatus('Failed to save','status-err');
       btnSave.disabled = false;
     });
-
-    schoolSel?.addEventListener('change', () => {
-      currentSchoolId = schoolSel.value || null;
-      schoolStatus.textContent = 'Loading…';
-      loadClassesAndPrefs().then(()=>{ schoolStatus.textContent=''; });
-    });
-
+    // Removed public student sound tester
     async function initPage(){
       await loadSchoolsFromClaims();
       await loadClassesAndPrefs();
@@ -354,50 +340,21 @@
       const host = document.getElementById('teacherStudents');
       const status = document.getElementById('teacherSaveStatus');
       if (!host || !status) return;
-      const inputs = Array.from(host.querySelectorAll('[data-stu-pref]'));
+      const inputs = Array.from(host.querySelectorAll('[data-stu-nick]'));
       if (!inputs.length){ status.textContent='Nothing to save.'; status.className='status-msg status-warn'; return; }
       status.textContent='Saving…'; status.className='status-msg';
       try {
-        const { getFirestore, doc, updateDoc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-        const db = getFirestore();
-        const orgId = window.SD?.orgId; const schoolId = currentSchoolId;
-        if (!orgId || !schoolId) throw new Error('Missing context');
-        const patches = [];
-        const updated = [];
+        const ops = [];
         inputs.forEach(inp => {
-          const id = inp.getAttribute('data-stu-pref');
+          const id = inp.getAttribute('data-stu-nick');
           if (!id) return;
-          const prefName = inp.value.trim();
-          const soundSel = host.querySelector(`[data-stu-sound="${id}"]`);
-          const sound = soundSel ? (soundSel.value || '') : '';
-            // Private nickname + sound
-            const nickInp = host.querySelector(`[data-stu-nick="${id}"]`);
-            const nickVal = nickInp ? nickInp.value.trim() : '';
-            const nickSoundSel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
-            const nickSound = nickSoundSel ? (nickSoundSel.value || '') : '';
-          const ref = doc(db, 'orgs', orgId, 'schools', schoolId, 'students', id);
-          const base = teacherStudentCache.find(s => s.id === id) || {};
-          // Maintain legacy name logic: if preferred set and different, keep original name as fallback
-          const original = base.name || '';
-          const payload = { updatedAt: serverTimestamp() };
-          // Always write preferredName (empty string clears it)
-          payload.preferredName = prefName;
-          // Always write callSound; empty clears it
-          payload.callSound = sound;
-          // Keep display name synergy via existing board logic (board reads preferredName)
-          patches.push({ ref, payload });
-          updated.push({ id, preferredName: prefName, callSound: sound });
-            // Fire-and-forget nickname update (private) separate from public patch
-            setMyNickname(id, nickVal, nickSound).catch(e => console.warn('setMyNickname failed', id, e));
+          const nickVal = inp.value.trim();
+          const nickSoundSel = host.querySelector(`[data-stu-nick-sound="${id}"]`);
+          const nickSound = nickSoundSel ? (nickSoundSel.value || '') : '';
+          ops.push(setMyNickname(id, nickVal, nickSound));
         });
-        // Batch naive (sequential to avoid import writeBatch overhead here)
-        for (const p of patches){ await setDoc(p.ref, p.payload, { merge:true }); }
-        // Refresh local cache so UI stays sticky after reload
-        updated.forEach(u => {
-          const idx = teacherStudentCache.findIndex(s => s.id === u.id);
-            if (idx >= 0) teacherStudentCache[idx] = { ...teacherStudentCache[idx], preferredName: u.preferredName, callSound: u.callSound };
-        });
-        status.textContent='Saved.'; status.className='status-msg status-ok';
+        await Promise.all(ops);
+        status.textContent='Nicknames saved.'; status.className='status-msg status-ok';
       } catch (e){ status.textContent='Save failed: '+(e.message||'error'); status.className='status-msg status-err'; }
     }
 

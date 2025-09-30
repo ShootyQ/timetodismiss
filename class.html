@@ -115,7 +115,7 @@
   </section>
 
   <script type="module">
-  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=22';
+  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=23';
     await init();
 
   // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
@@ -125,7 +125,7 @@
     async function loadCallSoundPref(force=false){
       if (CALL_SOUND_LOADED && !force) return;
       try {
-  const mod = await import('/app.js?v=22');
+  const mod = await import('/app.js?v=23');
         if (mod && typeof mod.getMyPrefs === 'function') {
           const prefs = await mod.getMyPrefs().catch(()=>({}));
           if (prefs && prefs.sound) {
@@ -675,7 +675,7 @@
       } else {
         // Try favorites
         try {
-          const mod = await import('/app.js?v=22');
+          const mod = await import('/app.js?v=23');
           if (mod && typeof mod.getMyPrefs === 'function') {
             const prefs = await mod.getMyPrefs().catch(()=>({favoriteClasses:[]}));
             if (prefs.favoriteClasses && prefs.favoriteClasses.length) {
