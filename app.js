@@ -720,8 +720,10 @@ export async function setMyNickname(studentId, nickname, sound){
   const trimmed = (nickname || '').trim();
   const trimmedSound = (sound || '').trim();
   const ref = doc(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames', studentId);
+  try { console.debug('[nicknames] setMyNickname begin', { path: ref.path, studentId, trimmed, trimmedSound, oid, sid, uid: u.uid }); } catch {}
   if (!trimmed && !trimmedSound){
     try { await deleteDoc(ref); } catch {}
+    try { console.debug('[nicknames] setMyNickname delete (empty values) ok', { studentId }); } catch {}
     return { ok: true, deleted: true };
   }
   if (trimmed && trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
@@ -738,3 +740,24 @@ export async function setMyNickname(studentId, nickname, sound){
     throw e;
   }
 }
+
+// Manual diagnostic helper (attach once)
+try {
+  if (!window.__TTD_DEBUG_NICKS__) {
+    window.__TTD_DEBUG_NICKS__ = true;
+    window.debugNicknameEnv = async () => {
+      try {
+        const u = currentUser();
+        const idt = u ? await u.getIdTokenResult(true) : null;
+        console.log('[debugNicknameEnv] user', u?.uid, 'claims.schoolId', idt?.claims?.schoolId, 'claims.schoolIds', idt?.claims?.schoolIds, 'SD', globalThis.SD);
+      } catch (e){ console.warn('[debugNicknameEnv] failed', e); }
+    };
+    window.debugSetNickname = async (studentId, nick, sound='') => {
+      try {
+        const res = await setMyNickname(studentId, nick, sound);
+        console.log('[debugSetNickname] result', res);
+      } catch (e){ console.error('[debugSetNickname] error', e); }
+    };
+    console.info('%cTTD nickname debugging helpers installed.','color:#0a0; font-weight:bold;', 'Use debugNicknameEnv() and debugSetNickname(studentId, nick, sound).');
+  }
+} catch {}
