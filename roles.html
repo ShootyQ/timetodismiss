@@ -267,10 +267,10 @@
     }
     function markClassDirty(id, member, classIds){
       // Avoid marking dirty if nothing changed compared to current member.classIds
-      const prev = Array.isArray(member.classIds) ? member.classIds.slice().sort() : [];
-      const next = classIds.slice().sort();
+      const prev = Array.isArray(member.classIds) ? member.classIds.map(v=>String(v||'')).filter(Boolean).sort() : [];
+      const next = classIds.map(v=>String(v||'')).filter(Boolean).sort();
       const same = prev.length === next.length && prev.every((v,i)=>v===next[i]);
-      if (same) teacherClassChanges.delete(id); else teacherClassChanges.set(id, classIds);
+      if (same) teacherClassChanges.delete(id); else teacherClassChanges.set(id, next);
       updateDirtyStatus();
     }
     async function loadClasses(ctx){
@@ -295,11 +295,13 @@
         } catch (e2){ console.warn('[roles] fallback getClasses() failed', e2?.message||e2); }
       }
       // Final normalize & sort
-      classesCache = (classesCache||[]).slice().map(c=>({ id:c.id, name:c.name||c.title||c.id, order: typeof c.order==='number'?c.order:undefined }))
+      classesCache = (classesCache||[]).slice()
+        .map(c=>({ id:String(c.id||''), name:c.name||c.title||String(c.id||''), order: typeof c.order==='number'?c.order:undefined }))
+        .filter(c=>c.id)
         .sort((a,b)=>{ const ao=(typeof a.order==='number')?a.order:999999; const bo=(typeof b.order==='number')?b.order:999999; if(ao!==bo) return ao-bo; return (a.name||a.id||'').localeCompare(b.name||b.id||''); });
     }
     function renderClassSelect(member){
-      const assigned = Array.isArray(member.classIds)?member.classIds:[];
+      const assigned = Array.isArray(member.classIds)?member.classIds.map(v=>String(v||'')).filter(Boolean):[];
       const opts = classesCache.map(c=>`<option value="${escapeHtml(c.id)}"${assigned.includes(c.id)?' selected':''}>${escapeHtml(c.name||c.id)}</option>`).join('');
       return `<select multiple data-class-select="${escapeHtml(member.id||member.uid)}" size="${Math.min(6,Math.max(3,classesCache.length))}" style="width:100%; padding:6px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:12px;">${opts}</select><div class=\"muted\" style=\"margin-top:4px; font-size:11px;\">Ctrl/Cmd+Click to multi-select.</div>`;
     }
@@ -343,7 +345,10 @@
       if (!classesCache.length) await loadClasses(ctx);
       const call = await httpsCallable('listSchoolMembers');
   const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
-  const members = (res?.members || []).sort((a,b)=>
+      const members = (res?.members || []).map(m => {
+        if (Array.isArray(m.classIds)) m.classIds = m.classIds.map(v=>String(v||'')).filter(Boolean);
+        return m;
+      }).sort((a,b)=>
         String(a.displayName||a.email||'').localeCompare(String(b.displayName||b.email||''), 'en', {sensitivity:'base'})
       );
       listEl.innerHTML = '';
@@ -360,8 +365,8 @@
             const snap = await getDoc(ref);
             if (snap.exists()) {
               const data = snap.data() || {};
-              if (Array.isArray(data?.teacher?.classIds) && data.teacher.classIds.length){
-                m.classIds = data.teacher.classIds.filter(Boolean);
+                if (Array.isArray(data?.teacher?.classIds) && data.teacher.classIds.length){
+                m.classIds = data.teacher.classIds.map(v=>String(v||'')).filter(Boolean);
               }
             }
           }));
