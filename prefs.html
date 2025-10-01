@@ -93,11 +93,24 @@
     const soundList = document.getElementById('soundList');
     const saveSoundBtn = document.getElementById('saveSound');
     const soundStatus = document.getElementById('soundStatus');
+    // Global sound options (user call alert + teacher nickname private sounds)
     const SOUND_OPTIONS = [
       { file:'dingdingding.mp3', label:'Ding Ding Ding' },
       { file:'catmewo.mp3', label:'Cat Meow' },
       { file:'solidsnakealert.mp3', label:'Stealth Alert' },
-      { file:'videogamefail.mp3', label:'Retro Fail Chime' }
+      { file:'videogamefail.mp3', label:'Retro Fail Chime' },
+      { file:'yaaaas.mp3', label:'YAAAS Cheer' },
+      { file:'trumpet fail.mp3', label:'Trumpet Fail' },
+      { file:'level complete.mp3', label:'Level Complete' },
+      { file:'cowmoo.mp3', label:'Cow Moo' },
+      { file:'owlhoot.mp3', label:'Owl Hoot' },
+      { file:'elephant.mp3', label:'Elephant' },
+      { file:'rooster.mp3', label:'Rooster Crow' },
+      { file:'monkey.mp3', label:'Monkey' },
+      { file:'dolphin.mp3', label:'Dolphin' },
+      { file:'dog bark.mp3', label:'Dog Bark' },
+      { file:'dog howl.mp3', label:'Dog Howl' },
+      { file:'girlyay.mp3', label:'Cheer Yay' }
     ];
     const STUDENT_SOUND_OPTIONS = SOUND_OPTIONS; // reuse
 
@@ -133,7 +146,8 @@
       if (!btn) return;
       const f = btn.getAttribute('data-sample');
       if (!f) return;
-      const a = new Audio(`/sounds/${f}`);
+      // Encode to safely handle spaces & special chars
+      const a = new Audio(`/sounds/${encodeURIComponent(f)}`);
       a.currentTime = 0; a.play().catch(()=>{});
     });
     saveSoundBtn?.addEventListener('click', async () => {
@@ -354,7 +368,7 @@
           const sel = Array.from(host.querySelectorAll('[data-stu-nick-sound]')).find(el => el.getAttribute('data-stu-nick-sound') === id);
           const file = sel ? sel.value : '';
           if (!file) return;
-          try { new Audio('/sounds/' + file).play().catch(()=>{}); } catch {}
+          try { new Audio('/sounds/' + encodeURIComponent(file)).play().catch(()=>{}); } catch {}
         });
       });
         // Removed public student sound tester

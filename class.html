@@ -148,7 +148,7 @@
         return;
       }
       try {
-        const a = new Audio('/sounds/' + file);
+        const a = new Audio('/sounds/' + encodeURIComponent(file)); // encode for filenames with spaces
         a.currentTime = 0;
         a.play().catch(()=>{ try { ding(); } catch {}; });
       } catch { try { ding(); } catch {} }
