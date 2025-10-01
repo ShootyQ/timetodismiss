@@ -2,16 +2,16 @@
   "hosting": {
     "site": "dismissalcaller",
     "public": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**",
-      "functions/**",
-      "firebaseinfo/**",
-      ".git/**"
-      "/.*",
-      "/node_modules/"
-    ],
+"ignore": [
+  "firebase.json",
+  "**/.*",
+  "**/node_modules/**",
+  "functions/**",
+  "firebaseinfo/**",
+  ".git/**",
+  "/.*",
+  "/node_modules/"
+],
     "cleanUrls": true,
     "headers": [
       {
@@ -31,3 +31,4 @@
     "rules": "firestore.rules"
   }
 }
+
