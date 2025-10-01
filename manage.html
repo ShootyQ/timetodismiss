@@ -319,70 +319,6 @@
       finally { studentsCacheLoading = false; }
     }
 
-    function tokenToTags(tokens){
-      const out = new Set();
-      if (!studentsCache || !studentsCache.length) return out;
-      const toks = tokens.map(t=>t.toLowerCase());
-      for (const stu of studentsCache){
-        const nameHay = `${stu.displayName||''} ${stu.name||''} ${stu.firstName||''} ${stu.lastName||''}`.toLowerCase();
-        for (const tk of toks){
-          if (!tk) continue;
-            if (stu.studentId && stu.studentId.toLowerCase() === tk){ if (stu.carTag) out.add(stu.carTag); continue; }
-          if (nameHay.includes(tk) && stu.carTag){ out.add(stu.carTag); }
-        }
-      }
-      return out;
-    }
-
-    function attachFamilyStudentHelpers(){
-      const addBtn = document.getElementById('famAddStudents');
-      if (!addBtn || addBtn.dataset.wired) return;
-      addBtn.dataset.wired = '1';
-      addBtn.addEventListener('click', async () => {
-        const input = document.getElementById('famStudents');
-        const status = document.getElementById('famStudentsStatus');
-        const tagsEl = document.getElementById('famTags');
-        if (!input || !tagsEl || !status) return;
-        const raw = input.value.trim();
-        if (!raw){ status.textContent='Enter one or more names or IDs first.'; status.style.color='#b91c1c'; return; }
-        status.textContent='Resolving…'; status.style.color='var(--muted)';
-        await ensureStudentsCache();
-        const tokens = raw.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
-        const found = tokenToTags(tokens);
-        if (!found.size){ status.textContent='No matching students with car tags.'; status.style.color='#b91c1c'; return; }
-        // Merge with existing tags
-        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
-        const merged = Array.from(new Set([...existing, ...found]));
-        tagsEl.value = merged.join(' ');
-        status.textContent = `Added ${found.size} tag(s). Total now ${merged.length}.`;
-        status.style.color = '#15803d';
-      });
-    }
-
-    function attachFamilyEditStudentHelpers(){
-      const btn = document.getElementById('edit_famAddStudents');
-      if (!btn || btn.dataset.wired) return;
-      btn.dataset.wired='1';
-      btn.addEventListener('click', async () => {
-        const input = document.getElementById('edit_famStudents');
-        const status = document.getElementById('edit_famStudentsStatus');
-        const tagsEl = document.getElementById('edit_famTags');
-        if (!input || !tagsEl || !status) return;
-        const raw = input.value.trim();
-        if (!raw){ status.textContent='Enter names or IDs.'; status.style.color='#b91c1c'; return; }
-        status.textContent='Resolving…'; status.style.color='var(--muted)';
-        await ensureStudentsCache();
-        const tokens = raw.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
-        const found = tokenToTags(tokens);
-        if (!found.size){ status.textContent='No matches.'; status.style.color='#b91c1c'; return; }
-        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
-        const merged = Array.from(new Set([...existing, ...found]));
-        tagsEl.value = merged.join(' ');
-        status.textContent = `Added ${found.size} tag(s). Total now ${merged.length}.`;
-        status.style.color='#15803d';
-      });
-    }
-
     function renderForm(){
       const e = entitySel.value;
       if (e === 'students'){
@@ -450,14 +386,12 @@
           <div class="field"><label for="famName">Name</label><input id="famName" placeholder="e.g., Smith Family" /></div>
           <div class="field"><label for="famTags">Tags</label><input id="famTags" placeholder="e.g., K4 A2 T3" aria-describedby="tagsHelp" /></div>
           <div id="tagsHelp" class="small">Separate tags by space or comma. Tags will be uppercased.</div>
-          <div class="field" style="margin-top:6px;">
-            <label for="famStudents">Students (names or IDs)</label>
-            <input id="famStudents" placeholder="e.g., Jane Doe, 12345, Liam" aria-describedby="famStudentsHelp" />
-            <div class="actions" style="gap:6px;">
-              <button type="button" class="btn btn-outline btn-sm" id="famAddStudents">Add Student Tags</button>
-              <span id="famStudentsStatus" class="small" style="min-height:1em;"></span>
-            </div>
-            <div id="famStudentsHelp" class="small">Enter partial names or IDs separated by spaces/commas; matching students' car tags will be added.</div>
+          <div class="field fam-picker" style="margin-top:6px;">
+            <label for="famStudentSearch">Add Student Tags</label>
+            <input id="famStudentSearch" placeholder="Type name or ID…" autocomplete="off" />
+            <ul id="famSuggest" class="fam-suggest" hidden></ul>
+            <div class="fam-chips" id="famStudentChips" aria-live="polite"></div>
+            <div class="small" id="famStudentsHelp">Type to find a student; selecting adds their car tag. Remove chips to undo.</div>
           </div>
         `;
         const idEl = document.getElementById('famId');
@@ -474,7 +408,7 @@
           clearBtn.textContent = 'Clear';
           document.getElementById('hint').textContent = 'Creates or updates a car family with one or more tags.';
         }
-        attachFamilyStudentHelpers();
+        initFamilyStudentPicker();
       }
     }
 
@@ -898,18 +832,17 @@
           <div class="field"><label for="edit_famId">Family ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
           <div class="field"><label for="edit_famName">Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
           <div class="field" style="grid-column:1 / -1"><label for="edit_famTags">Tags</label><input id="edit_famTags" value="${escapeHtml((d.tags||[]).join(' '))}" placeholder="e.g., K4 A2 T3" /></div>
-          <div class="field" style="grid-column:1 / -1; margin-top:4px;">
-            <label for="edit_famStudents">Add Students (names or IDs)</label>
-            <input id="edit_famStudents" placeholder="e.g., Jane, 12345, Carter" />
-            <div class="actions" style="gap:6px;">
-              <button type="button" class="btn btn-outline btn-sm" id="edit_famAddStudents">Add Student Tags</button>
-              <span id="edit_famStudentsStatus" class="small" style="min-height:1em;"></span>
-            </div>
+          <div class="field fam-picker" style="grid-column:1 / -1; margin-top:4px;">
+            <label for="edit_famStudentSearch">Add Student Tags</label>
+            <input id="edit_famStudentSearch" placeholder="Type name or ID…" autocomplete="off" />
+            <ul id="edit_famSuggest" class="fam-suggest" hidden></ul>
+            <div class="fam-chips" id="edit_famStudentChips" aria-live="polite"></div>
+            <div class="small">Type to search; selecting adds car tag. Edit Tags field to fine-tune.</div>
           </div>
         `;
         showFamilyModal();
         familyEditFields.querySelector('#edit_famName')?.focus();
-        attachFamilyEditStudentHelpers();
+        initFamilyStudentPicker(true);
       } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
     }
     familyEditForm.addEventListener('submit', async (e) => {
@@ -924,6 +857,79 @@
         closeFamilyModal();
       } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
     });
+
+    // Autocomplete picker for family student tag selection
+    function initFamilyStudentPicker(isEdit=false){
+      const input = document.getElementById(isEdit ? 'edit_famStudentSearch' : 'famStudentSearch');
+      const list  = document.getElementById(isEdit ? 'edit_famSuggest' : 'famSuggest');
+      const chips = document.getElementById(isEdit ? 'edit_famStudentChips' : 'famStudentChips');
+      const tagsEl= document.getElementById(isEdit ? 'edit_famTags' : 'famTags');
+      if (!input || !list || !chips || !tagsEl) return;
+      if (input.dataset.wired) return; input.dataset.wired='1';
+      const added = new Set();
+      function renderChips(){
+        chips.innerHTML = Array.from(added).map(tag => `<span class="fam-chip" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)} <button type="button" aria-label="Remove ${escapeHtml(tag)}">×</button></span>`).join('');
+        chips.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          const t = btn.parentElement?.getAttribute('data-tag');
+          if (t){
+            const parts = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean);
+            const next = parts.filter(p => p.toUpperCase() !== t);
+            tagsEl.value = next.join(' ');
+            added.delete(t);
+            renderChips();
+          }
+        }));
+      }
+      function mergeIntoTags(){
+        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+        const merged = Array.from(new Set([...existing, ...added]));
+        tagsEl.value = merged.join(' ');
+      }
+      function hideList(){ list.hidden = true; list.innerHTML=''; highlighted = -1; }
+      let current = [];
+      let highlighted = -1;
+      function showSuggestions(items){
+        if (!items.length){ list.innerHTML = '<li class="fam-suggest-empty">No matches</li>'; list.hidden=false; highlighted=-1; return; }
+        list.innerHTML = items.slice(0,50).map((s,i)=>{
+          const tag = (s.carTag||'').toString().toUpperCase();
+            const label = s.displayName || s.name || (s.firstName||'');
+          return `<li role="option" data-idx="${i}" aria-selected="${i===highlighted}"><span class="fam-suggest-name">${escapeHtml(label)}</span><span class="fam-suggest-tag">${escapeHtml(tag)}</span></li>`;
+        }).join('');
+        list.hidden = false;
+        list.querySelectorAll('li[data-idx]').forEach(li => li.addEventListener('click', () => {
+          const idx = parseInt(li.getAttribute('data-idx'),10); selectIdx(idx);
+        }));
+      }
+      function updateHighlight(delta){
+        if (list.hidden || !current.length) return;
+        highlighted = (highlighted + delta + current.length) % current.length;
+        showSuggestions(current);
+      }
+      function selectIdx(idx){
+        const item = current[idx];
+        if (item && item.carTag){ added.add(item.carTag.toUpperCase()); mergeIntoTags(); renderChips(); }
+        input.value=''; hideList(); input.focus();
+      }
+      input.addEventListener('input', async () => {
+        const q = input.value.trim().toLowerCase();
+        if (!q){ hideList(); return; }
+        await ensureStudentsCache();
+        const hay = studentsCache || [];
+        current = hay.filter(s => {
+          const all = `${s.displayName||''} ${s.name||''} ${s.firstName||''} ${s.lastName||''} ${s.studentId||''}`.toLowerCase();
+          return all.includes(q);
+        }).slice(0,100);
+        highlighted = current.length ? 0 : -1;
+        showSuggestions(current);
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown'){ updateHighlight(1); e.preventDefault(); }
+        else if (e.key === 'ArrowUp'){ updateHighlight(-1); e.preventDefault(); }
+        else if (e.key === 'Enter'){ if (!list.hidden && highlighted>=0){ e.preventDefault(); selectIdx(highlighted); } }
+        else if (e.key === 'Escape'){ hideList(); }
+      });
+      document.addEventListener('click', (e) => { if (!list.contains(e.target) && e.target !== input){ hideList(); } });
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
