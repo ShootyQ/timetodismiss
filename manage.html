@@ -129,7 +129,7 @@
   <script type="module">
   import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=23';
     await init();
-  import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, getDocs, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
     // UI refs
     const entitySel = document.getElementById('entitySel');
@@ -186,6 +186,9 @@
     let filter = '';
   let editingId = null; // students: current docId being edited
   let classFilter = '';
+  // Students cache for name->tag resolution (lazy)
+  let studentsCache = null; // array of { id, firstName, lastName, preferredName, name, carTag, studentId, displayName }
+  let studentsCacheLoading = false;
 
     const headersMap = {
       students: ['Preferred / Name','ID','Class','Tag','Bus','Lane','Updated',''],
@@ -274,6 +277,100 @@
 
     function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
+    async function ensureStudentsCache(){
+      if (studentsCache || studentsCacheLoading) return;
+      studentsCacheLoading = true;
+      try {
+        await waitTenant().catch(()=>{});
+        const qy = query(colPath('students'), orderBy('name','asc'));
+        const snap = await getDocs(qy);
+        studentsCache = snap.docs.map(d => {
+          const data = d.data()||{};
+          const first = data.firstName||''; const last = data.lastName||''; const pref = data.preferredName||'';
+          const baseFull = (first||last) ? (first + (last?(' '+last):'')) : (data.name||'');
+          let composite = baseFull;
+          if (pref && pref.trim()){
+            if (baseFull && pref.trim().toLowerCase() !== baseFull.trim().toLowerCase()) composite = `${pref} (${baseFull})`; else composite = pref;
+          }
+          return {
+            _docId: d.id,
+            firstName:first,
+            lastName:last,
+            preferredName:pref,
+            name:data.name||'',
+            displayName: composite,
+            carTag: (data.carTag||data.tag||'').toString().toUpperCase(),
+            studentId: data.id || ''
+          };
+        });
+      } catch(e){ console.warn('[families] student cache load failed', e); studentsCache = []; }
+      finally { studentsCacheLoading = false; }
+    }
+
+    function tokenToTags(tokens){
+      const out = new Set();
+      if (!studentsCache || !studentsCache.length) return out;
+      const toks = tokens.map(t=>t.toLowerCase());
+      for (const stu of studentsCache){
+        const nameHay = `${stu.displayName||''} ${stu.name||''} ${stu.firstName||''} ${stu.lastName||''}`.toLowerCase();
+        for (const tk of toks){
+          if (!tk) continue;
+            if (stu.studentId && stu.studentId.toLowerCase() === tk){ if (stu.carTag) out.add(stu.carTag); continue; }
+          if (nameHay.includes(tk) && stu.carTag){ out.add(stu.carTag); }
+        }
+      }
+      return out;
+    }
+
+    function attachFamilyStudentHelpers(){
+      const addBtn = document.getElementById('famAddStudents');
+      if (!addBtn || addBtn.dataset.wired) return;
+      addBtn.dataset.wired = '1';
+      addBtn.addEventListener('click', async () => {
+        const input = document.getElementById('famStudents');
+        const status = document.getElementById('famStudentsStatus');
+        const tagsEl = document.getElementById('famTags');
+        if (!input || !tagsEl || !status) return;
+        const raw = input.value.trim();
+        if (!raw){ status.textContent='Enter one or more names or IDs first.'; status.style.color='#b91c1c'; return; }
+        status.textContent='Resolving…'; status.style.color='var(--muted)';
+        await ensureStudentsCache();
+        const tokens = raw.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
+        const found = tokenToTags(tokens);
+        if (!found.size){ status.textContent='No matching students with car tags.'; status.style.color='#b91c1c'; return; }
+        // Merge with existing tags
+        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+        const merged = Array.from(new Set([...existing, ...found]));
+        tagsEl.value = merged.join(' ');
+        status.textContent = `Added ${found.size} tag(s). Total now ${merged.length}.`;
+        status.style.color = '#15803d';
+      });
+    }
+
+    function attachFamilyEditStudentHelpers(){
+      const btn = document.getElementById('edit_famAddStudents');
+      if (!btn || btn.dataset.wired) return;
+      btn.dataset.wired='1';
+      btn.addEventListener('click', async () => {
+        const input = document.getElementById('edit_famStudents');
+        const status = document.getElementById('edit_famStudentsStatus');
+        const tagsEl = document.getElementById('edit_famTags');
+        if (!input || !tagsEl || !status) return;
+        const raw = input.value.trim();
+        if (!raw){ status.textContent='Enter names or IDs.'; status.style.color='#b91c1c'; return; }
+        status.textContent='Resolving…'; status.style.color='var(--muted)';
+        await ensureStudentsCache();
+        const tokens = raw.split(/[\s,]+/).map(s=>s.trim()).filter(Boolean);
+        const found = tokenToTags(tokens);
+        if (!found.size){ status.textContent='No matches.'; status.style.color='#b91c1c'; return; }
+        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+        const merged = Array.from(new Set([...existing, ...found]));
+        tagsEl.value = merged.join(' ');
+        status.textContent = `Added ${found.size} tag(s). Total now ${merged.length}.`;
+        status.style.color='#15803d';
+      });
+    }
+
     function renderForm(){
       const e = entitySel.value;
       if (e === 'students'){
@@ -341,6 +438,15 @@
           <div class="field"><label for="famName">Name</label><input id="famName" placeholder="e.g., Smith Family" /></div>
           <div class="field"><label for="famTags">Tags</label><input id="famTags" placeholder="e.g., K4 A2 T3" aria-describedby="tagsHelp" /></div>
           <div id="tagsHelp" class="small">Separate tags by space or comma. Tags will be uppercased.</div>
+          <div class="field" style="margin-top:6px;">
+            <label for="famStudents">Students (names or IDs)</label>
+            <input id="famStudents" placeholder="e.g., Jane Doe, 12345, Liam" aria-describedby="famStudentsHelp" />
+            <div class="actions" style="gap:6px;">
+              <button type="button" class="btn btn-outline btn-sm" id="famAddStudents">Add Student Tags</button>
+              <span id="famStudentsStatus" class="small" style="min-height:1em;"></span>
+            </div>
+            <div id="famStudentsHelp" class="small">Enter partial names or IDs separated by spaces/commas; matching students' car tags will be added.</div>
+          </div>
         `;
         const idEl = document.getElementById('famId');
         idEl?.focus();
@@ -356,6 +462,7 @@
           clearBtn.textContent = 'Clear';
           document.getElementById('hint').textContent = 'Creates or updates a car family with one or more tags.';
         }
+        attachFamilyStudentHelpers();
       }
     }
 
@@ -779,9 +886,18 @@
           <div class="field"><label for="edit_famId">Family ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
           <div class="field"><label for="edit_famName">Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
           <div class="field" style="grid-column:1 / -1"><label for="edit_famTags">Tags</label><input id="edit_famTags" value="${escapeHtml((d.tags||[]).join(' '))}" placeholder="e.g., K4 A2 T3" /></div>
+          <div class="field" style="grid-column:1 / -1; margin-top:4px;">
+            <label for="edit_famStudents">Add Students (names or IDs)</label>
+            <input id="edit_famStudents" placeholder="e.g., Jane, 12345, Carter" />
+            <div class="actions" style="gap:6px;">
+              <button type="button" class="btn btn-outline btn-sm" id="edit_famAddStudents">Add Student Tags</button>
+              <span id="edit_famStudentsStatus" class="small" style="min-height:1em;"></span>
+            </div>
+          </div>
         `;
         showFamilyModal();
         familyEditFields.querySelector('#edit_famName')?.focus();
+        attachFamilyEditStudentHelpers();
       } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
     }
     familyEditForm.addEventListener('submit', async (e) => {

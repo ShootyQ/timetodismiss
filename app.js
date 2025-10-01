@@ -726,9 +726,15 @@ export async function setMyNickname(studentId, nickname, sound){
   }
   if (trimmed && trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
   if (trimmedSound && trimmedSound.length > 80) throw new Error('Sound id too long (max 80 chars)');
+  // Ensure cleared fields are actually removed (previous logic left stale name when cleared but sound kept)
+  let deleteFieldFn = null;
+  try {
+    const mod = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+    deleteFieldFn = mod.deleteField;
+  } catch {}
   const payload = { updatedAt: serverTimestamp() };
-  if (trimmed) payload.name = trimmed;
-  if (trimmedSound) payload.sound = trimmedSound;
+  if (trimmed) payload.name = trimmed; else if (deleteFieldFn) payload.name = deleteFieldFn();
+  if (trimmedSound) payload.sound = trimmedSound; else if (deleteFieldFn) payload.sound = deleteFieldFn();
   try {
     await setDoc(ref, payload, { merge: true });
     try { console.debug('[nicknames] setMyNickname success', { studentId, payload }); } catch {}

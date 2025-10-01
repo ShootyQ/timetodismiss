@@ -441,7 +441,7 @@
           ops.push(setMyNickname(id, nickVal, nickSound));
         });
         await Promise.all(ops);
-        status.textContent='Nicknames saved.'; status.className='status-msg status-ok';
+        status.textContent='Nicknames saved (blank = reverted).'; status.className='status-msg status-ok';
       } catch (e){ status.textContent='Save failed: '+(e.message||'error'); status.className='status-msg status-err'; }
     }
 
