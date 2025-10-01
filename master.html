@@ -53,9 +53,10 @@
     // ======= Local state =======
     const MODE_FAMILIES = '__families__';
     let classes = [];
-    let families = [];
-    let carsMap = {};     // TAG -> group name
-    let tagToGroup = {};  // TAG -> group object
+  let families = [];
+  let carsMap = {};     // TAG -> group name
+  let tagToGroup = {};  // TAG -> group object
+  let rideShareToGroup = {}; // RS TOKEN -> group object
     let currentStudents = [];
     let unsubscribeStudents = () => {};
     // Throttle map: prevent repeated writes on the same target for a short window
@@ -141,12 +142,14 @@
       // Car families (orgs/{orgId}/schools/{schoolId}/carGroups/*)
       api.onCarGroups((groups) => {
         families = groups || [];
+        rideShareToGroup = {};
         const m = {}, tg = {};
         families.forEach(g => (g.tags || []).forEach(t => {
           const T = String(t || '').toUpperCase();
           m[T]  = g.name || '';
           tg[T] = g;
         }));
+        families.forEach(g => { const rs = (g.rideShare||g.rideshare||'').trim(); if (rs) rideShareToGroup[rs.toUpperCase()] = g; });
         carsMap = m; tagToGroup = tg;
 
         if (classFilter.value === MODE_FAMILIES) renderFamilies();
@@ -443,6 +446,20 @@
         if (!allowOnce('SCAN_STU:'+id)) return;
         if (apiReady) api.setStudentStatus(id, 'called'); else actionQueue.push({ kind:'setStudentStatus', payload:{ id, action:'called' }});
       } catch (err) { console.error('[master] scan student handler failed', err); }
+    });
+
+    // Ride share token scanned directly (rs=TOKEN)
+    document.addEventListener('scan:ride-share', (e) => {
+      const rs = (e && e.detail && e.detail.rs) ? String(e.detail.rs).trim() : '';
+      if (!rs) return;
+      const key = rs.toUpperCase();
+      try {
+        if (!allowOnce('SCAN_RS:'+key)) return;
+        const grp = rideShareToGroup[key];
+        if (grp && apiReady && api.setStatusForGroup) api.setStatusForGroup(grp.id, 'called');
+        else if (apiReady && api.setStatusForRideShare) api.setStatusForRideShare(rs, 'called');
+        else actionQueue.push({ kind:'rsCall', payload: key });
+      } catch (err) { console.error('[master] ride share scan handler failed', err); }
     });
   </script>
 

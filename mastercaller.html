@@ -194,11 +194,16 @@
       .replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
 
     // Families map TAG -> group
-    let tagToGroup = {};
+  let tagToGroup = {};
+  let rideShareToGroup = {};
     onCarGroups((groups) => {
       const m = {};
-      (groups||[]).forEach(g => (g.tags||[]).forEach(t => m[String(t||'').toUpperCase()] = g));
-      tagToGroup = m;
+      const rsMap = {};
+      (groups||[]).forEach(g => {
+        (g.tags||[]).forEach(t => m[String(t||'').toUpperCase()] = g);
+        const rs = (g.rideShare||g.rideshare||'').trim(); if (rs) rsMap[rs.toUpperCase()] = g;
+      });
+      tagToGroup = m; rideShareToGroup = rsMap;
     });
 
     // Grid size persistence
@@ -308,10 +313,14 @@
       if (unsubGroups) { try{unsubGroups();}catch{} unsubGroups=null; }
       unsubGroups = onCarGroups((groups) => {
         const map = {};
-        (groups||[]).forEach(g => (g.tags||[]).forEach(t => map[String(t||'').toUpperCase()] = g));
+        const rsMap = {};
+        (groups||[]).forEach(g => {
+          (g.tags||[]).forEach(t => map[String(t||'').toUpperCase()] = g);
+          const rs = (g.rideShare||g.rideshare||'').trim(); if (rs) rsMap[rs.toUpperCase()] = g;
+        });
         Object.keys(groupMap).forEach(k => delete groupMap[k]);
         Object.assign(groupMap, map);
-        tagToGroup = map; // keep render map updated
+        tagToGroup = map; rideShareToGroup = rsMap; // keep render map updated
       });
       const classId = classFilter?.value || null;
       unsub = onStudents(classId, (list) => { allStudents = Array.isArray(list) ? list : []; applyFilters(); });
@@ -407,6 +416,18 @@
 
     classFilter?.addEventListener('change', resubscribe);
     search?.addEventListener('input', applyFilters);
+
+    // Direct ride share QR scan (rs=TOKEN)
+    document.addEventListener('scan:ride-share', async (e) => {
+      const rs = (e && e.detail && e.detail.rs) ? String(e.detail.rs).trim() : '';
+      if (!rs) return;
+      const grp = rideShareToGroup[rs.toUpperCase()];
+      try {
+        if (grp && grp.id) await setStatusForGroup(grp.id, 'called');
+        else if (setStatusForRideShare) await setStatusForRideShare(rs, 'called');
+        showToast('Ride share called');
+      } catch(err){ console.error('[tiles] ride share scan failed', err); }
+    });
   </script>
 </body>
 </html>

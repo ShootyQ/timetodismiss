@@ -133,6 +133,9 @@
         <option value="square2">Square 2×2 in</option>
         <option value="square3">Square 3×3 in</option>
       </select>
+      <label class="inline-flex">
+        <input id="includeRideShares" type="checkbox" /> Ride Shares
+      </label>
       <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
       <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
@@ -220,9 +223,10 @@
   const paPages = document.getElementById('paPages');
   const countSummary = document.getElementById('countSummary');
 
-    // Data
-    let tags = [];     // [{ tag, name }]
-    let students = []; // [{ id, name, tag }]
+  // Data
+  let tags = [];         // [{ tag, name }]
+  let rideShares = [];   // [{ rs, name }]
+  let students = [];     // [{ id, name, tag }]
     const selected = new Set();
 
     // Helpers
@@ -259,12 +263,31 @@
         .sort((a,b)=>a.tag.localeCompare(b.tag));
     }
 
+    function collectRideShares(groups){
+      const out = [];
+      for (const g of (groups||[])){
+        const token = (g.rideShare || g.rideshare || '').trim();
+        if (!token) continue;
+        out.push({ rs: token, name: g.name || '' });
+      }
+      const seen = new Set();
+      return out.filter(o => { if (seen.has(o.rs)) return false; seen.add(o.rs); return true; })
+                .sort((a,b)=> a.rs.localeCompare(b.rs));
+    }
+
     function currentFilterList(){
       const filter = (q.value||'').toLowerCase();
       const useStudents = !!modeStudents.checked;
-      return useStudents
-        ? students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)))
-        : tags.filter(x => x.tag.toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+      if (useStudents){
+        return students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)));
+      }
+      const includeRS = !!includeRideShares.checked;
+      const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
+      if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
+      return base.filter(x => {
+        const key = (x.type==='tag'? x.tag : x.rs).toLowerCase();
+        return key.includes(filter) || (x.name||'').toLowerCase().includes(filter);
+      });
     }
 
     function renderList(){
@@ -277,23 +300,34 @@
       empty.classList.toggle('hidden', list.length > 0);
 
       for (const item of list){
-        const tag = useStudents ? (item.tag || '') : item.tag;
-        const name = useStudents ? nameOf(item) : (item.name || '');
-        const id = useStudents ? (item.id || item.studentId || '') : null;
-        const key = id || tag;
+        let tag = '';
+        let rsToken = '';
+        let name = '';
+        let id = null;
+        let key = '';
+        if (useStudents){
+          tag = item.tag || '';
+          name = nameOf(item);
+          id = item.id || item.studentId || '';
+          key = id || tag;
+        } else if (item.type === 'tag') {
+          tag = item.tag; name = item.name || ''; key = 'TAG:' + tag;
+        } else {
+          rsToken = item.rs; name = item.name || ''; key = 'RS:' + rsToken;
+        }
 
         const li = document.createElement('li');
         li.className = 'qr-item';
         li.dataset.key = key;
-        const topName = showNames.checked ? `<span class="small muted">${useStudents ? (name || '') : (name || '&nbsp;')}</span>` : '';
-        const underName = showNames.checked && useStudents ? `<div class="qr-sub">${name || ''}</div>` : '';
+  const topName = showNames.checked ? `<span class="small muted">${(name || '') || '&nbsp;'}</span>` : '';
+  const underName = (showNames.checked && useStudents) ? `<div class="qr-sub">${name || ''}</div>` : (showNames.checked && !useStudents && name ? `<div class="qr-sub">${name}</div>` : '');
         li.innerHTML = `
           <label class="inline-flex" style="align-self:flex-start;">
             <input type="checkbox" aria-label="Select ${useStudents ? (name || id || tag) : tag}" ${prev.has(key) ? 'checked' : ''} />
             ${topName}
           </label>
           <div class="qr-box"></div>
-          <div class="qr-label" aria-hidden="true">${useStudents ? (tag || id || '') : tag}</div>
+          <div class="qr-label" aria-hidden="true">${ useStudents ? (tag || id || '') : (item.type==='tag'? tag : rsToken) }</div>
           ${underName}
           <div class="qr-actions">
             <button class="btn btn-xs btn-outline" data-dl="${key}" type="button" aria-label="Download ${useStudents ? (tag || id || 'code') : tag}">Download PNG</button>
@@ -301,9 +335,12 @@
 
         grid.appendChild(li);
 
-        const payload = useStudents
-          ? (tag ? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id||'')}`)
-          : `car=${encodeURIComponent(tag)}`;
+        let payload = '';
+        if (useStudents){
+          payload = tag ? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id||'')}`;
+        } else {
+          payload = item.type==='tag' ? `car=${encodeURIComponent(tag)}` : `rs=${encodeURIComponent(rsToken)}`;
+        }
 
         const box = li.querySelector('.qr-box');
         box.style.width = W + 'px'; box.style.height = W + 'px';
@@ -366,9 +403,18 @@
 
     function toPx(inches){ return Math.round(inches * 96); }
 
-    function getAllItems(){ return modeStudents.checked ? students : tags; }
+    function getAllItems(){
+      if (modeStudents.checked) return students;
+      const includeRS = !!includeRideShares.checked;
+      const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
+      if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
+      return base;
+    }
 
-    function getKey(item, useStudents){ return useStudents ? (item.id || item.studentId || item.tag) : item.tag; }
+    function getKey(item, useStudents){
+      if (useStudents) return item.id || item.studentId || item.tag;
+      return item.type === 'rs' ? ('RS:'+item.rs) : item.tag;
+    }
 
     function buildPayload(item, useStudents){
       if (useStudents){
@@ -376,6 +422,7 @@
         const id = item.id || item.studentId || '';
         return tag ? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id)}`;
       }
+      if (item.type === 'rs') return `rs=${encodeURIComponent(item.rs)}`;
       return `car=${encodeURIComponent(item.tag)}`;
     }
 
@@ -511,7 +558,8 @@
     layoutSel.addEventListener('change', () => {/* used at print-time */});
     q.addEventListener('input', renderList);
     tight.addEventListener('change', () => setTight(tight.checked));
-    showNames.addEventListener('change', renderList);
+  showNames.addEventListener('change', renderList);
+  includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -618,7 +666,7 @@
     }
 
     // Persist settings
-    const LSKEY = 'ttd.qr.opts.v1';
+  const LSKEY = 'ttd.qr.opts.v2';
     function saveOpts(){
       try{
         const o = {
@@ -628,7 +676,8 @@
           showNames: !!showNames.checked,
           layout: layoutSel.value,
           modeStudents: !!modeStudents.checked,
-          q: q.value || ''
+          q: q.value || '',
+          includeRideShares: !!includeRideShares.checked
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -645,6 +694,7 @@
         if (o.layout) layoutSel.value = o.layout;
         if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
         if (typeof o.q === 'string') q.value = o.q;
+        if (typeof o.includeRideShares === 'boolean') includeRideShares.checked = o.includeRideShares;
       }catch{}
     }
 
@@ -665,7 +715,12 @@
 
       try {
         if (typeof onCarGroups === 'function') {
-          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); updateCounts(); });
+          onCarGroups(groups => {
+            tags = collectTags(groups);
+            rideShares = collectRideShares(groups);
+            if (!modeStudents.checked) renderList();
+            updateCounts();
+          });
         }
       } catch (e) { console.warn('onCarGroups failed', e); }
 
@@ -700,7 +755,7 @@
     whenClaimsReady(bootstrap);
 
     // Persist on changes
-    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q].forEach(el => {
+    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q, includeRideShares].forEach(el => {
       el.addEventListener('change', saveOpts);
       el.addEventListener('input', saveOpts);
     });
