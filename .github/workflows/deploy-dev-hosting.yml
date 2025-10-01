@@ -30,3 +30,35 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           projectId: dismissalcaller
           channelId: dev
+  push:
+    branches: [ "dev" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Firebase Hosting (preview dev channel)
+        id: deploy
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          firebaseServiceAccount: "${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}"
+          projectId: dismissalcaller
+          channelId: dev
+          expires: 7d
+          target: app
+        env:
+          FIREBASE_DEBUG: 'true'
+
+      - name: Post preview URL
+        run: |
+          echo "Dev preview URL:" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ steps.deploy.outputs.details_url }}" ]; then echo "${{ steps.deploy.outputs.details_url }}" >> $GITHUB_STEP_SUMMARY; fi
+          echo "Stable named channel (may also work): https://dev--dismissalcaller.web.app" >> $GITHUB_STEP_SUMMARY

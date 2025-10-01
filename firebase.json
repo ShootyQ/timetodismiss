@@ -9,11 +9,14 @@
       "functions/**",
       "firebaseinfo/**",
       ".git/**"
+      "/.*",
+      "/node_modules/"
     ],
     "cleanUrls": true,
     "headers": [
       {
         "source": "**/*.html",
+        "source": "/*.html",
         "headers": [
           { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
         ]

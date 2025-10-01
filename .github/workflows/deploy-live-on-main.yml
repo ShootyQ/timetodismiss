@@ -1,0 +1,33 @@
+name: Deploy to Firebase Hosting (live)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Tools
+        run: npm i -g firebase-tools
+
+      - name: Deploy to Firebase Hosting (live)
+        env:
+          FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
+        run: |
+          echo "Using service account auth via GOOGLE_APPLICATION_CREDENTIALS"
+          export GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_key.json
+          echo "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          firebase --project dismissalcaller deploy --only hosting:dismissalcaller
