@@ -83,7 +83,7 @@
     // Load /app.js AFTER listeners are in place
   (async () => {
       try {
-    const mod = await import('/app.js?v=21');
+  const mod = await import('/app.js?v=23');
         api = mod;
         try { await mod.init?.(); } catch(e) { console.warn('[master] init() failed (continuing):', e?.message || e); }
         apiReady = true;
@@ -186,7 +186,8 @@
     }
 
     // ======= Rendering =======
-    function ding(){ try { new Audio('/chime.mp3').play().catch(()=>{}); } catch(e){} }
+    // Sound removed for caller UI (silent operations by design now)
+    function ding() { /* intentionally no-op */ }
   const rank = s => ({ called:0, waiting:1, en_route:2, picked_up:99, absent:100 }[s] ?? 50);
 
     function renderStudents() {

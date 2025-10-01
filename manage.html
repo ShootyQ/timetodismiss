@@ -16,8 +16,8 @@
     .title-actions{ display:flex; align-items:center; gap:8px; }
     .toolbar{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 14px; }
     .toolbar input, .toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.55rem .7rem; }
-    .grid2{ display:grid; grid-template-columns: 1.5fr .8fr; gap:14px; }
-    @media (max-width: 900px){ .grid2{ grid-template-columns: 1fr; } }
+    /* Layout: form now full width above table */
+    .stack{ display:flex; flex-direction:column; gap:16px; }
     .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px 16px; }
   .table{ width:100%; border-collapse:separate; border-spacing:0; background:#fff; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
     .table th, .table td{ padding:.6rem .75rem; text-align:left; }
@@ -35,12 +35,36 @@
   /* Multi-add rows */
   .rows-toolbar{ display:flex; gap:8px; align-items:center; margin:6px 0 10px; }
   .student-rows{ display:flex; flex-direction:column; gap:10px; }
-  .student-row{ display:grid; grid-template-columns: 1.4fr .9fr 1fr .8fr auto; gap:10px; align-items:end; }
+  .student-row{ display:grid; grid-template-columns: 1fr 1fr 1fr 0.9fr 0.9fr 0.9fr 0.9fr auto; gap:10px; align-items:end; }
   .student-row .field{ margin:0; }
   .row-actions{ display:flex; align-items:center; gap:6px; padding-bottom:6px; }
-  @media (max-width: 1100px){ .student-row{ grid-template-columns: 1fr 1fr; } .student-row .row-actions{ grid-column: 1 / -1; } }
+  @media (max-width: 1400px){ .student-row{ grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr; } }
+  @media (max-width: 1100px){ .student-row{ grid-template-columns: 1fr 1fr 1fr; } }
+  @media (max-width: 800px){ .student-row{ grid-template-columns: 1fr 1fr; } }
   .field input, .field select{ width:100%; min-width:0; }
   #tenantInfo{ margin-left:8px; color: var(--muted); }
+  .grid-scroll{ overflow:auto; }
+  .nowrap{ white-space:nowrap; }
+  .mono-small{ font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.7rem; letter-spacing:.5px; }
+  .col-group{ display:flex; flex-wrap:wrap; gap:8px; }
+  /* Inline modal (dialog mimic) */
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(15,23,42,.55); backdrop-filter:saturate(140%) blur(2px); display:none; align-items:flex-start; justify-content:center; padding:5vh 20px; z-index:400; overflow:auto; }
+  .modal-backdrop.show{ display:flex; animation:fadeIn .18s ease; }
+  /* Re-enable pointer events (global stylesheet disables overlays by default) */
+  .modal-backdrop.show{ pointer-events:auto !important; }
+  .modal-panel{ background:#fff; border-radius:16px; width:100%; max-width:880px; padding:24px 26px 30px; box-shadow:0 10px 28px -6px rgba(0,0,0,.25), 0 0 0 1px rgba(0,0,0,.05); position:relative; }
+  .modal-panel h2{ margin-top:0; font-size:1.35rem; }
+  .modal-close{ position:absolute; top:10px; right:10px; border:none; background:transparent; font-size:1.2rem; cursor:pointer; line-height:1; padding:4px 8px; border-radius:8px; }
+  .modal-close:hover{ background:#f1f5f9; }
+  .btn-danger{ background:#dc2626; color:#fff; }
+  .btn-danger:hover{ background:#b91c1c; color:#fff; }
+  .del-confirm-wrap{ display:flex; gap:6px; }
+  @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px);} to{ opacity:1; transform:translateY(0);} }
+  .edit-grid{ display:grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap:14px 16px; margin:6px 0 4px; }
+  .edit-grid .field{ margin:0; }
+  .modal-actions{ display:flex; gap:10px; margin-top:18px; align-items:center; }
+  .separator-line{ height:1px; background:#e5e7eb; margin:18px 0 12px; }
+  .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
   </style>
 </head>
 <body class="sd-body">
@@ -67,16 +91,9 @@
   <span id="toast" class="small ml-auto"></span>
     </section>
 
-    <section class="grid2">
-      <div class="card">
-        <table class="table" aria-label="Roster list">
-          <thead><tr id="thead"></tr></thead>
-          <tbody id="tbody"></tbody>
-        </table>
-      </div>
-
+    <section class="stack">
       <form id="addForm" class="card" aria-labelledby="add-h">
-  <h2 id="add-h" class="page-title t-sm-title">Add</h2>
+        <h2 id="add-h" class="page-title t-sm-title">Add</h2>
         <div id="formFields"></div>
         <div class="actions">
           <button id="addBtn" type="submit" class="btn btn-primary">Add</button>
@@ -84,11 +101,33 @@
         </div>
         <p class="small" id="hint">Select an entity to add items to your roster.</p>
       </form>
+      <div class="card grid-scroll">
+        <table class="table" aria-label="Roster list">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
+  <!-- Student Edit Modal -->
+  <div id="studentEditModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="studentEditTitle" aria-hidden="true">
+    <div class="modal-panel" role="document">
+      <button class="modal-close" type="button" aria-label="Close" data-edit-close>&times;</button>
+      <h2 id="studentEditTitle">Edit Student</h2>
+      <form id="studentEditForm" novalidate>
+        <div id="studentEditFields" class="edit-grid"></div>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="studentSaveBtn">Save</button>
+          <button type="button" class="btn btn-ghost" data-edit-close>Cancel</button>
+          <span class="small" id="editHint">Update the student details then Save.</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script type="module">
-  import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=21';
+  import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=23';
     await init();
   import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
@@ -149,8 +188,8 @@
   let classFilter = '';
 
     const headersMap = {
-      students: ['Name','ID','Class','Tag',''],
-      classes:  ['Class ID','Name',''],
+      students: ['Preferred / Name','ID','Class','Tag','Bus','Lane','Updated',''],
+      classes:  ['Order','Class ID','Name',''],
       families: ['Family ID','Name','Tags','']
     };
 
@@ -193,19 +232,24 @@
       list.forEach(r => {
         const tr = document.createElement('tr');
         if (e === 'students'){
-          const tag = r.carTag || '';
-          tr.innerHTML = `
-            <td>${escapeHtml(r.name||'')}</td>
-            <td>${escapeHtml(r.studentId||'')}</td>
-            <td>${escapeHtml(resolveClassName(r.classId)||r.classId||'')}</td>
-            <td>${escapeHtml(tag||'')}</td>
-            <td class="actions">
-              <button class="btn btn-sm" data-edit="${r._docId}">Edit</button>
-              <button class="btn btn-sm btn-outline" data-del="${r._docId}">Delete</button>
-            </td>
-          `;
+            const tag = r.carTag || '';
+            const display = r.displayName || r.name || '';
+            tr.innerHTML = `
+              <td>${escapeHtml(display)}</td>
+              <td class="mono-small">${escapeHtml(r.studentId||'')}</td>
+              <td>${escapeHtml(resolveClassName(r.classId)||r.classId||'')}</td>
+              <td>${escapeHtml(tag||'')}</td>
+              <td class="mono-small">${escapeHtml(r.busId||'')}</td>
+              <td class="mono-small">${escapeHtml(r.laneId||'')}</td>
+              <td class="mono-small">${escapeHtml(r._updated||'')}</td>
+              <td class="actions">
+                <button class="btn btn-sm" data-edit="${r._docId}">Edit</button>
+                <button class="btn btn-sm btn-outline" data-del="${r._docId}">Delete</button>
+              </td>
+            `;
         } else if (e === 'classes'){
           tr.innerHTML = `
+            <td class="mono-small">${escapeHtml(r.order === undefined || r.order === null ? '' : r.order)}</td>
             <td>${escapeHtml(r.id)}</td>
             <td>${escapeHtml(r.name||r.title||'')}</td>
             <td class="actions">
@@ -235,35 +279,38 @@
       if (e === 'students'){
         const classOpts = classes.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name||c.id)}</option>`).join('');
         if (editingId){
-          // Single-row edit mode: use a single Name field (we primarily store 'name')
+          // Edit mode: structured fields
           formFields.innerHTML = `
-            <div class="field"><label for="nameFull">Name</label><input id="nameFull" autocomplete="name" required /></div>
-            <div class="field"><label for="studentId">Student ID (optional)</label><input id="studentId" inputmode="text" /></div>
-            <div class="field"><label for="classId">Class</label><select id="classId">${classOpts}</select></div>
-            <div class="field"><label for="carTag">Car Tag</label><input id="carTag" placeholder="e.g., A12" /></div>
+            <div class="col-group">
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="firstName">First Name</label><input id="firstName" autocomplete="given-name" /></div>
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="lastName">Last Name</label><input id="lastName" autocomplete="family-name" /></div>
+              <div class="field" style="flex:1 1 180px; min-width:160px;"><label for="preferredName">Preferred Name (optional)</label><input id="preferredName" autocomplete="nickname" /></div>
+              <div class="field" style="flex:0 1 140px; min-width:120px;"><label for="studentId">Student ID</label><input id="studentId" inputmode="text" /></div>
+              <div class="field" style="flex:0 1 160px; min-width:140px;"><label for="classId">Class</label><select id="classId">${classOpts}</select></div>
+              <div class="field" style="flex:0 1 140px; min-width:120px;"><label for="carTag">Car Tag</label><input id="carTag" placeholder="e.g., A12" /></div>
+              <div class="field" style="flex:0 1 120px; min-width:110px;"><label for="busId">Bus ID</label><input id="busId" placeholder="e.g., 27" /></div>
+              <div class="field" style="flex:0 1 120px; min-width:110px;"><label for="laneId">Lane ID</label><input id="laneId" placeholder="e.g., N1" /></div>
+            </div>
           `;
-          document.getElementById('nameFull')?.focus();
+          document.getElementById('firstName')?.focus();
           titleEl.textContent = 'Edit Student';
-          // Keep the primary button labeled "Add" per request; do not change to Save/Update
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
           document.getElementById('hint').textContent = 'Edit details, then submit.';
         } else {
-          // Multi-add mode: Name + (optional) ID, Class, Tag rows
+          // Multi-add mode with structured fields per row
           formFields.innerHTML = `
             <div class="rows-toolbar">
               <button id="addRowBtn" type="button" class="btn btn-outline btn-sm" aria-label="Add another row">＋ Add row</button>
-              <span class="small">Add multiple students at once. Name and Class are required per row.</span>
+              <span class="small">Add multiple students. First & Class required. Preferred overrides display.</span>
             </div>
             <div id="studentRows" class="student-rows" aria-live="polite"></div>
           `;
-          // Seed with one empty row
           try { addStudentRow(); } catch {}
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
           document.getElementById('hint').textContent = 'Adds one or more students with status set to waiting.';
-          // Wire row add/remove
           const addRowBtn = document.getElementById('addRowBtn');
           addRowBtn?.addEventListener('click', () => addStudentRow());
         }
@@ -271,6 +318,7 @@
         formFields.innerHTML = `
           <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /></div>
           <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /></div>
+          <div class="field"><label for="classOrder">Order</label><input id="classOrder" type="number" inputmode="numeric" placeholder="e.g., 10" /></div>
         `;
         const keyEl = document.getElementById('classKey');
         keyEl?.focus();
@@ -330,17 +378,21 @@
       row.className = 'student-row';
       row.setAttribute('data-idx', String(idx));
       row.innerHTML = `
-        <div class="field"><label for="name_${idx}">Name</label><input id="name_${idx}" name="name" autocomplete="name" value="${escapeHtml(pref.name||'')}" /></div>
+        <div class="field"><label for="firstName_${idx}">First</label><input id="firstName_${idx}" name="firstName" autocomplete="given-name" value="${escapeHtml(pref.firstName||'')}" /></div>
+        <div class="field"><label for="lastName_${idx}">Last</label><input id="lastName_${idx}" name="lastName" autocomplete="family-name" value="${escapeHtml(pref.lastName||'')}" /></div>
+        <div class="field"><label for="preferredName_${idx}">Preferred</label><input id="preferredName_${idx}" name="preferredName" autocomplete="nickname" value="${escapeHtml(pref.preferredName||'')}" /></div>
         <div class="field"><label for="studentId_${idx}">Student ID</label><input id="studentId_${idx}" name="studentId" inputmode="text" value="${escapeHtml(pref.id||'')}" /></div>
         <div class="field"><label for="classId_${idx}">Class</label><select id="classId_${idx}" name="classId">${getClassOptionsHtml(pref.classId||'')}</select></div>
         <div class="field"><label for="carTag_${idx}">Car Tag</label><input id="carTag_${idx}" name="carTag" placeholder="e.g., A12" value="${escapeHtml((pref.carTag||'').toString().toUpperCase())}" /></div>
+        <div class="field"><label for="busId_${idx}">Bus</label><input id="busId_${idx}" name="busId" placeholder="e.g., 27" value="${escapeHtml(pref.busId||'')}" /></div>
+        <div class="field"><label for="laneId_${idx}">Lane</label><input id="laneId_${idx}" name="laneId" placeholder="e.g., N1" value="${escapeHtml(pref.laneId||'')}" /></div>
         <div class="row-actions">
           <button type="button" class="btn btn-ghost btn-sm remove-row" aria-label="Remove row">Remove</button>
         </div>
       `;
       rowsHost.appendChild(row);
       // Focus first field of the new row
-      try { row.querySelector('input[name="name"]').focus(); } catch {}
+      try { row.querySelector('input[name="firstName"]').focus(); } catch {}
       // Delegate remove
       row.querySelector('.remove-row')?.addEventListener('click', () => {
         rowsHost.removeChild(row);
@@ -365,19 +417,72 @@
         unsub = onSnapshot(qy, (snap) => {
           rows = snap.docs.map(d => {
             const data = d.data() || {};
+            const first = data.firstName || '';
+            const last = data.lastName || '';
+            const pref = data.preferredName || '';
+            const baseFull = (first || last) ? (first + (last?(' ' + last):'')) : (data.name||'');
+            let composite = baseFull;
+            if (pref && pref.trim()){
+              if (baseFull && pref.trim().toLowerCase() !== baseFull.trim().toLowerCase()) composite = `${pref} (${baseFull})`; else composite = pref;
+            }
+            let updatedIso = '';
+            try {
+              let ts = null;
+              if (data.updatedAt?.toDate) ts = data.updatedAt.toDate();
+              else if (data.updatedAt?.toMillis) ts = new Date(data.updatedAt.toMillis());
+              if (ts) updatedIso = ts.toLocaleDateString(undefined,{month:'numeric',day:'numeric'}) + ' ' + ts.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+            } catch {}
             return {
               _docId: d.id,
               name: data.name || '',
+              firstName: first,
+              lastName: last,
+              preferredName: pref,
+              displayName: composite,
               studentId: data.id || '',
               classId: data.classId || '',
-              carTag: (data.carTag || data.tag || '').toString().toUpperCase()
+              carTag: (data.carTag || data.tag || '').toString().toUpperCase(),
+              busId: data.busId || '',
+              laneId: data.laneId || '',
+              _updated: updatedIso
             };
           });
           renderBody();
         }, (err) => { console.error('[students] listener error:', err); });
       } else if (e === 'classes'){
-        const qy = query(colPath('classes'), orderBy('name','asc'));
-        unsub = onSnapshot(qy, (snap) => { rows = snap.docs.map(d=>({ id:d.id, ...d.data() })); renderBody(); });
+        // Prefer explicit numeric order, but gracefully fallback if index/permission/other error.
+        const startOrderListener = () => {
+          try {
+            const qyOrd = query(colPath('classes'), orderBy('order','asc'));
+            unsub = onSnapshot(qyOrd, (snap) => {
+              rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+              // If empty but we previously had data, keep previous until fallback? For now just render.
+              renderBody();
+              // If we got zero docs AND no order field likely exists, we still show empty; a timeout below triggers fallback.
+            }, (err) => {
+              console.warn('[classes] order listener runtime error; falling back to name ordering:', err?.message||err);
+              startNameListener();
+            });
+            // Safety fallback: if after a short delay no rows populated but we suspect existing classes from cached list
+            setTimeout(() => { if (rows.length === 0) {
+              try { startNameListener(); } catch {}
+            } }, 2000);
+          } catch (e2){
+            console.warn('[classes] order query failed synchronously, fallback to name', e2?.message||e2);
+            startNameListener();
+          }
+        };
+        const startNameListener = () => {
+          try {
+            const qyNm = query(colPath('classes'), orderBy('name','asc'));
+            try { unsub(); } catch {}
+            unsub = onSnapshot(qyNm, (snap) => {
+              rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+              renderBody();
+            }, (err2) => console.error('[classes] name listener error:', err2));
+          } catch (e3){ console.error('[classes] name fallback failed:', e3?.message||e3); }
+        };
+        startOrderListener();
       } else {
         unsub = onCarGroups((list) => { rows = list; renderBody(); });
       }
@@ -411,7 +516,12 @@
         { value: '', label: 'All classes' },
         ...classes
           .slice()
-          .sort((a,b) => (a.name||a.id||'').localeCompare(b.name||b.id||''))
+          .sort((a,b) => {
+            const ao = (typeof a.order === 'number') ? a.order : 999999;
+            const bo = (typeof b.order === 'number') ? b.order : 999999;
+            if (ao !== bo) return ao - bo;
+            return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+          })
           .map(c => ({ value: String(c.id), label: String(c.name || c.id) }))
       ];
       classSel.innerHTML = opts.map(o => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`).join('');
@@ -429,58 +539,262 @@
       renderBody();
     });
 
+    // --- Delete + Edit (modal) handlers ---
     tbody.addEventListener('click', async (e) => {
-      const del = e.target.closest('button[data-del]');
-      const edt = e.target.closest('button[data-edit]');
       const ent = entitySel.value;
-      if (del){
-        const id = del.getAttribute('data-del');
+      const confirmBtn = e.target.closest('button[data-del-confirm]');
+      const cancelBtn  = e.target.closest('button[data-del-cancel]');
+      if (confirmBtn){
+        const id = confirmBtn.getAttribute('data-del-confirm');
         if (!id) return;
-        if (!confirm(`Delete ${ent.slice(0,-1)} “${id}”?`)) return;
-        try{
+        try {
           if (ent === 'students') await deleteDoc(docPath('students', id));
           else if (ent === 'classes') await deleteDoc(docPath('classes', id));
           else await deleteDoc(docPath('carGroups', id));
           setToast('Deleted.');
-        } catch (err){ console.error(err); setToast('Delete failed: ' + (err?.message||'Unknown'), true); }
+        } catch(err){ console.error(err); setToast('Delete failed: ' + (err?.message||'Unknown'), true); }
         return;
       }
-  if (edt){
+      if (cancelBtn){
+        // Restore original action buttons
+        const cell = cancelBtn.closest('.actions');
+        const id = cancelBtn.getAttribute('data-del-cancel');
+        if (cell && id){
+          cell.innerHTML = `<button class="btn btn-sm" data-edit="${id}">Edit</button><button class="btn btn-sm btn-outline" data-del="${id}">Delete</button>`;
+        }
+        return;
+      }
+      const del = e.target.closest('button[data-del]');
+      if (del){
+        const id = del.getAttribute('data-del');
+        if (!id) return;
+        // Swap to confirmation UI
+        const cell = del.closest('.actions');
+        if (cell){
+          cell.innerHTML = `<div class="del-confirm-wrap"><button class="btn btn-sm btn-danger" data-del-confirm="${id}">Confirm</button><button class="btn btn-sm btn-ghost" data-del-cancel="${id}">Cancel</button></div>`;
+        }
+        return;
+      }
+      const edt = e.target.closest('button[data-edit]');
+      if (edt){
         const id = edt.getAttribute('data-edit');
         if (!id) return;
-        try{
+        try {
           if (ent === 'students'){
-            const snap = await getDoc(docPath('students', id));
-            if (!snap.exists()) { setToast('Student not found', true); return; }
-            editingId = id;
-            renderForm();
-            const d = snap.data() || {};
-    document.getElementById('nameFull').value = d.name || [d.lastName, d.firstName].filter(Boolean).join(', ');
-    document.getElementById('studentId').value = d.id || '';
-            document.getElementById('classId').value   = d.classId || '';
-            document.getElementById('carTag').value    = (d.carTag || d.tag || '').toString().toUpperCase();
+            openStudentEdit(id);
+            return; // handled by modal
           } else if (ent === 'classes'){
-            const snap = await getDoc(docPath('classes', id));
-            if (!snap.exists()) { setToast('Class not found', true); return; }
-            editingId = id;
-            renderForm();
-            const d = snap.data() || {};
-            document.getElementById('classKey').value  = id;
-            document.getElementById('className').value = d.name || d.title || '';
+            openClassEdit(id);
           } else { // families
-            const snap = await getDoc(docPath('carGroups', id));
-            if (!snap.exists()) { setToast('Family not found', true); return; }
-            editingId = id;
-            renderForm();
-            const d = snap.data() || {};
-            document.getElementById('famId').value   = id;
-            document.getElementById('famName').value = d.name || '';
-            document.getElementById('famTags').value = (d.tags||[]).join(' ');
+            openFamilyEdit(id);
           }
-          try { form.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
-          setToast('Editing…');
-        } catch (err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+        } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
       }
+    });
+
+    // ---- Student Edit Modal Logic ----
+    const studentEditModal = document.getElementById('studentEditModal');
+    const studentEditForm  = document.getElementById('studentEditForm');
+    const studentEditFields= document.getElementById('studentEditFields');
+    let activeEditStudentId = null;
+    let lastFocusEl = null;
+
+    function buildStudentField(label, id, value='', placeholder='', extra=''){
+      return `<div class="field"><label for="${id}">${label}</label><input id="${id}" value="${escapeHtml(value)}" ${extra} placeholder="${escapeHtml(placeholder)}" /></div>`;
+    }
+    function buildStudentSelect(label, id, value=''){
+      return `<div class="field"><label for="${id}">${label}</label><select id="${id}">${getClassOptionsHtml(value)}</select></div>`;
+    }
+    async function openStudentEdit(id){
+      lastFocusEl = document.activeElement;
+      activeEditStudentId = id;
+      setToast('Loading…');
+      try {
+        const snap = await getDoc(docPath('students', id));
+        if (!snap.exists()){ setToast('Student not found', true); return; }
+        const d = snap.data() || {};
+        // Legacy fallback: derive first/last from legacy name if structured fields absent
+        let first = d.firstName || '';
+        let last  = d.lastName  || '';
+        if (!first && !last && typeof d.name === 'string' && d.name.trim()){
+          const parts = d.name.trim().split(/\s+/);
+            if (parts.length === 1) first = parts[0];
+            else if (parts.length >= 2){ first = parts[0]; last = parts.slice(1).join(' '); }
+        }
+        const pref  = d.preferredName || '';
+        // Ensure classes available for select
+        if (!classes || classes.length === 0){ try { await refreshClasses(); } catch {} }
+        studentEditFields.innerHTML = `
+          ${buildStudentField('First Name','edit_firstName', first, 'e.g., Maria')}
+          ${buildStudentField('Last Name','edit_lastName', last, 'e.g., Lopez')}
+          ${buildStudentField('Preferred Name (optional)','edit_preferredName', pref, 'e.g., Mimi')}
+          ${buildStudentField('Student ID','edit_studentId', d.id||'', '')}
+          ${buildStudentSelect('Class','edit_classId', d.classId||'')}
+          ${buildStudentField('Car Tag','edit_carTag', (d.carTag||d.tag||'').toString().toUpperCase(), 'A12')}
+          ${buildStudentField('Bus ID','edit_busId', d.busId||'', '27')}
+          ${buildStudentField('Lane ID','edit_laneId', d.laneId||'', 'N1')}
+        `;
+        showStudentModal();
+        try { document.getElementById('edit_firstName')?.focus(); } catch {}
+        setToast('Editing…');
+      } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+    }
+    function showStudentModal(){
+      studentEditModal.classList.add('show');
+      studentEditModal.removeAttribute('aria-hidden');
+      document.body.style.overflow = 'hidden';
+      // basic focus trap
+      document.addEventListener('keydown', escHandler);
+    }
+    function closeStudentModal(){
+      studentEditModal.classList.remove('show');
+      studentEditModal.setAttribute('aria-hidden','true');
+      document.body.style.overflow = '';
+      document.removeEventListener('keydown', escHandler);
+      activeEditStudentId = null;
+      try { lastFocusEl?.focus(); } catch {}
+    }
+    function escHandler(ev){ if (ev.key === 'Escape'){ closeStudentModal(); } }
+    studentEditModal.addEventListener('click', (ev) => { if (ev.target === studentEditModal) closeStudentModal(); });
+    studentEditModal.querySelectorAll('[data-edit-close]').forEach(btn => btn.addEventListener('click', () => closeStudentModal()));
+    studentEditForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      if (!activeEditStudentId) return;
+      try {
+        const firstName     = (document.getElementById('edit_firstName')?.value||'').trim();
+        const lastName      = (document.getElementById('edit_lastName')?.value||'').trim();
+        const preferredName = (document.getElementById('edit_preferredName')?.value||'').trim();
+        const idVal         = (document.getElementById('edit_studentId')?.value||'').trim();
+        const classId       = (document.getElementById('edit_classId')?.value||'').trim();
+        const carTag        = (document.getElementById('edit_carTag')?.value||'').trim().toUpperCase();
+        const busId         = (document.getElementById('edit_busId')?.value||'').trim();
+        const laneId        = (document.getElementById('edit_laneId')?.value||'').trim();
+        if (!firstName && !preferredName) return setToast('First or Preferred name required.', true);
+        if (!classId) return setToast('Class is required.', true);
+        const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+        const payload = { firstName, lastName, preferredName, name: legacyName, id: idVal, classId, carTag, busId, laneId, updatedAt: serverTimestamp() };
+        await setDoc(docPath('students', activeEditStudentId), payload, { merge:true });
+        setToast('Student updated.');
+        closeStudentModal();
+      } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
+    });
+
+    // ===== Class Edit Modal =====
+    const classModal = (() => {
+      const wrap = document.createElement('div');
+      wrap.id = 'classEditModal';
+      wrap.className = 'modal-backdrop';
+      wrap.setAttribute('aria-hidden','true');
+      wrap.innerHTML = `
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="classEditTitle">
+          <button class="modal-close" type="button" aria-label="Close" data-class-close>&times;</button>
+          <h2 id="classEditTitle">Edit Class</h2>
+          <form id="classEditForm" novalidate>
+            <div class="edit-grid" id="classEditFields"></div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn btn-ghost" data-class-close>Cancel</button>
+              <span class="small">Update class info then Save.</span>
+            </div>
+          </form>
+        </div>`;
+      document.body.appendChild(wrap);
+      return wrap;
+    })();
+    const classEditFields = classModal.querySelector('#classEditFields');
+    const classEditForm = classModal.querySelector('#classEditForm');
+    let activeEditClassId = null;
+    function showClassModal(){ classModal.classList.add('show'); classModal.removeAttribute('aria-hidden'); document.body.style.overflow='hidden'; document.addEventListener('keydown', escClassHandler); }
+    function closeClassModal(){ classModal.classList.remove('show'); classModal.setAttribute('aria-hidden','true'); document.body.style.overflow=''; document.removeEventListener('keydown', escClassHandler); activeEditClassId=null; }
+    function escClassHandler(e){ if (e.key==='Escape') closeClassModal(); }
+    classModal.addEventListener('click', (e)=>{ if (e.target===classModal) closeClassModal(); });
+    classModal.querySelectorAll('[data-class-close]').forEach(b => b.addEventListener('click', closeClassModal));
+    async function openClassEdit(id){
+      activeEditClassId = id;
+      try {
+        const snap = await getDoc(docPath('classes', id));
+        if (!snap.exists()) { setToast('Class not found', true); return; }
+        const d = snap.data() || {};
+        classEditFields.innerHTML = `
+          <div class="field"><label for="edit_classKey">Class ID</label><input id="edit_classKey" value="${escapeHtml(id)}" disabled /></div>
+          <div class="field"><label for="edit_className">Name</label><input id="edit_className" value="${escapeHtml(d.name || d.title || '')}" /></div>
+          <div class="field"><label for="edit_classOrder">Order</label><input id="edit_classOrder" type="number" inputmode="numeric" value="${d.order === undefined || d.order === null ? '' : escapeHtml(d.order)}" placeholder="e.g., 10" /></div>
+        `;
+        showClassModal();
+        classEditFields.querySelector('#edit_className')?.focus();
+      } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+    }
+    classEditForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeEditClassId) return;
+      try {
+        const name = (document.getElementById('edit_className')?.value||'').trim();
+        const orderRaw = (document.getElementById('edit_classOrder')?.value||'').trim();
+        const order = orderRaw === '' ? undefined : parseInt(orderRaw,10);
+        const payload = { name: name || activeEditClassId, title: name || activeEditClassId, updatedAt: serverTimestamp() };
+        if (!isNaN(order)) payload.order = order;
+        await setDoc(docPath('classes', activeEditClassId), payload, { merge:true });
+        setToast('Class updated.');
+        closeClassModal();
+      } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
+    });
+
+    // ===== Family Edit Modal =====
+    const familyModal = (() => {
+      const wrap = document.createElement('div');
+      wrap.id = 'familyEditModal';
+      wrap.className = 'modal-backdrop';
+      wrap.setAttribute('aria-hidden','true');
+      wrap.innerHTML = `
+        <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="familyEditTitle">
+          <button class="modal-close" type="button" aria-label="Close" data-family-close>&times;</button>
+          <h2 id="familyEditTitle">Edit Family</h2>
+          <form id="familyEditForm" novalidate>
+            <div class="edit-grid" id="familyEditFields"></div>
+            <div class="modal-actions">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <button type="button" class="btn btn-ghost" data-family-close>Cancel</button>
+              <span class="small">Update the family then Save.</span>
+            </div>
+          </form>
+        </div>`;
+      document.body.appendChild(wrap);
+      return wrap;
+    })();
+    const familyEditFields = familyModal.querySelector('#familyEditFields');
+    const familyEditForm = familyModal.querySelector('#familyEditForm');
+    let activeEditFamilyId = null;
+    function showFamilyModal(){ familyModal.classList.add('show'); familyModal.removeAttribute('aria-hidden'); document.body.style.overflow='hidden'; document.addEventListener('keydown', escFamilyHandler); }
+    function closeFamilyModal(){ familyModal.classList.remove('show'); familyModal.setAttribute('aria-hidden','true'); document.body.style.overflow=''; document.removeEventListener('keydown', escFamilyHandler); activeEditFamilyId=null; }
+    function escFamilyHandler(e){ if (e.key==='Escape') closeFamilyModal(); }
+    familyModal.addEventListener('click', (e)=>{ if (e.target===familyModal) closeFamilyModal(); });
+    familyModal.querySelectorAll('[data-family-close]').forEach(b => b.addEventListener('click', closeFamilyModal));
+    async function openFamilyEdit(id){
+      activeEditFamilyId = id;
+      try {
+        const snap = await getDoc(docPath('carGroups', id));
+        if (!snap.exists()) { setToast('Family not found', true); return; }
+        const d = snap.data() || {};
+        familyEditFields.innerHTML = `
+          <div class="field"><label for="edit_famId">Family ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
+          <div class="field"><label for="edit_famName">Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
+          <div class="field" style="grid-column:1 / -1"><label for="edit_famTags">Tags</label><input id="edit_famTags" value="${escapeHtml((d.tags||[]).join(' '))}" placeholder="e.g., K4 A2 T3" /></div>
+        `;
+        showFamilyModal();
+        familyEditFields.querySelector('#edit_famName')?.focus();
+      } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
+    }
+    familyEditForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!activeEditFamilyId) return;
+      try {
+        const name = (document.getElementById('edit_famName')?.value||'').trim();
+        const tags = (document.getElementById('edit_famTags')?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+        const payload = { name: name || activeEditFamilyId, tags, updatedAt: serverTimestamp() };
+        await setDoc(docPath('carGroups', activeEditFamilyId), payload, { merge:true });
+        setToast('Family updated.');
+        closeFamilyModal();
+      } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
     });
 
     form.addEventListener('submit', async (e) => {
@@ -490,20 +804,27 @@
         if (ent === 'students'){
           const rowsHost = document.getElementById('studentRows');
           if (editingId || !rowsHost){
-            // Single-row path (edit mode or legacy single form)
-            const name = (document.getElementById('nameFull')?.value||'').trim();
-            const id   = (document.getElementById('studentId')?.value||'').trim();
-            const classId = (document.getElementById('classId')?.value||'').trim();
-            const carTag  = (document.getElementById('carTag')?.value||'').trim().toUpperCase();
-            if (!name) return setToast('Name is required.', true);
+            // Single-row path (edit mode)
+            const firstName    = (document.getElementById('firstName')?.value||'').trim();
+            const lastName     = (document.getElementById('lastName')?.value||'').trim();
+            const preferredName= (document.getElementById('preferredName')?.value||'').trim();
+            const idVal        = (document.getElementById('studentId')?.value||'').trim();
+            const classId      = (document.getElementById('classId')?.value||'').trim();
+            const carTag       = (document.getElementById('carTag')?.value||'').trim().toUpperCase();
+            const busId        = (document.getElementById('busId')?.value||'').trim();
+            const laneId       = (document.getElementById('laneId')?.value||'').trim();
+            if (!firstName && !preferredName) return setToast('First or Preferred name required.', true);
             if (!classId) return setToast('Class is required.', true);
+            // Maintain legacy 'name' for now (preferred > first+last)
+            const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+            const payload = { firstName, lastName, preferredName, name: legacyName, id: idVal, classId, carTag, busId, laneId, updatedAt: serverTimestamp() };
             if (editingId){
-              const payload = { name, id, classId, carTag, updatedAt: serverTimestamp() };
               await setDoc(docPath('students', editingId), payload, { merge: true });
               setToast('Student updated.');
               exitEditMode();
             } else {
-              const payload = { name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
+              payload.status = 'waiting';
+              payload.createdAt = serverTimestamp();
               await addDoc(colPath('students'), payload);
               setToast('Student added.');
               form.reset();
@@ -514,16 +835,21 @@
             const rows = Array.from(rowsHost.querySelectorAll('.student-row'));
             const toCreate = [];
             for (const row of rows){
-              const name      = (row.querySelector('input[name="name"]')?.value||'').trim();
+              const firstName      = (row.querySelector('input[name="firstName"]')?.value||'').trim();
+              const lastName       = (row.querySelector('input[name="lastName"]')?.value||'').trim();
+              const preferredName  = (row.querySelector('input[name="preferredName"]')?.value||'').trim();
               const id        = (row.querySelector('input[name="studentId"]')?.value||'').trim();
               const classId   = (row.querySelector('select[name="classId"]')?.value||'').trim();
               const carTag    = (row.querySelector('input[name="carTag"]')?.value||'').trim().toUpperCase();
+              const busId     = (row.querySelector('input[name="busId"]')?.value||'').trim();
+              const laneId    = (row.querySelector('input[name="laneId"]')?.value||'').trim();
               // Skip completely empty rows
-              const hasAny = name || id || classId || carTag;
+              const hasAny = firstName || preferredName || id || classId || carTag || lastName || busId || laneId;
               if (!hasAny) continue;
-              if (!name) return setToast('Name is required for each filled row.', true);
+              if (!firstName && !preferredName) return setToast('Name (First or Preferred) required each row.', true);
               if (!classId) return setToast('Class is required for each filled row.', true);
-              toCreate.push({ name, id, classId, carTag, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+              const legacyName = preferredName || [firstName,lastName].filter(Boolean).join(' ') || firstName || lastName;
+              toCreate.push({ firstName, lastName, preferredName, name: legacyName, id, classId, carTag, busId, laneId, status:'waiting', createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
             }
             if (toCreate.length === 0){ setToast('Nothing to add. Fill at least one row.', true); return; }
             await Promise.all(toCreate.map(p => addDoc(colPath('students'), p)));
@@ -534,14 +860,19 @@
         } else if (ent === 'classes'){
           const keyEl = document.getElementById('classKey');
           const nameEl = document.getElementById('className');
+          const orderEl = document.getElementById('classOrder');
           const key  = (keyEl?.value||'').trim();
           const name = (nameEl?.value||'').trim();
+          const orderRaw = (orderEl?.value||'').trim();
           if (!key) return setToast('Class ID is required.', true);
           const payload = { id: key, name: name || key, title: name || key, updatedAt: serverTimestamp() };
+          if (orderRaw !== ''){
+            const ord = parseInt(orderRaw,10);
+            if (!isNaN(ord)) payload.order = ord;
+          }
           if (editingId){
             await setDoc(docPath('classes', editingId), payload, { merge: true });
             setToast('Class updated.');
-            // Re-enable ID for future adds and exit edit
             try { keyEl?.removeAttribute('disabled'); } catch {}
             exitEditMode();
           } else {

@@ -84,52 +84,72 @@
       const link = document.createElement('link');
       link.rel = 'icon';
       link.type = 'image/png';
-      link.href = '/images/favicon.png'; // align with index.html
+      link.href = '/favicon.png';
       document.head.appendChild(link);
     }
   }
 
   function ensureHeaderShell() {
-  if (document.querySelector('header.site-header')) return;
+    if (document.querySelector('header.site-header')) return;
     const header = document.createElement('header');
     header.className = 'site-header';
     header.innerHTML = `
-      <div class="container header-inner" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;">
-        <a href="/index.html" class="brand" style="font-weight:800;text-decoration:none;">Time To Dismiss</a>
-        <nav class="nav" style="display:flex;gap:1rem;flex-wrap:wrap;">
-          <a href="/class.html" class="nav-link" data-requires="viewer">Classes</a>
-          <a href="/master.html"  class="nav-link" data-requires="caller">Master Caller</a>
-          <a href="/admin.html"   class="nav-link" data-requires="admin">Admin</a>
-          <a href="/superintendent.html" class="nav-link" data-requires="superintendent">Superintendent</a>
-        </nav>
-        <div id="authBox" class="auth-inline" style="display:flex;gap:.5rem;align-items:center;">
-          <div id="schoolBox" class="user-chip" style="display:none;align-items:center;gap:.4rem;min-width:0; margin-right:.25rem;">
-            <span class="small muted">School:</span>
-            <span id="schoolName" class="chip" style="font-weight:700; border:1px solid #e5e7eb; padding:.1rem .4rem; border-radius:999px; max-width:24ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
-            <select id="schoolSelect" style="display:none; border:1px solid #e5e7eb; border-radius:10px; padding:.25rem .4rem;"></select>
+          <div class="container header-inner">
+            <a href="/index.html" class="brand" title="Home">Time To Dismiss</a>
+            <nav class="nav nav-icons" aria-label="Primary">
+              <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
+                <img src="/classicon.png" alt="Classes" width="26" height="26" decoding="async" style="display:block;" />
+              </a>
+              <a href="/master.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
+                <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
+              </a>
+              <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
+                <img src="/admin.png" alt="Admin" width="26" height="26" decoding="async" style="display:block;" />
+              </a>
+              <a href="/superintendent.html" class="nav-icon" data-requires="superintendent" aria-label="Superintendent" title="Superintendent">
+                <img src="/superintendent.png" alt="Superintendent" width="26" height="26" decoding="async" style="display:block;" />
+              </a>
+              <a href="/prefs.html" class="nav-icon" data-requires="viewer" aria-label="Preferences" title="Preferences">
+                <img src="/viewerpref.png" alt="Preferences" width="26" height="26" decoding="async" style="display:block;" />
+              </a>
+            </nav>
+            <div id="authBox" class="auth-inline">
+              <div id="schoolBox" class="school-chip" style="display:none;">
+                <select id="schoolSelect" class="school-select" aria-label="Select school" title="Select school"></select>
+                <span id="schoolName" class="sr-only"></span>
+              </div>
+              <div id="signInBtns" class="signin-btns">
+                <button id="signInGoogle" class="btn btn-outline" type="button">Sign in</button>
+                <button id="signInMicrosoft" class="btn btn-outline" type="button">Microsoft</button>
+              </div>
+              <div id="userChip" class="user-chip" style="display:none;">
+                <button id="userAvatarBtn" class="avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Account">
+                  <img id="userPhoto" alt="" />
+                </button>
+                <div id="userPop" class="user-pop" hidden>
+                  <div class="user-pop-inner">
+                    <div class="user-ident">
+                      <div class="user-email" id="userEmail"></div>
+                      <div class="user-role"><span id="roleBadge" class="role-badge"></span></div>
+                    </div>
+                    <hr class="user-div" />
+                    <button id="signOutBtn2" class="btn btn-sm w-100" type="button">Sign out</button>
+                  </div>
+                </div>
+                <button id="signOutBtn" class="btn btn--ghost" type="button" style="display:none;">Sign out</button>
+              </div>
+            </div>
           </div>
-          <div id="signInBtns" class="signin-btns" style="display:flex; gap:.5rem; flex-wrap:wrap;">
-            <button id="signInGoogle" class="btn" type="button">Sign in with Google</button>
-            <button id="signInMicrosoft" class="btn btn-outline" type="button">Sign in with Microsoft</button>
-          </div>
-          <div id="userChip" class="user-chip" style="display:none;align-items:center;gap:.5rem;min-width:0;">
-            <img id="userPhoto" alt="" style="width:28px;height:28px;border-radius:999px;display:none;object-fit:cover;" />
-            <span id="userEmail" style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:52vw;"></span>
-            <span id="roleBadge" class="role-badge" style="display:none;padding:.1rem .4rem;border-radius:.4rem;font-size:.8rem;border:1px solid currentColor;opacity:.8;"></span>
-            <button id="signOutBtn" class="btn btn--ghost" type="button">Sign out</button>
-          </div>
-        </div>
-      </div>
-      <!-- Compact mobile toolbar -->
-  <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
+          <!-- Compact mobile toolbar -->
+          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
         <button id="hdrMenuBtn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="hdrMenuPanel" title="Menu" aria-label="Open menu">☰</button>
         <button id="hdrAuthBtn" class="icon-btn" type="button" title="Account" aria-label="Account">
           <span id="hdrAuthIcon" aria-hidden="true">👤</span>
           <img id="hdrAuthPhoto" alt="" style="display:none;width:28px;height:28px;border-radius:999px;object-fit:cover;" />
         </button>
-      </div>
-      <div id="hdrMenuScrim" class="hdr-menu-scrim" hidden></div>
-      <aside id="hdrMenuPanel" class="hdr-menu-panel" hidden aria-label="Menu">
+          </div>
+          <div id="hdrMenuScrim" class="hdr-menu-scrim" hidden></div>
+          <aside id="hdrMenuPanel" class="hdr-menu-panel" hidden aria-label="Menu">
         <div class="menu-inner">
           <div class="menu-head">
             <strong>Menu</strong>
@@ -140,6 +160,7 @@
             <a href="/master.html"  data-requires="caller">Master Caller</a>
             <a href="/admin.html"   data-requires="admin">Admin</a>
             <a href="/superintendent.html" data-requires="superintendent">Superintendent</a>
+            <a href="/prefs.html" data-requires="viewer">Preferences</a>
           </nav>
           <div class="menu-auth">
             <button id="hdrSignInGoogle" class="btn" type="button">Sign in with Google</button>
@@ -147,9 +168,9 @@
             <button id="hdrSignOut" class="btn btn-outline" type="button" style="display:none;">Sign out</button>
           </div>
         </div>
-      </aside>
+          </aside>
     `;
-    // Build stamp (hidden) for quick verification in DOM and DevTools
+  // Build stamp (hidden) for quick verification in DOM and DevTools
     try {
       const meta = document.createElement('meta');
       meta.name = 'ttd-build';
@@ -177,7 +198,15 @@
     if (firebase.apps && firebase.apps.length === 0) {
       firebase.initializeApp(firebaseConfig);
     }
-    return firebase.auth();
+    // Ensure durable session persistence (fall back gracefully if blocked)
+    const auth = firebase.auth();
+    try {
+      await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+    } catch (e1) {
+      try { await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }
+      catch (e2) { try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch {} }
+    }
+    return auth;
   }
 
   // Prefer token claims to resolve tenant; fallback to domain mapping only if missing
@@ -238,6 +267,18 @@
 
     ensureFavicon();
     ensureHeaderShell();
+
+    // Add subtle shadow once scrolled
+    (function headerStickiness(){
+      const hdr = document.querySelector('header.site-header');
+      if (!hdr) return;
+      const onScroll = () => {
+        if (window.scrollY > 4) hdr.classList.add('is-stuck');
+        else hdr.classList.remove('is-stuck');
+      };
+      onScroll();
+      window.addEventListener('scroll', onScroll, { passive: true });
+    })();
 
     // Inline mobile CSS to avoid stale external CSS blocking the new header and menu polish
     (function ensureMobileHeaderStyles(){
@@ -330,6 +371,7 @@
     const signInGoogleBtn = header.querySelector('#signInGoogle');
     const signInMsBtn = header.querySelector('#signInMicrosoft');
     const signOutBtn = header.querySelector('#signOutBtn');
+  const signOutBtn2 = header.querySelector('#signOutBtn2');
     const userChip   = header.querySelector('#userChip');
     const userPhoto  = header.querySelector('#userPhoto');
     const userEmail  = header.querySelector('#userEmail');
@@ -366,9 +408,11 @@
       return;
     }
 
-    auth.getRedirectResult().catch(e => {
-      console.warn('[Auth] Redirect sign-in error:', e.code, e.message);
-    });
+    // Track redirect processing so we don't prematurely redirect to login
+    let _redirectResultPending = true;
+    auth.getRedirectResult()
+      .catch(e => { try { console.warn('[Auth] Redirect sign-in error:', e.code, e.message); } catch {} })
+      .finally(() => { _redirectResultPending = false; });
 
   // Auth providers
   const googleProvider = new firebase.auth.GoogleAuthProvider();
@@ -388,6 +432,19 @@
       if (!schoolBox) return;
       schoolBox.style.display = showBox ? 'flex' : 'none';
     }
+    function getStoredSchoolSelection(){
+      try {
+        const raw = localStorage.getItem('SD_SCHOOL_OBJ');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      // Back-compat: if only schoolId was stored
+      try {
+        const sid = localStorage.getItem('SD_SCHOOL');
+        if (sid) return { schoolId: sid };
+      } catch {}
+      return null;
+    }
+
     function applySchoolSelection(sel){
       // sel: { orgId, schoolId, name }
       if (!sel || !sel.schoolId) return;
@@ -395,11 +452,21 @@
       window.SD.orgId = sel.orgId || window.SD.orgId || window.SD.claims?.orgId || 'mn-conference';
       window.SD.schoolId = sel.schoolId;
       window.SD.schoolName = sel.name || sel.schoolId;
-      try { localStorage.setItem('SD_SCHOOL', sel.schoolId); } catch {}
+      // Persist both for cross-refresh stickiness (and keep legacy key)
+      try {
+        localStorage.setItem('SD_SCHOOL', sel.schoolId);
+        localStorage.setItem('SD_SCHOOL_OBJ', JSON.stringify({ orgId: window.SD.orgId, schoolId: sel.schoolId, name: window.SD.schoolName, t: Date.now() }));
+      } catch {}
       if (schoolNameEl) schoolNameEl.textContent = window.SD.schoolName;
       // Announce to pages
       try {
         document.dispatchEvent(new CustomEvent('sd:school-changed', { detail: { orgId: window.SD.orgId, schoolId: sel.schoolId, schoolName: window.SD.schoolName } }));
+      } catch {}
+      // Also re-emit claims-ready with updated school so pages depending on that event can react without a full reload
+      try {
+        const merged = { ...(window.SD.claims || {}), orgId: window.SD.orgId, schoolId: window.SD.schoolId };
+        window.SD.claims = merged; window.claims = merged;
+        document.dispatchEvent(new CustomEvent('sd:claims-ready', { detail: { claims: merged } }));
       } catch {}
     }
     async function fetchSchoolOptions(orgIds, schoolIds){
@@ -483,46 +550,56 @@
 
     // Replace old admin-only visibility with role-driven nav
     function setRoleLinksFromClaims(token) {
-      const isAdmin  = !!token?.claims?.admin;
-      const isCaller = !!token?.claims?.caller;
-      const isViewer = !!token?.claims?.viewer;
-      const isSup    = !!token?.claims?.superintendent;
+        // Determine role flags (superintendent implicitly inherits viewer access to base pages)
+        const isAdmin  = !!token?.claims?.admin;
+        const isCaller = !!token?.claims?.caller;
+        const isSup    = !!token?.claims?.superintendent;
+        const isViewerExplicit = !!token?.claims?.viewer;
+        const isViewer = isAdmin || isCaller || isSup || isViewerExplicit; // consolidated viewer capability
 
-      const canCall  = isAdmin || isCaller;
-      const canView  = isAdmin || isCaller || isViewer;
+        // Capability groupings
+        const canCall  = isAdmin || isCaller; // master caller page
+        const canView  = isViewer;            // classes + prefs
 
-      const show = (els, ok) => els.forEach(el => {
-        el.style.pointerEvents = ok ? '' : 'none';
-        el.style.opacity = ok ? '' : '0.45';
-        el.setAttribute('aria-hidden', ok ? 'false' : 'true');
-      });
-      // Superintendent: fully hide/show the link
-      const toggleHidden = (selector, ok) => {
-        document.querySelectorAll(selector).forEach(el => {
-          el.hidden = !ok; el.setAttribute('aria-hidden', ok ? 'false' : 'true');
+        // Hide ALL gated links first
+        const gated = document.querySelectorAll('[data-requires]');
+        gated.forEach(el => {
+          el.hidden = true;
+          el.setAttribute('aria-hidden','true');
+          el.style.display = 'none';
         });
-      };
 
-      show([...document.querySelectorAll('[data-requires="admin"]')],  isAdmin);
-      show([...document.querySelectorAll('[data-requires="caller"]')], canCall);
-      show([...document.querySelectorAll('[data-requires="viewer"]')], canView);
-      toggleHidden('[data-requires="superintendent"]', isSup);
+        // Show helpers
+        function reveal(selector){
+          document.querySelectorAll(selector).forEach(el => {
+            el.hidden = false;
+            el.setAttribute('aria-hidden','false');
+            el.style.display = ''; // let CSS/flex handle spacing
+            el.style.opacity = '';
+            el.style.pointerEvents = '';
+          });
+        }
 
-      // Role badge label
-  const badges = [];
-      if (isAdmin)  badges.push('Admin');
-      if (isCaller) badges.push('Caller');
-      if (isViewer && !isAdmin && !isCaller) badges.push('Viewer');
-  if (isSup) badges.push('Superintendent');
-      roleBadge.textContent = badges.join(' · ');
-      roleBadge.style.display = badges.length ? '' : 'none';
+        if (canView) reveal('[data-requires="viewer"]'); // classes + prefs
+        if (canCall) reveal('[data-requires="caller"]'); // master caller
+        if (isAdmin) reveal('[data-requires="admin"]');   // admin tools
+        if (isSup)   reveal('[data-requires="superintendent"]');
 
-      // Publish flags
-      window.SD = window.SD || {};
-  window.SD.roles   = { admin: isAdmin, caller: isCaller, viewer: isViewer, superintendent: isSup };
-      window.SD.canCall = canCall;
-      window.SD.canView = canView;
-      window.SD.canAdmin = isAdmin;
+        // Role badge label (ordered hierarchy)
+        const badges = [];
+        if (isSup)    badges.push('Superintendent');
+        if (isAdmin)  badges.push('Admin');
+        else if (isCaller) badges.push('Caller');
+        else if (isViewerExplicit) badges.push('Viewer');
+        roleBadge.textContent = badges.join(' · ');
+        roleBadge.style.display = badges.length ? '' : 'none';
+
+        // Publish flags
+        window.SD = window.SD || {};
+        window.SD.roles   = { admin: isAdmin, caller: isCaller, viewer: isViewer, superintendent: isSup };
+        window.SD.canCall = canCall;
+        window.SD.canView = canView;
+        window.SD.canAdmin = isAdmin;
     }
 
     // Make sign-in callable from other pages
@@ -554,6 +631,7 @@
   signInGoogleBtn?.addEventListener('click', () => startSignIn('google'));
   signInMsBtn?.addEventListener('click', () => startSignIn('microsoft'));
     signOutBtn.addEventListener('click', () => auth.signOut());
+  signOutBtn2?.addEventListener('click', () => auth.signOut());
     document.querySelectorAll('[data-login]').forEach(el => {
       el.addEventListener('click', (e) => { e.preventDefault(); startSignIn('google'); });
     });
@@ -588,18 +666,34 @@
       window.SD = window.SD || {};
       const claims = token?.claims || {};
 
-      // schoolId: from claim or first of schoolIds; prefer a stored selection if still valid
-      let sid = claims.schoolId || null;
-      if (!sid && Array.isArray(claims.schoolIds) && claims.schoolIds.length){
-        const pref = (() => { try { return localStorage.getItem('SD_SCHOOL') || ''; } catch { return ''; } })();
-        if (pref && !claims.schoolIds.includes(pref)) {
-          // Clear stale preference (e.g., showing MCA from prior session)
-          try { localStorage.removeItem('SD_SCHOOL'); } catch {}
+      // Preferred school selection order:
+      // 1) Valid stored preference (orgId+schoolId) if user has access (schoolIds includes it OR is superintendent)
+      // 2) Token-provided primary schoolId
+      // 3) First schoolIds[] entry
+      let preferred = null;
+      try {
+        const stored = getStoredSchoolSelection();
+        const isSup = !!claims.superintendent;
+        const allowedList = Array.isArray(claims.schoolIds) ? claims.schoolIds : [];
+        if (stored && stored.schoolId && (isSup || allowedList.includes(stored.schoolId))) {
+          preferred = stored;
+        } else if (stored && stored.schoolId && allowedList.length && !allowedList.includes(stored.schoolId)) {
+          // Stored selection no longer valid for this user; clear it
+          try { localStorage.removeItem('SD_SCHOOL'); localStorage.removeItem('SD_SCHOOL_OBJ'); } catch {}
         }
-        const chosen = (pref && claims.schoolIds.includes(pref)) ? pref : claims.schoolIds[0];
-        sid = chosen || null;
+      } catch {}
+      if (preferred && preferred.schoolId) {
+        window.SD.orgId = preferred.orgId || window.SD.orgId || claims.orgId || 'mn-conference';
+        window.SD.schoolId = preferred.schoolId;
+      } else {
+        let sid = claims.schoolId || null;
+        if (!sid && Array.isArray(claims.schoolIds) && claims.schoolIds.length) {
+          sid = claims.schoolIds[0] || null;
+        }
+        if (sid) window.SD.schoolId = sid;
+        // orgId from claims if present
+        if (claims.orgId) window.SD.orgId = window.SD.orgId || claims.orgId;
       }
-      if (sid) window.SD.schoolId = sid;
 
       // roles strictly from claims
   const isAdmin  = !!claims.admin;
@@ -666,6 +760,7 @@
       '/roles.html',
       '/owner.html',
       '/superintendent.html'
+      ,'/prefs.html'
     ]);
 
     function redirectToLogin(){
@@ -678,7 +773,9 @@
 
     // NEW: defer redirects to avoid bouncing during auth hydration
     let _pendingLoginTimer = null;
-    function scheduleLoginRedirect(ms = 1800){
+    function scheduleLoginRedirect(ms = 12000){
+      // If we're still processing a redirect result, extend the grace period
+      try { if (typeof _redirectResultPending !== 'undefined' && _redirectResultPending) ms = Math.max(ms, 9000); } catch {}
       try { clearTimeout(_pendingLoginTimer); } catch {}
       _pendingLoginTimer = setTimeout(() => {
         try {
@@ -738,6 +835,26 @@
       userEmail.textContent = email;
       if (user.photoURL) { userPhoto.src = user.photoURL; show(userPhoto); } else { hide(userPhoto); }
   hide(signInBox); show(userChip);
+  // Desktop avatar popover toggle
+  try {
+    const btn = header.querySelector('#userAvatarBtn');
+    const pop = header.querySelector('#userPop');
+    if (btn && pop) {
+      const close = () => { pop.hidden = true; btn.setAttribute('aria-expanded','false'); };
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const nowHidden = !pop.hidden; // invert current state
+        pop.hidden = nowHidden;
+        const nowOpen = !pop.hidden; btn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      });
+      document.addEventListener('click', (e) => {
+        if (!pop.hidden && !pop.contains(e.target) && !btn.contains(e.target)) close();
+      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    }
+  } catch {}
+      if (user.photoURL) { userPhoto.src = user.photoURL; show(userPhoto); } else { hide(userPhoto); }
+  hide(signInBox); show(userChip);
 
   // Mobile: show avatar in toolbar
   if (hdrAuthPhoto && user.photoURL){ hdrAuthPhoto.src = user.photoURL; hdrAuthPhoto.style.display = ''; }
@@ -769,12 +886,13 @@
           }
         } catch {}
 
-        // Seed school/org from claims first
-        if (token?.claims?.schoolId) {
+        // Seed school/org from claims only if not already set via stored preference
+        if (!window.SD?.schoolId && token?.claims?.schoolId) {
           window.SD = window.SD || {};
           window.SD.schoolId = token.claims.schoolId;
-          // Default orgId when not present in claims
-          window.SD.orgId = token.claims.orgId || window.SD.orgId || 'mn-conference';
+        }
+        if (!window.SD?.orgId) {
+          window.SD.orgId = token?.claims?.orgId || window.SD.orgId || 'mn-conference';
         }
 
         // If missing, fallback to domain mapping once (but NOT for superintendent-only users)
@@ -870,7 +988,7 @@
     // Helper: wait until token contains any role-ish claim (or timeout)
     // Adaptive poll: faster early (every 200ms first 1.5s) then 350ms; trims max wait to ~6.5s.
     // Still treats any roles array (claims.roles = ['admin']) as success.
-    async function waitForEffectiveClaims(user, timeoutMs = 6500){
+    async function waitForEffectiveClaims(user, timeoutMs = 15000){
       const start = Date.now();
       const hasRoles = (c) => !!(c.owner || c.superintendent || c.admin || c.caller || c.viewer || (Array.isArray(c.roles) && c.roles.length));
       while (Date.now() - start < timeoutMs){

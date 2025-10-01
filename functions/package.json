@@ -1,0 +1,10 @@
+{
+  "name": "ttd-functions",
+  "private": true,
+  "engines": { "node": "18" },
+  "type": "commonjs",
+  "dependencies": {
+    "firebase-admin": "^12.5.0",
+    "firebase-functions": "^4.8.0"
+  }
+}

@@ -115,8 +115,47 @@
   </section>
 
   <script type="module">
-  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus } from '/app.js?v=20';
+  import { init, onAuthChanged, onClassStudents, getClasses, setStudentStatus, onMyNicknames } from '/app.js?v=23';
     await init();
+
+  // Preferred call sound (user-set on prefs page). Falls back to oscillator ding.
+  // Private per-student override precedence: nickname.sound > student.callSound > user global.
+  let CALL_SOUND_FILE = null;
+    let CALL_SOUND_LOADED = false;
+    async function loadCallSoundPref(force=false){
+      if (CALL_SOUND_LOADED && !force) return;
+      try {
+  const mod = await import('/app.js?v=23');
+        if (mod && typeof mod.getMyPrefs === 'function') {
+          const prefs = await mod.getMyPrefs().catch(()=>({}));
+          if (prefs && prefs.sound) {
+            CALL_SOUND_FILE = prefs.sound;
+          } else {
+            try { const ls = localStorage.getItem('TTD_SOUND_PREF'); if (ls) CALL_SOUND_FILE = ls; } catch {}
+          }
+        }
+      } catch {}
+      CALL_SOUND_LOADED = true;
+    }
+    // Play a call sound considering a per-student override (student.callSound) first, then user/global pref, then oscillator fallback
+    function playCallSound(student){
+      // nicknameMap entries now objects: { name, sound }
+      let nickSound = null;
+      try { if (student && nicknameMap[student.id] && nicknameMap[student.id].sound) nickSound = nicknameMap[student.id].sound; } catch {}
+      const file = nickSound || (student && student.callSound) || CALL_SOUND_FILE;
+      if (!file){
+        try { ding(); } catch {}
+        return;
+      }
+      try {
+        const a = new Audio('/sounds/' + encodeURIComponent(file)); // encode for filenames with spaces
+        a.currentTime = 0;
+        a.play().catch(()=>{ try { ding(); } catch {}; });
+      } catch { try { ding(); } catch {} }
+    }
+    // Kick off loading immediately and also refresh once claims (and thus prefs path) are ready
+    loadCallSoundPref();
+    document.addEventListener('sd:claims-ready', () => { loadCallSoundPref(true); }, { once:true });
 
     // --- params ---
     const params = new URLSearchParams(location.search);
@@ -504,8 +543,8 @@
         const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
         const isPending = enrouteTimers.has(s.id);
         const actionHtml = isPending
-          ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button>`
-          : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button>`;
+          ? `<button class=\"btn btn-outline btn-xs\" data-act=\"cancel-enroute\" data-id=\"${s.id}\">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`
+          : `<button class=\"btn btn-secondary btn-xs\" data-act=\"enroute\" data-id=\"${s.id}\">En Route</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`;
         const barHtml = isPending
           ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
           : '';
@@ -558,27 +597,60 @@
       if (s) { s.root.remove(); sections.delete(classId); }
     }
 
+    // Live nickname map (studentId -> nickname) for current teacher
+  const nicknameMap = {}; // studentId -> { name?, sound? }
+    let unsubscribeNicknames = null;
+
+    function applyNickname(originalName, preferredName, studentId){
+      const entry = nicknameMap[studentId];
+      const nickName = entry && entry.name ? entry.name : undefined;
+      return nickName || preferredName || originalName;
+    }
+
     onAuthChanged(async (user) => {
       if (!user) {
         location.replace('/master.html#login');
         return;
       }
 
+      // Start nickname listener once auth and tenant claims are ready
+      try {
+        if (unsubscribeNicknames) { try { unsubscribeNicknames(); } catch {} }
+        unsubscribeNicknames = onMyNicknames((map) => {
+          for (const k of Object.keys(nicknameMap)) delete nicknameMap[k];
+          Object.assign(nicknameMap, map);
+          try {
+            document.querySelectorAll('.student[data-id] .name').forEach(span => {
+              const li = span.closest('.student');
+              const sid = li?.getAttribute('data-id');
+              if (!sid) return;
+              let base = span.getAttribute('data-base-name');
+              if (!base) { base = span.textContent || ''; span.setAttribute('data-base-name', base); }
+              const entry = nicknameMap[sid];
+              span.textContent = (entry && entry.name) ? entry.name : base;
+            });
+          } catch {}
+        });
+      } catch (e) { console.warn('[TTD] nickname listener failed:', e); }
+
   // Load class list and build picker (compat path under orgs/{org}/schools/{school}/classes)
   await awaitClaimsReady();
       let classes = [];
-      try {
-        classes = await fetchClassesCompat();
-      } catch (e) {
+      try { classes = await fetchClassesCompat(); }
+      catch (e) {
         console.error('[TTD] Failed to load classes via compat path:', e);
-        // Fallback to app.js helper if available
         try { classes = await getClasses(); } catch {}
       }
-      const byId = new Map(classes.map(c => [c.id, c]));
+      const orderedClasses = classes.slice().sort((a,b) => {
+        const ao = (typeof a.order === 'number') ? a.order : 999999;
+        const bo = (typeof b.order === 'number') ? b.order : 999999;
+        if (ao !== bo) return ao - bo;
+        return (a.name||a.id||'').localeCompare(b.name||b.id||'');
+      });
+      const byId = new Map(orderedClasses.map(c => [c.id, c]));
 
-  // Render compact checkbox chips
-      const sorted = [...classes].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-      chipsEl.innerHTML = sorted.map(c => `
+      // Render compact checkbox chips respecting explicit order
+      chipsEl.innerHTML = orderedClasses.map(c => `
         <label class="chip"><input type="checkbox" value="${c.id}" /> <span>${c.name || c.id}</span></label>
       `).join('');
 
@@ -590,23 +662,37 @@
       btnAll?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
       btnClr?.addEventListener('click', () => setTimeout(refreshEmptyState, 0));
 
-      // Initial selection from URL; default to all if none specified
+      // Initial selection resolution sequence:
+      // 1) Explicit URL params (classes / classId)
+      // 2) User favorites (prefs.favoriteClasses) if present
+      // 3) All classes fallback
       const initial = new Set();
+      let usedFavorites = false;
       if (multiParam) {
         multiParam.split(',').map(s => s.trim()).filter(Boolean).forEach(id => initial.add(id));
       } else if (singleClassId) {
         initial.add(singleClassId);
       } else {
-        classes.forEach(c => initial.add(c.id));
+        // Try favorites
+        try {
+          const mod = await import('/app.js?v=23');
+          if (mod && typeof mod.getMyPrefs === 'function') {
+            const prefs = await mod.getMyPrefs().catch(()=>({favoriteClasses:[]}));
+            if (prefs.favoriteClasses && prefs.favoriteClasses.length) {
+              prefs.favoriteClasses.filter(id => classes.find(c => c.id === id)).forEach(id => initial.add(id));
+              usedFavorites = initial.size > 0;
+            }
+          }
+        } catch {}
+        if (!initial.size) { orderedClasses.forEach(c => initial.add(c.id)); }
       }
 
-  // Default: start with no classes checked in the UI
-  chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-    cb.checked = false;
-    cb.removeAttribute('checked');
-  });
-  // Reflect initial state in the button label
-  try { filterBtn.textContent = 'Select Classes'; } catch {}
+      // Start with no classes checked in the UI; we'll apply initial after building controls
+      chipsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.checked = false;
+        cb.removeAttribute('checked');
+      });
+      try { filterBtn.textContent = 'Select Classes'; } catch {}
 
       function currentSelection(){
         return Array.from(chipsEl.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value);
@@ -654,18 +740,25 @@
           for (const [sid, at] of Array.from(enrouteMask.entries())){
             if (typeof at === 'number' && at <= Date.now()) enrouteMask.delete(sid);
           }
+          // Augment each student with displayName (preferredName fallback) for rendering & sorting
+          const list = (students||[]).map(s => {
+            let preferred = null;
+            try { if (s.preferredName && typeof s.preferredName === 'string') preferred = s.preferredName.trim(); } catch {}
+            const displayName = applyNickname(s.name, preferred, s.id);
+            return { ...s, displayName, _preferred: preferred };
+          });
           // Partition and stable-sort; keep 'absent' rows at the bottom with distinct style
           const called = [];
           const rest = [];
           const absents = [];
-          for (const s of students) {
+          for (const s of list) {
             const masked = enrouteMask.has(s.id);
             const effStatus = masked ? 'en_route' : s.status;
             if (effStatus === 'absent') { absents.push({ ...s, status: effStatus }); continue; }
             if (effStatus === 'called') called.push({ ...s, status: effStatus });
             else rest.push({ ...s, status: effStatus });
           }
-          const byName = (a,b) => (a.name||'').localeCompare(b.name||'');
+          const byName = (a,b) => ((a.displayName||a.name||'').localeCompare(b.displayName||b.name||''));
           called.sort(byName);
       // Waiting, then Picked Up, then En Route at very bottom (free up space)
           rest.sort((a,b) => {
@@ -688,7 +781,7 @@
               if (row.classId === id && !currentIds.has(sid)) globalCalledMap.delete(sid);
             }
             called.forEach(s => {
-              globalCalledMap.set(s.id, { id: s.id, name: s.name, carTag: s.carTag, classId: id, className: meta?.name || id });
+              globalCalledMap.set(s.id, { id: s.id, name: s.displayName || s.name, carTag: s.carTag, classId: id, className: meta?.name || id });
             });
             renderGlobalCalled();
             // Hide per-class called shelf to save space
@@ -708,7 +801,7 @@
               : '';
             return `
               <li class="student called${enter}" data-id="${s.id}" data-status="called">
-                <span class="name">${s.name}</span>
+                <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                 ${tag}
                 <span class="status">Called</span>
                 <span class="inline-actions">${actionHtml}</span>
@@ -725,7 +818,7 @@
             const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
             return `
               <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
-                <span class="name">${s.name}</span>
+                <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                 ${tag}
                 <span class="status">${statusLabel}</span>
               </li>`;
@@ -738,7 +831,7 @@
               const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
               return `
                 <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
-                  <span class=\"name\">${s.name}</span>
+                  <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/"/g,'&quot;')}\">${s.displayName || s.name}</span>
                   ${tag}
                   <span class=\"status\">Absent</span>
                 </li>`;
@@ -747,14 +840,15 @@
           }
 
   // Toast + ding + optional buzz for transitions to called, and clear any pending timers when leaving 'called'
-      students.forEach(s => {
+      list.forEach(s => {
       const before = prevStatus.get(s.id);
             const after = s.status;
             if (before !== after) {
               if (after === 'called') {
-                const label = s.carTag ? (s.name + ' — ' + s.carTag) : s.name;
+                const label = s.carTag ? ((s.displayName || s.name) + ' — ' + s.carTag) : (s.displayName || s.name);
                 showToast(label);
-        ding();
+                // Use per-student preferred sound if present
+                playCallSound(s);
         if (document.visibilityState === 'visible') tryBuzz();
         calledAt.set(s.id, Date.now());
         overdueBeeped.delete(s.id);
@@ -797,11 +891,9 @@
         }
         ids.forEach(id => subscribeClass(id));
 
-        const ordered = ids
-          .map(id => ({ id, name: byId.get(id)?.name || id }))
-          .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-        ordered.forEach(({id}) => {
-          const sec = sections.get(id)?.root;
+        orderedClasses.forEach(c => {
+          if (!ids.includes(c.id)) return;
+          const sec = sections.get(c.id)?.root;
           if (sec) host.appendChild(sec);
         });
         // Ensure the global section stays at the very top when visible
@@ -809,6 +901,11 @@
       }
 
       chipsEl.addEventListener('change', onSelectionChange);
+      // Apply resolved initial selection now
+      setSelection(Array.from(initial));
+      if (usedFavorites) {
+        try { filterBtn.textContent = initial.size > 1 ? `Filter (${initial.size})` : `Filter (${Array.from(initial)[0] || ''})`; } catch {}
+      }
       // En Route actions (event delegation)
       host.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
@@ -829,9 +926,9 @@
           })();
         }
       });
-      btnAll.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+  btnAll.addEventListener('click', () => setSelection(orderedClasses.map(c => c.id)));
       btnClr.addEventListener('click', () => setSelection([]));
-      sheetAll?.addEventListener('click', () => setSelection(classes.map(c => c.id)));
+  sheetAll?.addEventListener('click', () => setSelection(orderedClasses.map(c => c.id)));
       sheetClr?.addEventListener('click', () => setSelection([]));
       sheetDone?.addEventListener('click', () => {
         chipSheet?.classList.remove('open');

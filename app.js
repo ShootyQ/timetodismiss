@@ -1,5 +1,5 @@
 // Firebase-powered realtime helpers shared by all pages.
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
+import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js';
 import {
   getFirestore, collection, doc, getDoc, getDocs, addDoc, updateDoc, setDoc,
   serverTimestamp, onSnapshot, query, where, orderBy, writeBatch
@@ -24,7 +24,16 @@ export async function init() {
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-279958XEND"
   };
-  app  = initializeApp(firebaseConfig);
+  // Make accessible for diagnostics (roles.html debug panel, etc.)
+  try { if (!window.firebaseConfig) window.firebaseConfig = firebaseConfig; } catch {}
+
+  // Reuse existing app if compat (site-header.js) already initialized it
+  try {
+    app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+  } catch (e) {
+    // Fallback: try to grab default app if initialization raced
+    try { app = getApp(); } catch { app = initializeApp(firebaseConfig); }
+  }
   db   = getFirestore(app);
   auth = getAuth(app);
 }
@@ -146,6 +155,30 @@ export async function getClassById(classId) {
   await waitForTenant();
   const d = await getDoc(docPath('classes', classId));
   return d.exists() ? { ...d.data(), id: d.id } : null;
+}
+
+// Fetch classes explicitly for a provided school (does not mutate global SD context)
+export async function getClassesForSchool(schoolId, orgIdOverride){
+  await waitForTenant();
+  const oid = orgIdOverride || globalThis.SD?.orgId;
+  const sid = schoolId || globalThis.SD?.schoolId;
+  if (!oid) throw new Error('No orgId for getClassesForSchool');
+  if (!sid) throw new Error('No schoolId for getClassesForSchool');
+  // Build manual collection ref (cannot reuse colPath because it always uses current SD values)
+  const classesCol = collection(db, 'orgs', oid, 'schools', sid, 'classes');
+  const norm = (d) => { const data = d.data() || {}; const name = data.name || data.title || d.id; const order = typeof data.order === 'number' ? data.order : undefined; return { ...data, id: d.id, name, ...(order !== undefined ? { order } : {}) }; };
+  try {
+    const s1 = await getDocs(query(classesCol, orderBy('order','asc')));
+    const rows = s1.docs.map(norm);
+    if (rows.length) return rows;
+  } catch {}
+  try {
+    const s2 = await getDocs(query(classesCol, orderBy('name','asc')));
+    const rows = s2.docs.map(norm);
+    if (rows.length) return rows;
+  } catch {}
+  const s3 = await getDocs(classesCol);
+  return s3.docs.map(norm).sort((a,b)=>(a.name||'').localeCompare(b.name||''));
 }
 
 /* ------------------------------------------------------------------ */
@@ -544,4 +577,164 @@ export async function setSchoolUser(uid, payload = {}) {
 
   // Canonical path only (no legacy mirror)
   await setDoc(docPath('members', uid), body, { merge: true });
+}
+
+/* ------------------------------------------------------------------ */
+/* User Preferences (per-member)                                      */
+/* ------------------------------------------------------------------ */
+// Stored (new) at members/{uid}.prefs.bySchool[schoolId].favoriteClasses = []
+// Backward compat: accept legacy members/{uid}.prefs.favoriteClasses (school-agnostic)
+// Local fallback per school: key TTD_FAV_CLASSES_LOCAL__<schoolId>
+const LOCAL_PREF_KEY_PREFIX = 'TTD_FAV_CLASSES_LOCAL__';
+const LOCAL_SOUND_KEY = 'TTD_SOUND_PREF';
+
+function currentUser() {
+  try { return (typeof auth !== 'undefined') ? auth.currentUser : null; } catch { return null; }
+}
+
+export async function getMyPrefs(schoolIdOverride) {
+  await waitForTenant();
+  const u = currentUser();
+  if (!u) return { favoriteClasses: [] };
+  const sid = schoolIdOverride || globalThis.SD?.schoolId;
+  try {
+    const snap = await getDoc(docPath('members', u.uid));
+    if (!snap.exists()) return { favoriteClasses: [] };
+    const data = snap.data() || {};
+    const prefs = data.prefs || {};
+    // New structure
+    const bySchool = prefs.bySchool && typeof prefs.bySchool === 'object' ? prefs.bySchool : {};
+    let fav = [];
+    if (sid && bySchool[sid] && Array.isArray(bySchool[sid].favoriteClasses)) {
+      fav = bySchool[sid].favoriteClasses.filter(Boolean);
+    } else if (Array.isArray(prefs.favoriteClasses)) { // legacy
+      fav = prefs.favoriteClasses.filter(Boolean);
+    }
+    let sound = '';
+    if (typeof prefs.sound === 'string' && prefs.sound.trim()) sound = prefs.sound.trim();
+    // Local fallback for sound (global, not per-school)
+    if (!sound) {
+      try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+    }
+    return { favoriteClasses: fav, sound };
+  } catch (e) {
+    try {
+      const raw = localStorage.getItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'));
+      if (raw) {
+        const obj = JSON.parse(raw);
+        const fav = Array.isArray(obj.favoriteClasses) ? obj.favoriteClasses.filter(Boolean) : [];
+        // Sound fallback (stored separately)
+        let sound = '';
+        try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+        return { favoriteClasses: fav, sound, _local: true };
+      }
+    } catch {}
+    let sound = '';
+    try { const ls = localStorage.getItem(LOCAL_SOUND_KEY); if (ls) sound = ls; } catch {}
+    return { favoriteClasses: [], sound, _error: true };
+  }
+}
+
+export async function setMyPrefs(patch = {}, schoolIdOverride) {
+  await waitForTenant();
+  const u = currentUser();
+  if (!u) return { ok: false, reason: 'no-user' };
+  const sid = schoolIdOverride || globalThis.SD?.schoolId;
+  const fav = Array.isArray(patch.favoriteClasses) ? Array.from(new Set(patch.favoriteClasses.filter(Boolean))) : undefined;
+  const sound = (typeof patch.sound === 'string' && patch.sound.trim()) ? patch.sound.trim() : undefined;
+  try {
+    const ref = docPath('members', u.uid);
+    const snap = await getDoc(ref).catch(()=>null);
+    let existing = {};
+    if (snap && snap.exists()) existing = snap.data() || {};
+    const prevPrefs = existing.prefs || {};
+    const bySchool = (prevPrefs.bySchool && typeof prevPrefs.bySchool === 'object') ? { ...prevPrefs.bySchool } : {};
+    if (sid) {
+      const prevEntry = bySchool[sid] || {};
+      bySchool[sid] = { ...prevEntry };
+      if (fav) bySchool[sid].favoriteClasses = fav;
+    } else if (fav) {
+      // No school context (edge) – store at legacy root for safety
+      prevPrefs.favoriteClasses = fav;
+    }
+    if (sound) {
+      prevPrefs.sound = sound; // global sound preference
+    }
+    const nextPrefs = { ...prevPrefs, bySchool };
+    await setDoc(ref, { prefs: nextPrefs }, { merge: true });
+    try { localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav || [] })); } catch {}
+    if (sound) { try { localStorage.setItem(LOCAL_SOUND_KEY, sound); } catch {} }
+    return { ok: true };
+  } catch (e) {
+    try {
+      if (fav) localStorage.setItem(LOCAL_PREF_KEY_PREFIX + (sid || 'default'), JSON.stringify({ favoriteClasses: fav, _ts: Date.now() }));
+      if (sound) localStorage.setItem(LOCAL_SOUND_KEY, sound);
+      return { ok: true, localOnly: true };
+    } catch {}
+    return { ok: false, reason: e?.message || 'fail' };
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-teacher student nicknames (private to teacher)                  */
+/* ------------------------------------------------------------------ */
+
+import { onSnapshot as _onSnapshot, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+
+// Listen to current user's nickname docs: /members/{uid}/nicknames/{studentId}
+// cb receives an object map { studentId: { name: string|undefined, sound: string|undefined } }
+export function onMyNicknames(cb){
+  let unsub = () => {};
+  (async () => {
+    try {
+      await waitForTenant();
+      const u = currentUser(); if (!u) return;
+      const sid = globalThis.SD?.schoolId; const oid = globalThis.SD?.orgId;
+      if (!sid || !oid) return;
+      const colRef = collection(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames');
+      unsub = _onSnapshot(colRef, (snap) => {
+        const map = {};
+        snap.docs.forEach(d => {
+          const data = d.data() || {};
+          let name = '';
+          try { if (data.name && typeof data.name === 'string') name = data.name.trim(); } catch {}
+          let sound = '';
+            try { if (data.sound && typeof data.sound === 'string') sound = data.sound.trim(); } catch {}
+          // Always include object even if name empty (allows sound-only override)
+          map[d.id] = { name: name || undefined, sound: sound || undefined };
+        });
+        try { cb(map); } catch {}
+      }, (err) => console.error('[onMyNicknames] listener error:', err));
+    } catch (e) { console.error('[onMyNicknames] init failed:', e); }
+  })();
+  return () => { try { unsub(); } catch {} };
+}
+
+// Set or clear a nickname (and optional private sound) for a student.
+// If both nickname and sound are empty/blank, the doc is deleted.
+export async function setMyNickname(studentId, nickname, sound){
+  await waitForTenant();
+  const u = currentUser(); if (!u) throw new Error('no-user');
+  const sid = globalThis.SD?.schoolId; const oid = globalThis.SD?.orgId;
+  if (!sid || !oid) throw new Error('missing tenant');
+  const trimmed = (nickname || '').trim();
+  const trimmedSound = (sound || '').trim();
+  const ref = doc(db, 'orgs', oid, 'schools', sid, 'members', u.uid, 'nicknames', studentId);
+  if (!trimmed && !trimmedSound){
+    try { await deleteDoc(ref); } catch {}
+    return { ok: true, deleted: true };
+  }
+  if (trimmed && trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
+  if (trimmedSound && trimmedSound.length > 80) throw new Error('Sound id too long (max 80 chars)');
+  const payload = { updatedAt: serverTimestamp() };
+  if (trimmed) payload.name = trimmed;
+  if (trimmedSound) payload.sound = trimmedSound;
+  try {
+    await setDoc(ref, payload, { merge: true });
+    try { console.debug('[nicknames] setMyNickname success', { studentId, payload }); } catch {}
+    return { ok: true };
+  } catch (e){
+    console.error('[nicknames] setMyNickname failed', studentId, e);
+    throw e;
+  }
 }

@@ -40,23 +40,31 @@
     .csv-area{ width:100%; font-family:ui-monospace, monospace; }
     .helpers-actions{ margin-top:.5rem; display:flex; gap:8px; }
 
-    /* Print area (dedicated, avoids grid print bugs) */
-    #printArea.hidden{ display:none !important; }
-    #printArea{ background:#fff; }
-    #printArea .pa{ display:grid; }
-    #printArea .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; }
-    #printArea .pa-qr{ display:grid; place-items:center; }
-    #printArea .pa-label{ font-weight:800; }
-    #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
+  /* Print area (dedicated, avoids grid print bugs) */
+  #printArea.hidden{ display:none !important; }
+  #printArea{ background:#fff; }
+  #printArea .pa-pages{ display:block; }
+  #printArea .pa-page{ display:grid; break-after: page; page-break-after: always; }
+  #printArea .pa-page:last-child{ break-after: auto; page-break-after: auto; }
+  #printArea .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; border:0; break-inside: avoid; page-break-inside: avoid; }
+  #printArea .pa-qr{ display:grid; place-items:center; }
+  #printArea .pa-label{ font-weight:800; }
+  #printArea .pa-name{ color:#334155; font-size:.9rem; text-align:center; }
 
     /* Presets (letter-size page expected) */
-    /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; h-gap .125in; v-gap 0in; page margins top .5in left .1875in */
+    .pa-page{ width:8.5in; min-height:11in; box-sizing:border-box; }
+    /* Avery 5160: 3 cols x 10 rows, label 2.625in x 1.0in; */
     .pa-avery5160{ grid-template-columns: repeat(3, 2.625in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
-    .pa-avery5160 .pa-item{ width:2.625in; height:1in; }
+    .pa-avery5160 .pa-item{ width:2.625in; height:1in; padding:0; }
+    .pa-avery5160 .pa-qr > div{ margin:0 auto; }
+    .pa-avery5160 .pa-label{ font-size:10px; line-height:1; margin-top:1px; }
+    .pa-avery5160 .pa-name{ font-size:9px; line-height:1.05; }
 
-    /* Avery 5163: 2 cols x 5 rows, label 4in x 2in; h-gap .125in; v-gap 0in; margins similar */
+    /* Avery 5163: 2 cols x 5 rows, label 4in x 2in */
     .pa-avery5163{ grid-template-columns: repeat(2, 4in); column-gap: .125in; row-gap: 0in; padding: .5in .1875in; }
     .pa-avery5163 .pa-item{ width:4in; height:2in; }
+    .pa-avery5163 .pa-label{ font-size:14px; margin-top:4px; }
+    .pa-avery5163 .pa-name{ font-size:12px; }
 
     /* Square 2x2 in generic */
     .pa-square2{ grid-template-columns: repeat(3, 2in); column-gap: .2in; row-gap: .2in; padding: .5in; }
@@ -66,11 +74,16 @@
     .pa-square3{ grid-template-columns: repeat(2, 3in); column-gap: .25in; row-gap: .25in; padding: .5in; }
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
+    /* Fluid grid (non label) auto paginate by browser */
+    .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
+    .pa-gridflow .pa-item{ width:100%; height:auto; }
+    .pa-gridflow .pa-qr > div{ margin:0 auto; }
+
     /* Print-time cleanup */
-    .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty{ display:none !important; }
+  .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
 
     @media print{
-      header.site-header{ display:none !important; }
+      header.site-header, .qr-toolbar, #helpers, #errors, #loading, #grid, #empty, #countSummary, .print-hint{ display:none !important; }
       body{ background:#fff; }
     }
 
@@ -88,7 +101,7 @@
       Tip: To load All Students from your database, open this page via your app (http/https). When opened from disk (file://), use the CSV helper below.
     </div>
 
-    <div class="qr-toolbar" role="toolbar" aria-label="QR options">
+  <div class="qr-toolbar" role="toolbar" aria-label="QR options">
       <label class="inline-flex">
         <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> All Students
       </label>
@@ -124,6 +137,10 @@
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
       <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
     </div>
+    <div class="small muted print-hint" style="margin:-4px 0 14px;">Printing tips: Set scale to 100% (no “fit to page”), disable headers/footers. For Avery labels use Chrome/Edge for most accurate alignment.</div>
+    <div id="countSummary" class="small muted" aria-live="polite" style="margin:-6px 0 10px;">
+      
+    </div>
 
     <div id="loading" class="note hidden" role="status" aria-live="polite">Loading…</div>
     <div id="errors" class="note hidden" role="alert"></div>
@@ -146,7 +163,7 @@
 
     <!-- Dedicated print area; built only when printing -->
     <div id="printArea" class="hidden">
-      <div class="pa" id="paGrid"></div>
+      <div class="pa-pages" id="paPages"></div>
     </div>
   </main>
 
@@ -169,7 +186,7 @@
 
     async function loadApi(){
       if (window.app) return window.app;
-      try { return await import('/app.js?v=20'); } catch (e) { console.warn('Import /app.js failed', e); }
+  try { return await import('/app.js?v=23'); } catch (e) { console.warn('Import /app.js failed', e); }
       try { return await import('./app.js'); } catch (e) { console.warn('Import ./app.js failed', e); }
       return {};
     }
@@ -199,8 +216,9 @@
     const csvLoad = document.getElementById('csvLoad');
     const csvClear = document.getElementById('csvClear');
 
-    const printArea = document.getElementById('printArea');
-    const paGrid = document.getElementById('paGrid');
+  const printArea = document.getElementById('printArea');
+  const paPages = document.getElementById('paPages');
+  const countSummary = document.getElementById('countSummary');
 
     // Data
     let tags = [];     // [{ tag, name }]
@@ -300,6 +318,7 @@
         const cb = li.querySelector('input[type="checkbox"]');
         cb.addEventListener('change', () => {
           if (cb.checked) selected.add(key); else selected.delete(key);
+          updateCounts();
         });
         if (prev.has(key)) selected.add(key);
 
@@ -308,6 +327,7 @@
           if (e.code === 'Space'){ e.preventDefault(); cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); }
         });
       }
+      updateCounts();
     }
 
     function parseCSV(text){
@@ -336,11 +356,11 @@
     // Print presets
     function presetInfo(key){
       switch(key){
-        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.82 };
-        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.6 };
-        case 'square2':   return { class: 'pa-square2',   qrIn: 1.6 };
-        case 'square3':   return { class: 'pa-square3',   qrIn: 2.3 };
-        default:          return { class: 'pa-square2',   qrIn: (parseInt(sizeSel.value,10)||200)/96 }; // fallback
+        case 'avery5160': return { class: 'pa-avery5160', qrIn: 0.78, perPage: 30, trimNames: true, maxLabelChars: 8 };
+        case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
+        case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
+        case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
+        default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
     }
 
@@ -359,70 +379,130 @@
       return `car=${encodeURIComponent(item.tag)}`;
     }
 
+    function abbreviate(str, max){
+      if (!str) return '';
+      if (str.length <= max) return str;
+      return str.substring(0, max-1) + '…';
+    }
+
     function buildPrintArea(items){
       const useStudents = modeStudents.checked;
       const preset = presetInfo(layoutSel.value);
-      paGrid.className = 'pa ' + preset.class;
-      paGrid.innerHTML = '';
+      paPages.className = 'pa-pages';
+      paPages.innerHTML = '';
+      const qrPx = toPx(preset.qrIn || 1);
+      const perPage = preset.gridFlow ? items.length : (preset.perPage || items.length);
+      for (let i=0; i<items.length; i+=perPage){
+        const pageItems = items.slice(i, i+perPage);
+        const page = document.createElement('div');
+        page.className = 'pa-page ' + preset.class;
+        paPages.appendChild(page);
 
-      const qrPx = toPx(preset.qrIn);
-      for (const item of items){
-        const tag = useStudents ? (item.tag || '') : item.tag;
-        const name = useStudents ? nameOf(item) : (item.name || '');
-        const id = useStudents ? (item.id || item.studentId || '') : null;
-        const labelText = useStudents ? (tag || id || '') : tag;
-        const payload = buildPayload(item, useStudents);
+        for (const item of pageItems){
+          const tag = useStudents ? (item.tag || '') : item.tag;
+            const nameRaw = useStudents ? nameOf(item) : (item.name || '');
+            const name = (preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw;
+            const id = useStudents ? (item.id || item.studentId || '') : null;
+            const labelTextRaw = useStudents ? (tag || id || '') : tag;
+            const labelText = (preset.maxLabelChars && labelTextRaw.length > preset.maxLabelChars)
+              ? abbreviate(labelTextRaw, preset.maxLabelChars)
+              : labelTextRaw;
+            const payload = buildPayload(item, useStudents);
 
-        const div = document.createElement('div');
-        div.className = 'pa-item';
-        div.innerHTML = `
-          <div class="pa-qr"></div>
-          <div class="pa-label">${labelText}</div>
-          ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
-        `;
-        paGrid.appendChild(div);
+            const div = document.createElement('div');
+            div.className = 'pa-item';
+            div.innerHTML = `
+              <div class="pa-qr"></div>
+              <div class="pa-label">${labelText}</div>
+              ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+            `;
+            page.appendChild(div);
 
-        const host = div.querySelector('.pa-qr');
-        const holder = document.createElement('div');
-        holder.style.width = qrPx + 'px';
-        holder.style.height = qrPx + 'px';
-        host.appendChild(holder);
+            const host = div.querySelector('.pa-qr');
+            const holder = document.createElement('div');
+            holder.style.width = qrPx + 'px';
+            holder.style.height = qrPx + 'px';
+            host.appendChild(holder);
 
-        const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
-        if (window.QRCode) { try { draw(); } catch {} }
-        else {
-          const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+            const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
+            if (window.QRCode) { try { draw(); } catch {} }
+            else {
+              const t = setInterval(() => { if (window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60);
+            }
         }
       }
     }
 
-    function printNow(){
-      const useStudents = modeStudents.checked;
-      const all = getAllItems();
-      const keys = new Set(selected);
-      let items = [];
-
-      if (keys.size){
-        items = all.filter(it => keys.has(getKey(it, useStudents)));
-      } else {
-        // Print current filter list if nothing explicitly selected
-        items = currentFilterList();
+    function printNow(printWin, items){
+      if (!Array.isArray(items) || !items.length){
+        try { printWin?.close(); } catch {}
+        alert('Nothing to print. Select items or clear the filter.');
+        return;
       }
-
-      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
-
+      const useStudents = modeStudents.checked;
+      // Build printable markup in isolation to avoid any layout constraints.
       buildPrintArea(items);
-      document.body.classList.add('printing');
-      printArea.classList.remove('hidden');
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR Codes</title>
+        <style>
+          body{margin:0;padding:0;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
+          .pa-pages{display:block;}
+          .pa-page{display:grid;break-after:page;page-break-after:always;}
+          .pa-page:last-child{break-after:auto;page-break-after:auto;}
+          .pa-item{display:flex;flex-direction:column;align-items:center;justify-content:center;break-inside:avoid;page-break-inside:avoid;}
+          .pa-label{font-weight:800;font-family:inherit;}
+          .pa-name{font-size:.8rem;color:#334155;text-align:center;}
+          .pa-page{width:8.5in;min-height:11in;box-sizing:border-box;}
+          .pa-avery5160{grid-template-columns:repeat(3,2.625in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
+          .pa-avery5160 .pa-item{width:2.625in;height:1in;padding:0;}
+          .pa-avery5160 .pa-label{font-size:10px;line-height:1;margin-top:1px;}
+          .pa-avery5160 .pa-name{font-size:9px;line-height:1.05;}
+          .pa-avery5163{grid-template-columns:repeat(2,4in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
+          .pa-avery5163 .pa-item{width:4in;height:2in;}
+          .pa-avery5163 .pa-label{font-size:14px;margin-top:4px;}
+          .pa-avery5163 .pa-name{font-size:12px;}
+          .pa-square2{grid-template-columns:repeat(3,2in);column-gap:.2in;row-gap:.2in;padding:.5in;}
+          .pa-square2 .pa-item{width:2in;height:2in;}
+          .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
+          .pa-square3 .pa-item{width:3in;height:3in;}
+          .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
+          @page{size:letter;margin:0;}
+          @media print{body{background:#fff;}}
+        </style>
+      </head><body>${paPages.innerHTML}</body></html>`;
 
-      const cleanup = () => {
-        document.body.classList.remove('printing');
-        printArea.classList.add('hidden');
-        paGrid.innerHTML = '';
-        window.removeEventListener('afterprint', cleanup);
+      // Open new window and let browser paginate content naturally.
+      const w = printWin;
+      if (!w){ alert('Popup blocked. Allow popups to print labels.'); return; }
+      try {
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
+      } catch(e){ console.error('Print window write failed', e); }
+
+      const tryInjectQR = () => {
+        // For each .pa-qr placeholder, re-generate QR because canvases weren't serialized.
+        const qrs = w.document.querySelectorAll('.pa-qr');
+        let idx=0;
+        const preset = presetInfo(layoutSel.value);
+        const qrPx = toPx(preset.qrIn || 1);
+        const payloads = items.map(it => buildPayload(it, modeStudents.checked));
+        qrs.forEach(host => {
+          const holder = w.document.createElement('div');
+          holder.style.width = qrPx+'px'; holder.style.height = qrPx+'px';
+          host.appendChild(holder);
+          const payload = payloads[idx++] || '';
+          try { new w.QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: (w.QRCode && w.QRCode.CorrectLevel && w.QRCode.CorrectLevel.M) || 2 }); } catch {}
+        });
       };
-      window.addEventListener('afterprint', cleanup);
-      window.print();
+      // Load QR library inside print window
+      const lib = w.document.createElement('script');
+      lib.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+      lib.onload = () => { tryInjectQR(); setTimeout(()=>{ w.focus(); w.print(); }, 100); };
+      w.document.head.appendChild(lib);
+      // Fallback: if library blocked, still allow printing (codes missing) after timeout
+      setTimeout(()=>{ if (!w.QRCode){ w.focus(); w.print(); } }, 1500);
+      // Close window after print (user can cancel)
+      w.addEventListener('afterprint', () => { try { w.close(); } catch {} });
     }
 
     // UI wiring
@@ -447,8 +527,21 @@
       if (!btn) return;
       const item = btn.closest('.qr-item');
       const canvas = item?.querySelector('.qr-box canvas');
-      if (!canvas) return;
-      const url = canvas.toDataURL('image/png');
+      let url = '';
+      if (canvas) {
+        url = canvas.toDataURL('image/png');
+      } else {
+        // Fallback: qrcodejs sometimes renders an <img>
+        const img = item?.querySelector('.qr-box img');
+        if (!img) return;
+        // Create an offscreen canvas to draw the image and export PNG
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || img.width || 512;
+        c.height = img.naturalHeight || img.height || 512;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        url = c.toDataURL('image/png');
+      }
       const a = document.createElement('a');
       a.href = url;
       a.download = `qr-${(item.querySelector('.qr-label')?.textContent||'code').replace(/[^A-Za-z0-9_-]+/g,'_')}.png`;
@@ -469,7 +562,37 @@
       grid.querySelectorAll('.qr-item input[type="checkbox"]').forEach(cb => cb.checked = false);
     });
 
-    btnPrint.addEventListener('click', printNow);
+    btnPrint.addEventListener('click', () => {
+      // Determine items FIRST (with confirm if needed) while still in user gesture
+      const useStudents = modeStudents.checked;
+      const all = getAllItems();
+      const keys = new Set(selected);
+      let items = [];
+      if (keys.size){
+        items = all.filter(it => keys.has(getKey(it, useStudents)));
+      } else {
+        const filtered = currentFilterList();
+        if ((q.value||'').trim() && filtered.length < all.length){
+          const msg = `Print only the ${filtered.length} filtered items?\nChoose Cancel to print all ${all.length}.`;
+            if (confirm(msg)) items = filtered; else items = all;
+        } else {
+          items = all;
+        }
+      }
+      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+      // Open the window immediately after decisions
+      let w = window.open('about:blank','qrprint');
+      if(!w){
+        // Fallback: build hidden iframe and use its print (no popup required)
+        const iframe = document.createElement('iframe');
+        iframe.style.position='fixed'; iframe.style.width='0'; iframe.style.height='0'; iframe.style.opacity='0'; iframe.style.pointerEvents='none';
+        document.body.appendChild(iframe);
+        try { printNow(iframe.contentWindow, items); } catch(e){ console.error(e); }
+        return;
+      }
+      try { w.document.write('<!doctype html><title>Preparing…</title><body style="font:14px system-ui; padding:20px;">Preparing labels…</body>'); } catch {}
+      try { printNow(w, items); } catch(e){ console.error(e); try { w.close(); } catch{} }
+    });
 
     // CSV helpers
     csvLoad.addEventListener('click', () => {
@@ -482,6 +605,49 @@
     });
     csvClear.addEventListener('click', () => { csvTA.value=''; });
 
+    // Counts helper
+    function updateCounts(){
+      try{
+        const useStudents = !!modeStudents.checked;
+        const total = (useStudents ? students.length : tags.length) || 0;
+        const visible = currentFilterList().length;
+        const sel = selected.size;
+        const target = sel ? `${sel} selected` : `${visible} shown`;
+        countSummary.textContent = `${target} • ${total} total`;
+      }catch{}
+    }
+
+    // Persist settings
+    const LSKEY = 'ttd.qr.opts.v1';
+    function saveOpts(){
+      try{
+        const o = {
+          cols: cols.value,
+          size: sizeSel.value,
+          tight: !!tight.checked,
+          showNames: !!showNames.checked,
+          layout: layoutSel.value,
+          modeStudents: !!modeStudents.checked,
+          q: q.value || ''
+        };
+        localStorage.setItem(LSKEY, JSON.stringify(o));
+      }catch{}
+    }
+    function loadOpts(){
+      try{
+        const raw = localStorage.getItem(LSKEY);
+        if (!raw) return;
+        const o = JSON.parse(raw);
+        if (o.cols) cols.value = o.cols;
+        if (o.size) sizeSel.value = o.size;
+        if (typeof o.tight === 'boolean') tight.checked = o.tight;
+        if (typeof o.showNames === 'boolean') showNames.checked = o.showNames;
+        if (o.layout) layoutSel.value = o.layout;
+        if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
+        if (typeof o.q === 'string') q.value = o.q;
+      }catch{}
+    }
+
     // Bootstrap
     function whenClaimsReady(fn) {
       let fired = false;
@@ -491,6 +657,7 @@
     }
 
     async function bootstrap(){
+      loadOpts();
       loading.classList.remove('hidden');
       errors.classList.add('hidden'); errors.textContent = '';
 
@@ -498,7 +665,7 @@
 
       try {
         if (typeof onCarGroups === 'function') {
-          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); });
+          onCarGroups(groups => { tags = collectTags(groups); if (!modeStudents.checked) renderList(); updateCounts(); });
         }
       } catch (e) { console.warn('onCarGroups failed', e); }
 
@@ -511,6 +678,7 @@
               tag: s.tag ? normTag(s.tag) : (s.carTag ? normTag(s.carTag) : '')
             })).sort((a,b)=> (nameOf(a)||'').localeCompare(nameOf(b)||''));
             if (modeStudents.checked) renderList();
+            updateCounts();
           });
           helpers.classList.add('hidden');
         } else {
@@ -528,7 +696,14 @@
 
     setCols(cols.value);
     setTight(tight.checked);
+    updateCounts();
     whenClaimsReady(bootstrap);
+
+    // Persist on changes
+    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q].forEach(el => {
+      el.addEventListener('change', saveOpts);
+      el.addEventListener('input', saveOpts);
+    });
   </script>
 </body>
 </html>

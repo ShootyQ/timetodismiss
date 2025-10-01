@@ -1,4 +1,16 @@
 {
+  "projects": {
+    "default": "dismissalcaller"
+  },
+  "targets": {
+    "dismissalcaller": {
+      "hosting": {
+        "app": [
+          "dismissalcaller"
+        ]
+      }
+    }
+  }
 	"projects": { "default": "dismissalcaller" },
 	"targets": {
 		"dismissalcaller": {

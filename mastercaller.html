@@ -29,7 +29,7 @@
     .tiles-toolbar .spacer{ flex:1 1 auto; }
 
     /* Grid: configurable via CSS variables with sensible defaults */
-    .tiles-grid{ display:grid; grid-template-columns: repeat(var(--tiles-cols, 6), minmax(0, 1fr)); grid-auto-rows: var(--tile-row-h, 54px); gap:6px; align-content:start; list-style:none; padding:0; margin:0; }
+  .tiles-grid{ display:grid; grid-template-columns: repeat(var(--tiles-cols, 6), minmax(0, 1fr)); grid-auto-rows: var(--tile-row-h, 54px); gap:6px; align-content:start; list-style:none; padding:0; margin:0; }
     .tiles-grid > li{ min-width:0; }
 
     /* Responsive override if user hasn't set cols; once user sets cols, we keep their value */
@@ -37,9 +37,9 @@
     @media (min-width: 900px){ :root:not([data-tiles-user]) .tiles-grid{ grid-template-columns: repeat(8, 1fr); } }
 
     /* Tile styles */
-    .tile-btn{ position:relative; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; gap:3px; border:1px solid #e5e7eb; border-radius:10px; padding:6px; background:#fff; color:var(--text); min-width:0; width:100%; height:100%; }
+  .tile-btn{ position:relative; display:flex; flex-direction:column; justify-content:flex-start; align-items:flex-start; gap:4px; border:1px solid #e5e7eb; border-radius:10px; padding:6px 8px 6px; background:#fff; color:var(--text); min-width:0; width:100%; height:100%; }
     .tile-btn:active{ transform: translateY(1px); }
-  .tile-name{ font-weight:800; font-size: var(--tile-font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; width:100%; }
+  .tile-name{ font-weight:800; font-size: var(--tile-font); width:100%; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; overflow:hidden; line-height:1.05; }
   .tile-tag{ font-size: var(--tile-sub); color:var(--muted); display:flex; gap:6px; width:100%; overflow:hidden; align-items:center; }
   .tile-tag .pill{ background:#f1f5f9; color:var(--text); border:1px solid #e5e7eb; border-radius:8px; padding:.1rem .35rem; font-weight:700; font-size: calc(var(--tile-sub) * 0.9); white-space:nowrap; }
     .tile-tag .muted{ color:#64748b; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -81,8 +81,8 @@
 
     /* Derive type sizes from row height; clamp to sane bounds and apply user scale */
     .tiles-grid{
-      --tile-font: clamp(18px, calc(var(--tile-row-h, 54px) * 0.50), 46px);
-      --tile-sub : clamp(14px, calc(var(--tile-row-h, 54px) * 0.30), 28px);
+  --tile-font: clamp(18px, calc(var(--tile-row-h, 54px) * 0.58), 60px);
+  --tile-sub : clamp(13px, calc(var(--tile-row-h, 54px) * 0.28), 30px);
       --tile-gap : clamp(4px,  calc(var(--tile-row-h, 54px) * 0.10), 10px);
       --tile-font: calc(var(--tile-font) * var(--tile-scale));
       --tile-sub : calc(var(--tile-sub)  * var(--tile-scale));
@@ -105,8 +105,8 @@
       letter-spacing: .2px;
       line-height: 1.05;
       display: -webkit-box;
-      -webkit-line-clamp: 2;
-      line-clamp: 2;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -168,7 +168,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <script type="module">
-    import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare } from '/app.js?v=21';
+  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare } from '/app.js?v=23';
     await init();
 
     const classFilter = document.getElementById('classFilter');
@@ -227,7 +227,8 @@
     window.addEventListener('resize', applyGridSize);
     loadGridPrefs();
 
-    function ding(){ try { new Audio('/chime.mp3').play().catch(()=>{}); } catch(e){} }
+  // Removed sound feedback for callers (silent operations)
+  function ding(){ /* no-op */ }
 
     // Call Ride Share by tag — mirrors master.html fallback chain
     async function callRideShareByTag(tag){
@@ -329,7 +330,7 @@
       const rs = e.target.closest('button[data-rs-tag]');
       if (rs) {
         const tag = rs.getAttribute('data-rs-tag');
-        callRideShareByTag(tag).then(()=>showToast('Ride share called')).catch(err => console.error('[tiles] RS call failed', err));
+  callRideShareByTag(tag).then(()=>showToast('Ride share called')).catch(err => console.error('[tiles] RS call failed', err));
         return;
       }
       const btn = e.target.closest('.tile-btn[data-id]');

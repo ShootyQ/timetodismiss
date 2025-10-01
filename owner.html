@@ -51,6 +51,8 @@
 (function(){
   let wired = false; // avoid duplicate listeners
   let loading = false;
+  let inited = false; // guard init against repeated claims events
+  let loadVersion = 0; // increment to invalidate older renderings
 
   /**
    * This is the master function that runs the page's security check.
@@ -112,6 +114,8 @@
   }
 
   async function init(){
+    if (inited) return; // prevent double init from repeated events
+    inited = true;
     const db = firebase.firestore();
     const orgListEl = document.getElementById('orgList');
     const hint = document.getElementById('hint');
@@ -161,9 +165,11 @@
   }
 
   async function loadOrgs(db, orgListEl, hint){
+    const myVersion = ++loadVersion; // capture this call's version
     hint.textContent = 'Loading…';
     orgListEl.innerHTML = '';
     const snap = await db.collection('orgs').orderBy('name').get().catch(()=>null);
+    if (myVersion !== loadVersion) return; // stale result; another load started after this one
     if (!snap || snap.empty) { hint.textContent = 'No organizations found.'; return; }
     hint.textContent = '';
     const orgs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -173,6 +179,7 @@
       card.className = 'card';
       card.style.padding = '12px';
       const schoolsSnap = await db.collection('orgs').doc(org.id).collection('schools').orderBy('name').get().catch(err => { console.error("Error fetching schools:", err); return null; });
+      if (myVersion !== loadVersion) return; // stale render guard
       const schools = schoolsSnap && !schoolsSnap.empty ? schoolsSnap.docs.map(d => ({ id: d.id, ...d.data() })) : [];
 
       // Load superintendents for this org via callable (avoids strict client rules)

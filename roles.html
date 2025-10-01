@@ -14,7 +14,7 @@
   <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
   <style>
     .wrap { max-width: 1024px; margin: 24px auto; padding: 12px; }
-    .grid { display:grid; gap:14px; grid-template-columns: 1fr 320px; align-items:start; }
+  .grid { display:grid; gap:14px; grid-template-columns: 1fr 320px; align-items:start; }
     .card { border:1px solid #e5e7eb; border-radius:14px; padding:14px; background:#fff; }
     .muted { color:#64748b; font-size:12px; }
     .input, textarea, select { width:100%; padding:10px 12px; border:1px solid #e5e7eb; border-radius:10px; }
@@ -22,11 +22,11 @@
     .btn { padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; }
     .btn.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
     .btn[disabled] { opacity: .6; cursor:not-allowed; }
-    .row, .list-header { display:grid; grid-template-columns: 1fr 90px 90px 90px 90px; gap:10px; align-items:center; }
+  .row, .list-header { display:grid; grid-template-columns: 1fr 180px 260px; gap:10px; align-items:center; }
     .row { padding:10px 12px; border-bottom:1px solid #f1f5f9; }
-    .list-header { padding:10px 12px; background:#f8fafc; font-weight:600; border:1px solid #e5e7eb; border-bottom:none; border-top-left-radius:14px; border-top-right-radius:14px; }
+  .list-header { padding:10px 12px; background:#f8fafc; font-weight:600; border:1px solid #e5e7eb; border-bottom:none; border-top-left-radius:14px; border-top-right-radius:14px; }
     .list { border:1px solid #e5e7eb; border-top:none; border-bottom-left-radius:14px; border-bottom-right-radius:14px; }
-    .role-cell { text-align:center; }
+  .role-cell { text-align:left; }
   .status { font-size:12px; white-space:pre-wrap; border:1px dashed #cbd5e1; border-radius:10px; padding:8px 10px; background:#f8fafc; }
   .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; border:1px solid #e5e7eb; margin-left:6px; }
   /* Multi-row add */
@@ -49,30 +49,14 @@
       <!-- Bulk add -->
       <section class="card">
         <h2 style="margin-top:0">Add members</h2>
-        <label class="muted" for="bulk">Paste emails (one per line, or comma/space separated). Optional per-line role with comma:<br>
-          <code>person@example.com, caller</code> · roles: <code>viewer</code>, <code>caller</code>, <code>admin</code>
-        </label>
-        <textarea id="bulk" placeholder="jane@school.org
-john@school.org, caller
-lead@school.org, admin"></textarea>
-
-        <div style="display:flex; gap:10px; margin-top:10px">
-          <select id="bulkRole" class="input" style="max-width:220px" aria-label="Default role for pasted emails">
-            <option value="viewer">Viewer (default)</option>
-            <option value="caller">Caller</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button id="bulkAddBtn" class="btn primary">Add</button>
-          <button id="refreshBtn" class="btn">Refresh access</button>
+        <div class="rows-toolbar" style="margin-top:0; flex-wrap:wrap;">
+          <button id="addRowBtn" class="btn" type="button" aria-label="Add another row">＋ Add row</button>
+          <button id="queueRowsBtn" class="btn" type="button" aria-label="Queue entered rows">Add member(s)</button>
+          <span class="muted">Add rows, click Add member(s), then Save changes to apply.</span>
+          <button id="refreshBtn" class="btn" type="button">Refresh</button>
           <span id="ctx" class="muted" style="align-self:center"></span>
         </div>
-
-        <div class="rows-toolbar">
-          <button id="addRowBtn" class="btn" type="button" aria-label="Add another row">＋ Add row</button>
-          <span class="muted">Or add by rows (defaults to Admin).</span>
-        </div>
-        <div id="memberRows" class="member-rows" aria-live="polite"></div>
-
+        <div id="memberRows" class="member-rows" aria-live="polite" style="margin-top:8px"></div>
         <div id="bulkStatus" class="status" style="margin-top:10px; display:none"></div>
       </section>
 
@@ -92,12 +76,18 @@ lead@school.org, admin"></textarea>
     <!-- Roster -->
     <div class="list-header">
       <div>User</div>
-      <div class="role-cell">Viewer</div>
-      <div class="role-cell">Caller</div>
-      <div class="role-cell">Admin</div>
-      <div class="role-cell">Remove</div>
+      <div class="role-cell">Role</div>
+      <div>Classes</div>
     </div>
     <div id="list" class="list"></div>
+    <div style="margin-top:14px; display:flex; gap:12px; align-items:center;">
+      <button id="saveChanges" class="btn primary" disabled>Save changes</button>
+      <span id="dirtyStatus" class="muted"></span>
+    </div>
+    <details id="debugPanel" style="margin-top:18px;">
+      <summary style="cursor:pointer;">Debug Info</summary>
+      <pre id="debugInfo" style="background:#f1f5f9; padding:10px; border-radius:10px; max-height:240px; overflow:auto; font-size:11px; line-height:1.3;"></pre>
+    </details>
   </main>
 
   <script type="module">
@@ -117,8 +107,8 @@ lead@school.org, admin"></textarea>
     async function ensureApp(){
       if (isCompatReady() || await hasModularApp()) return true;
       const attempts = [
-        './app.js?v=21','/app.js?v=21',
-        './app.js?v=20','/app.js?v=20',
+  './app.js?v=23','/app.js?v=23',
+  './app.js?v=23','/app.js?v=23',
         './app.js','/app.js'
       ];
       for (const p of attempts){
@@ -163,7 +153,7 @@ lead@school.org, admin"></textarea>
       if (!(isCompatReady()) && !(await hasModularApp())) await ensureApp();
       if (isCompatReady()) return window.firebase.auth();
       if (!authMod) {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js');
+  const m = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js');
         authMod = m.getAuth();
       }
       return authMod;
@@ -178,10 +168,10 @@ lead@school.org, admin"></textarea>
         };
       }
       if (!functionsMod) {
-        const m = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-functions.js');
+  const m = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
         functionsMod = m.getFunctions();
       }
-      const { httpsCallable: call } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-functions.js');
+  const { httpsCallable: call } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
       return (data) => call(functionsMod, name)(data).then(r => r.data);
     }
     async function currentUser() {
@@ -195,7 +185,7 @@ lead@school.org, admin"></textarea>
         const t = await u.getIdTokenResult(force);
         return t.claims || {};
       } else {
-        const { getIdTokenResult } = await import('https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js');
+  const { getIdTokenResult } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js');
         const t = await getIdTokenResult(u, force);
         return t.claims || {};
       }
@@ -206,6 +196,23 @@ lead@school.org, admin"></textarea>
       if (claims.role && String(claims.role).toLowerCase() === 'admin') return true;
       if (claims.roles && (claims.roles.admin === true || (Array.isArray(claims.roles) && claims.roles.includes('admin')))) return true;
       return false;
+    }
+    async function updateDebug(claims, ctx){
+      try {
+        const u = await currentUser();
+        const info = {
+          build: '2025-09-08-ROLES3',
+          origin: location.origin,
+          projectId: (window.firebaseConfig && window.firebaseConfig.projectId) || 'dismissalcaller',
+          ctx,
+          user: u ? { uid: u.uid, email: u.email } : null,
+          claims,
+          classesCacheCount: classesCache.length,
+          hasSetTeacherClassesCallable: typeof (await httpsCallable('setTeacherClasses')) === 'function'
+        };
+        const el = document.getElementById('debugInfo');
+        if (el) el.textContent = JSON.stringify(info, null, 2);
+      } catch (e){ /* ignore */ }
     }
     const roleToBools = (role) => {
       role = String(role || 'viewer').toLowerCase();
@@ -223,14 +230,14 @@ lead@school.org, admin"></textarea>
 
     // ——— elements ———
     const listEl = document.getElementById('list');
-    const bulkEl = document.getElementById('bulk');
-    const bulkRoleEl = document.getElementById('bulkRole');
-    const bulkAddBtn = document.getElementById('bulkAddBtn');
     const refreshBtn = document.getElementById('refreshBtn');
     const bulkStatusEl = document.getElementById('bulkStatus');
     const ctxEl = document.getElementById('ctx');
   const addRowBtn = document.getElementById('addRowBtn');
-  const memberRowsEl = document.getElementById('memberRows');
+  const queueRowsBtn = document.getElementById('queueRowsBtn');
+    const memberRowsEl = document.getElementById('memberRows');
+    const saveBtn = document.getElementById('saveChanges');
+    const dirtyStatusEl = document.getElementById('dirtyStatus');
 
     // ——— context ———
     async function resolveCtx() {
@@ -245,6 +252,60 @@ lead@school.org, admin"></textarea>
     }
 
     // ——— roster UI ———
+    const dirtyChanges = new Map(); // memberId -> { member, newRole }
+    let classesCache = [];
+    const teacherClassChanges = new Map(); // memberId -> [classIds]
+    function updateDirtyStatus(){
+      const total = dirtyChanges.size + pendingAdds.length + teacherClassChanges.size;
+      saveBtn.disabled = total === 0;
+      dirtyStatusEl.textContent = total ? `${total} change${total===1?'':'s'} not saved` : '';
+    }
+    function markDirty(id, member, role){
+      const orig = roleFromMember(member);
+      if (role === orig) dirtyChanges.delete(id); else dirtyChanges.set(id, { member, newRole: role });
+      updateDirtyStatus();
+    }
+    function markClassDirty(id, member, classIds){
+      // Avoid marking dirty if nothing changed compared to current member.classIds
+      const prev = Array.isArray(member.classIds) ? member.classIds.map(v=>String(v||'')).filter(Boolean).sort() : [];
+      const next = classIds.map(v=>String(v||'')).filter(Boolean).sort();
+      const same = prev.length === next.length && prev.every((v,i)=>v===next[i]);
+      if (same) teacherClassChanges.delete(id); else teacherClassChanges.set(id, next);
+      updateDirtyStatus();
+    }
+    async function loadClasses(ctx){
+      classesCache = [];
+      let loaded = false;
+      try {
+        const call = await httpsCallable('listSchoolClasses');
+        const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
+        if (res && Array.isArray(res.classes) && res.classes.length){
+          classesCache = res.classes;
+          loaded = true;
+        }
+      } catch (e){ console.warn('[roles] listSchoolClasses callable not available yet or failed:', e?.message||e); }
+      if (!loaded){
+        // Fallback to client helper getClasses()
+        try {
+          const mod = await import('/app.js?v=23');
+          if (typeof mod.getClasses === 'function') {
+            classesCache = await mod.getClasses();
+            loaded = true;
+          }
+        } catch (e2){ console.warn('[roles] fallback getClasses() failed', e2?.message||e2); }
+      }
+      // Final normalize & sort
+      classesCache = (classesCache||[]).slice()
+        .map(c=>({ id:String(c.id||''), name:c.name||c.title||String(c.id||''), order: typeof c.order==='number'?c.order:undefined }))
+        .filter(c=>c.id)
+        .sort((a,b)=>{ const ao=(typeof a.order==='number')?a.order:999999; const bo=(typeof b.order==='number')?b.order:999999; if(ao!==bo) return ao-bo; return (a.name||a.id||'').localeCompare(b.name||b.id||''); });
+    }
+    function renderClassSelect(member){
+      const assigned = Array.isArray(member.classIds)?member.classIds.map(v=>String(v||'')).filter(Boolean):[];
+      const opts = classesCache.map(c=>`<option value="${escapeHtml(c.id)}"${assigned.includes(c.id)?' selected':''}>${escapeHtml(c.name||c.id)}</option>`).join('');
+      return `<select multiple data-class-select="${escapeHtml(member.id||member.uid)}" size="${Math.min(6,Math.max(3,classesCache.length))}" style="width:100%; padding:6px; border:1px solid #e5e7eb; border-radius:8px; background:#fff; font-size:12px;">${opts}</select><div class=\"muted\" style=\"margin-top:4px; font-size:11px;\">Ctrl/Cmd+Click to multi-select.</div>`;
+    }
+
     function renderRow(member, ctx) {
       const role = roleFromMember(member);
       const id = member.id || member.uid;
@@ -255,68 +316,181 @@ lead@school.org, admin"></textarea>
           <div>${escapeHtml(member.displayName || member.email || 'Unknown')}</div>
           <div class="muted">${escapeHtml(member.email || '')}</div>
         </div>
-        ${['viewer','caller','admin','none'].map(opt => `
-          <div class="role-cell">
-            <input type="radio" name="r-${id}" value="${opt}" ${role===opt ? 'checked' : ''}>
-          </div>`).join('')}
+        <div class="role-cell">
+          <select class="input role-select" data-id="${id}">
+            <option value="viewer" ${role==='viewer'?'selected':''}>Viewer</option>
+            <option value="caller" ${role==='caller'?'selected':''}>Caller</option>
+            <option value="admin" ${role==='admin'?'selected':''}>Admin</option>
+            <option value="none" ${role==='none'?'selected':''}>Remove</option>
+          </select>
+        </div>
+        <div>${renderClassSelect(member)}</div>
       `;
-      row.querySelectorAll(`input[name="r-${id}"]`).forEach(input => {
-        input.addEventListener('change', async () => {
-          if (!input.checked) return;
-          await saveRole(ctx, member, input.value);
-        });
+      row.querySelector('.role-select')?.addEventListener('change', (e)=>{
+        const select = e.target;
+        const newRole = select.value;
+        markDirty(id, member, newRole);
       });
+      const clsSelect = row.querySelector('[data-class-select]');
+      if (clsSelect){
+        clsSelect.addEventListener('change', ()=>{
+          const chosen = Array.from(clsSelect.selectedOptions).map(o=>o.value);
+          markClassDirty(id, member, chosen);
+        });
+      }
       return row;
     }
 
     async function loadMembers(ctx) {
+      if (!classesCache.length) await loadClasses(ctx);
       const call = await httpsCallable('listSchoolMembers');
   const res = await call({ orgId: ctx.orgId, schoolId: ctx.schoolId });
-  const members = (res?.members || []).sort((a,b)=>
+      const members = (res?.members || []).map(m => {
+        if (Array.isArray(m.classIds)) m.classIds = m.classIds.map(v=>String(v||'')).filter(Boolean);
+        return m;
+      }).sort((a,b)=>
         String(a.displayName||a.email||'').localeCompare(String(b.displayName||b.email||''), 'en', {sensitivity:'base'})
       );
       listEl.innerHTML = '';
       members.forEach(m => listEl.appendChild(renderRow(m, ctx)));
+      // Fallback: if no member has classIds populated (possibly functions not yet deployed), try direct Firestore fetch
+      const anyWith = members.some(m => Array.isArray(m.classIds) && m.classIds.length);
+      if (!anyWith) {
+        try {
+          const { getFirestore, doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const db = getFirestore();
+          await Promise.all(members.map(async (m) => {
+            const mid = m.uid || m.id; if (!mid) return;
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', mid);
+            const snap = await getDoc(ref);
+            if (snap.exists()) {
+              const data = snap.data() || {};
+                if (Array.isArray(data?.teacher?.classIds) && data.teacher.classIds.length){
+                m.classIds = data.teacher.classIds.map(v=>String(v||'')).filter(Boolean);
+              }
+            }
+          }));
+          // Re-render class selects with updated assignments
+          listEl.innerHTML='';
+          members.forEach(m => listEl.appendChild(renderRow(m, ctx)));
+        } catch (e){ console.warn('[roles] teacher class fallback fetch failed', e); }
+      }
     }
 
-    async function saveRole(ctx, member, roleChoice) {
+    async function persistChanges(ctx){
+      if (!dirtyChanges.size && pendingAdds.length===0 && teacherClassChanges.size===0) return;
+      saveBtn.disabled = true;
+      dirtyStatusEl.textContent = `Saving… (roles ${dirtyChanges.size}, adds ${pendingAdds.length}, class sets ${teacherClassChanges.size})`;
       const call = await httpsCallable('setSchoolMemberRoles');
-      const roles = (roleChoice === 'none') ? {} : roleToBools(roleChoice);
-      await call({
-        orgId: ctx.orgId,
-        schoolId: ctx.schoolId,
-        user: { uid: member.uid || member.id, email: member.email || null },
-        roles
-      });
+      const classCall = await httpsCallable('setTeacherClasses');
+      let ok=0, fail=0;
+      let roleCallableFailed = false;
+      // Adds
+      for (const entry of pendingAdds){
+        try {
+          if (roleCallableFailed) throw new Error('skip-callable');
+          await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { email: entry.email }, roles: roleToBools(entry.role) });
+          ok++;
+        } catch(e){
+          console.warn('[roles] add via callable failed; attempting direct Firestore write', e?.message||e);
+          roleCallableFailed = true;
+          try {
+            const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const rolesObj = roleToBools(entry.role);
+            const tmpUserId = `pending_${entry.email}`; // temporary id until user signs in; will be replaced by real uid later
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', tmpUserId);
+            await setDoc(ref, {
+              scope: 'school',
+              uid: tmpUserId,
+              email: entry.email,
+              roles: rolesObj,
+              status: 'active',
+              updatedAt: serverTimestamp(),
+              createdAt: serverTimestamp()
+            }, { merge: true });
+            ok++;
+          } catch(fe){ console.warn('[roles] direct add write failed', fe); fail++; }
+        }
+      }
+      // Updates/removals
+      for (const { member, newRole } of dirtyChanges.values()){
+        try {
+          const roles = (newRole==='none') ? {} : roleToBools(newRole);
+          if (roleCallableFailed) throw new Error('skip-callable');
+          await call({ orgId: ctx.orgId, schoolId: ctx.schoolId, user: { uid: member.uid || member.id, email: member.email||null }, roles });
+          ok++;
+        } catch(e){
+          console.warn('[roles] role change callable failed; attempting direct Firestore write', e?.message||e);
+          roleCallableFailed = true;
+          try {
+            const { getFirestore, doc, setDoc, serverTimestamp, deleteField } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const id = member.uid || member.id;
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', id);
+            const roles = (newRole==='none') ? {} : roleToBools(newRole);
+            const status = (newRole==='none') ? 'removed' : 'active';
+            await setDoc(ref, {
+              scope: 'school',
+              uid: id,
+              email: member.email || '',
+              roles,
+              status,
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+            ok++;
+          } catch(fe){ console.warn('[roles] direct role write failed', fe); fail++; }
+        }
+      }
+      // Class assignments
+      for (const [memberId, classIds] of teacherClassChanges.entries()){
+        try {
+          const resp = await classCall({ orgId: ctx.orgId, schoolId: ctx.schoolId, memberId, classIds });
+          console.log('[roles] setTeacherClasses ok', memberId, resp);
+          ok++;
+        } catch(e){
+          console.warn('[roles] class assignment failed', memberId, e);
+          let fallbackSuccess = false;
+          try {
+            // Try direct Firestore write regardless of error type (covers CORS / internal / not-found)
+            const { getFirestore, doc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const db = getFirestore();
+            const ref = doc(db, 'orgs', ctx.orgId, 'schools', ctx.schoolId, 'members', memberId);
+            // IMPORTANT: ensure scope + uid fields are present so claims aggregation (which filters scope=='school') picks up this doc.
+            // Without scope, computeClaims() skips it, omitting schoolId from custom claims and breaking inSchool() checks for nicknames.
+            await setDoc(ref, {
+              scope: 'school',
+              uid: memberId,
+              teacher: { classIds: classIds.slice() },
+              // Preserve any existing roles/status via merge; only set updatedAt here.
+              updatedAt: serverTimestamp()
+            }, { merge: true });
+            console.log('[roles] fallback direct Firestore write succeeded for', memberId);
+            ok++;
+            fallbackSuccess = true;
+          } catch(fe){ console.warn('[roles] fallback Firestore write failed', fe); }
+          if (!fallbackSuccess) fail++;
+          const errTxt = (e && (e.message || e.code)) ? (e.code? e.code+': ':'') + e.message : String(e);
+          dirtyStatusEl.textContent = `Last error saving classes for ${memberId}: ${errTxt}`;
+        }
+      }
+      dirtyChanges.clear();
+      pendingAdds.length = 0;
+      teacherClassChanges.clear();
       const a = await getAuth();
-      if (a.currentUser) await a.currentUser.getIdToken(true);
+      if (a.currentUser) try { await a.currentUser.getIdToken(true); } catch {}
       await loadMembers(ctx);
+      dirtyStatusEl.textContent = `Saved. OK: ${ok}${fail?`, Failed: ${fail}`:''}`;
+      if (!fail) {
+        dirtyStatusEl.classList.add('status-ok');
+        setTimeout(()=>dirtyStatusEl.classList.remove('status-ok'), 2500);
+      }
+      saveBtn.disabled = true;
     }
 
     // ——— bulk add ———
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
-    function parseBulk(text, defaultRole) {
-      const out = [];
-      const raw = (text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-      for (const line of raw) {
-        // support comma or whitespace/semicolon separated emails on one line
-        const parts = line.split(/[,\t;]+/).map(s=>s.trim()).filter(Boolean);
-        // case A: "email, role"
-        if (parts.length >= 2 && emailRe.test(parts[0])) {
-          const role = String(parts[1]).toLowerCase();
-          const r = (role === 'admin' || role === 'caller' || role === 'viewer') ? role : defaultRole;
-          out.push({ email: parts[0].toLowerCase(), role: r });
-        } else {
-          // treat the whole line as a bag of emails
-          const emails = line.split(/[,\s;]+/).map(s=>s.trim()).filter(Boolean);
-          for (const e of emails) if (emailRe.test(e)) out.push({ email: e.toLowerCase(), role: defaultRole });
-        }
-      }
-      // dedupe by email (last wins)
-      const map = new Map();
-      for (const item of out) map.set(item.email, item);
-      return Array.from(map.values());
-    }
+    const pendingAdds = []; // {email, role}
 
     // Row-based add helpers
     function renderMemberRow(pref={}){
@@ -351,73 +525,21 @@ lead@school.org, admin"></textarea>
       try { r.querySelector('.member-email')?.focus(); } catch {}
     }
 
-    async function bulkAdd(ctx) {
-      const defaultRole = bulkRoleEl.value || 'viewer';
-      // Parse textarea + rows and merge (rows win)
-      const entriesFromPaste = parseBulk(bulkEl.value, defaultRole);
+    function queueAdds(clearRows=false){
       const rows = Array.from(memberRowsEl?.querySelectorAll('.member-row') || []);
-      const entriesFromRows = [];
+      pendingAdds.length = 0;
       for (const n of rows){
         const email = String(n.querySelector('.member-email')?.value || '').trim().toLowerCase();
         const role = String(n.querySelector('.member-role')?.value || 'admin').trim().toLowerCase();
-        if (!email) continue;
-        if (!emailRe.test(email)) continue;
-        const r = (role === 'admin' || role === 'caller' || role === 'viewer') ? role : 'admin';
-        entriesFromRows.push({ email, role: r });
+        if (!email || !emailRe.test(email)) continue;
+        pendingAdds.push({ email, role: (role==='admin'||role==='caller'||role==='viewer')?role:'admin' });
       }
-      const map = new Map();
-      for (const e of entriesFromPaste) map.set(e.email, e);
-      for (const e of entriesFromRows) map.set(e.email, e);
-      const entries = Array.from(map.values());
-      if (!entries.length) {
-        showStatus('Nothing to add. Enter rows or paste emails first.');
-        return;
-      }
-
-      bulkAddBtn.disabled = true;
-      showStatus(`Adding ${entries.length} member(s)…`);
-
-      const call = await httpsCallable('setSchoolMemberRoles');
-
-      // simple concurrency limiter
-      const limit = 5;
-      let idx = 0, ok = 0, fail = 0;
-      const results = [];
-
-      async function runOne(entry) {
-        try {
-          await call({
-            orgId: ctx.orgId,
-            schoolId: ctx.schoolId,
-            user: { email: entry.email },
-            roles: roleToBools(entry.role)
-          });
-          results.push(`✔ ${entry.email}  (${entry.role})`);
-          ok++;
-        } catch (e) {
-          results.push(`✖ ${entry.email}  (${entry.role})  — ${e?.message || e}`);
-          fail++;
-        } finally {
-          idx++;
-          showStatus(`Processed ${idx}/${entries.length}\n` + results.slice(-6).join('\n'));
-        }
-      }
-
-      const queue = entries.slice();
-      const workers = new Array(Math.min(limit, queue.length)).fill(0).map(async () => {
-        while (queue.length) await runOne(queue.shift());
-      });
-      await Promise.all(workers);
-
-      // refresh acting admin claims + list
-      const a = await getAuth();
-      if (a.currentUser) await a.currentUser.getIdToken(true);
-      await loadMembers(ctx);
-
-  showStatus(`Done. Added: ${ok}, Failed: ${fail}\n` + results.join('\n'));
-  bulkAddBtn.disabled = false;
-  if (memberRowsEl) memberRowsEl.innerHTML = '';
-  addMemberRow();
+      if (clearRows) memberRowsEl.innerHTML = '';
+      markDirty('__adds__', {role:'viewer'}, '__pending__'); // triggers count update only
+      dirtyChanges.delete('__adds__'); // ensure not treated as actual role change
+      const count = dirtyChanges.size + pendingAdds.length;
+      saveBtn.disabled = count===0;
+      dirtyStatusEl.textContent = count ? `${count} change${count===1?'':'s'} not saved` : '';
     }
 
     function showStatus(text) {
@@ -426,9 +548,12 @@ lead@school.org, admin"></textarea>
     }
 
     // ——— events ———
-    bulkAddBtn.addEventListener('click', async () => {
+    saveBtn.addEventListener('click', async () => {
       const ctx = await resolveCtx();
-      await bulkAdd(ctx);
+      queueAdds();
+      await persistChanges(ctx);
+      if (memberRowsEl) memberRowsEl.innerHTML='';
+      addMemberRow();
     });
     refreshBtn.addEventListener('click', async () => {
       const a = await getAuth();
@@ -436,7 +561,8 @@ lead@school.org, admin"></textarea>
       const ctx = await resolveCtx();
       await loadMembers(ctx);
     });
-  addRowBtn?.addEventListener('click', () => addMemberRow());
+  addRowBtn?.addEventListener('click', () => { addMemberRow(); });
+  queueRowsBtn?.addEventListener('click', () => { queueAdds(true); addMemberRow(); });
 
     // ——— boot ———
     (async () => {
@@ -466,6 +592,7 @@ lead@school.org, admin"></textarea>
       ctxEl.textContent = `Org: ${ctx.orgId} • School: ${(window.SD && window.SD.schoolName) || ctx.schoolId}`;
       await loadMembers(ctx);
       addMemberRow();
+      try { const claims = await getClaims(); await updateDebug(claims, ctx); } catch {}
     })();
 
     // Live-update banner when user switches school
@@ -474,6 +601,7 @@ lead@school.org, admin"></textarea>
       if (!d.orgId || !d.schoolId) return;
       ctxEl.textContent = `Org: ${d.orgId} • School: ${d.schoolName || d.schoolId}`;
       await loadMembers({ orgId: d.orgId, schoolId: d.schoolId });
+      try { const claims = await getClaims(); await updateDebug(claims, { orgId: d.orgId, schoolId: d.schoolId }); } catch {}
     });
   </script>
 </body>
