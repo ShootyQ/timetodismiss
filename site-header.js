@@ -141,8 +141,12 @@
             </div>
           </div>
           <!-- Compact mobile toolbar -->
-          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
+          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:6px;padding:6px 4%;">
         <button id="hdrMenuBtn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="hdrMenuPanel" title="Menu" aria-label="Open menu">☰</button>
+        <!-- Mobile quick Preferences access (only shown for viewer-capable roles) -->
+        <a id="hdrPrefsLink" href="/prefs.html" class="icon-btn" data-requires="viewer" aria-label="Preferences" title="Preferences" style="display:none;">
+          <img src="/viewerpref.png" alt="" width="26" height="26" decoding="async" style="display:block;" />
+        </a>
         <button id="hdrAuthBtn" class="icon-btn" type="button" title="Account" aria-label="Account">
           <span id="hdrAuthIcon" aria-hidden="true">👤</span>
           <img id="hdrAuthPhoto" alt="" style="display:none;width:28px;height:28px;border-radius:999px;object-fit:cover;" />
