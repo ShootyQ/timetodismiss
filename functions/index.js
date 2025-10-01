@@ -235,6 +235,14 @@ async function computeClaims(uid, email) {
       schoolIds: ['*'],
       roles: ['owner']
     });
+    // Persist an owner marker in Firestore so future claim recomputations (computeClaims)
+    // continue to recognize this user as owner. Previously we only set custom claims;
+    // the next trigger-based recompute would drop owner because users/{uid}.owner was absent.
+    try {
+      await db.doc(`users/${req.auth.uid}`).set({ owner: true, updatedAt: ts() }, { merge: true });
+    } catch (e) {
+      console.warn('Failed to persist owner flag', e);
+    }
     await bumpUserTokens(req.auth.uid, { reason: 'owner-grant' });
     return { ok: true };
   });
