@@ -4,6 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Time To Dismiss — Voice Caller</title>
+  <!-- Load global header (sets orgId/schoolId + dispatches sd:claims-ready) -->
+  <script src="/site-header.js" defer></script>
   <style>
     :root { --blue:#2563eb; --red:#dc2626; --gray:#64748b; --bg:#f1f5f9; }
     * { box-sizing:border-box; }
@@ -114,8 +116,47 @@
     function processHeard(raw){ if(rearmTimer){ clearTimeout(rearmTimer); rearmTimer=null; } const cleaned = cleanPhrase(raw); if(!cleaned){ statusEl.textContent='(Ignored)'; return; } if(!store.students.length){ statusEl.textContent='Roster not loaded yet'; return; } const candidates=matchCandidates(cleaned); if(!candidates.length){ statusEl.textContent='No student match for “'+cleaned+'”'; return; } const best=candidates[0]; showStudentCard(best.student, candidates); // auto-arm again after 2.5s if still listening
       rearmTimer = setTimeout(()=>{ if(listening) statusEl.textContent='Listening...'; }, 2500); }
 
-    // ------------------ Live Data ------------------
-    onStudents(null, list => { const rows=Array.isArray(list)? list:[]; store.students = rows.map(prepStudent); store.byFull=new Map(); for(const s of store.students){ if(!store.byFull.has(s.full)) store.byFull.set(s.full,[]); store.byFull.get(s.full).push(s); } statusEl.textContent = `Roster: ${store.students.length} students loaded`; });
+    // ------------------ Live Data (deferred until tenant claims ready) ------------------
+    let unsubscribeStudents = null;
+    function attachStudentsListener(){
+      if (unsubscribeStudents) { try { unsubscribeStudents(); } catch {} }
+      try {
+        unsubscribeStudents = onStudents(null, list => {
+          const rows=Array.isArray(list)? list:[];
+          store.students = rows.map(prepStudent);
+          store.byFull=new Map();
+          for(const s of store.students){
+            if(!store.byFull.has(s.full)) store.byFull.set(s.full,[]);
+            store.byFull.get(s.full).push(s);
+          }
+          statusEl.textContent = store.students.length
+            ? `Roster loaded (${store.students.length})`
+            : 'Roster empty (no students)';
+        });
+      } catch(e){
+        console.error('[voice] failed to attach onStudents:', e);
+        statusEl.textContent='Roster listener failed';
+      }
+    }
+
+    function claimsReady(){
+      if (globalThis.SD?.schoolId && globalThis.SD?.orgId){
+        attachStudentsListener();
+        return true;
+      }
+      return false;
+    }
+
+    // If claims already there (user came from another page), start immediately
+    if (!claimsReady()) {
+      statusEl.textContent='Waiting for roster (sign in / select school if prompted)...';
+      document.addEventListener('sd:claims-ready', () => {
+        claimsReady();
+      }, { once:true });
+      // Safety timeout: attempt anyway after 5s in case waitForTenant can still resolve
+      setTimeout(()=>{ if(!store.students.length) attachStudentsListener(); }, 5000);
+    }
+
     onCarGroups(groups => { /* reserved: can use for additional grouping logic later */ });
   </script>
 </body>
