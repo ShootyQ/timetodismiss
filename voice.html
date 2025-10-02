@@ -66,7 +66,7 @@
   </section>
 
   <script type="module">
-    import { init, onStudents, onCarGroups, setStudentStatus } from '/app.js?v=23';
+  import { init, onStudents, onCarGroups, setStudentStatus, setStatusForRideShare } from '/app.js?v=23';
     await init();
 
     const activateBtn   = document.getElementById('activateBtn');
@@ -80,7 +80,7 @@
     let recog = null; let listening=false; let lastHeard = ''; let lastShownStudent=null; let rearmTimer=null;
 
     // ------------------ Data Structures + Matching ------------------
-  const store = { students: [], byFull:new Map(), aliasIndex:new Map() };
+  const store = { students: [], byFull:new Map(), aliasIndex:new Map(), groups:[], tagToGroup:new Map(), rideShareIndex:new Map() };
     const numWords = new Map([['k','k'],['kindergarten','k'],['first','1'],['1st','1'],['second','2'],['2nd','2'],['third','3'],['3rd','3'],['fourth','4'],['4th','4'],['fifth','5'],['5th','5'],['sixth','6'],['6th','6']]);
     const norm = (s) => String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
     const simplifyClass = (s)=> norm(s).split(' ').map(w=>numWords.get(w)||w).join(' ');
@@ -88,19 +88,42 @@
   function prepStudent(s){ const derived=[s.firstName,s.lastName].filter(Boolean).join(' '); const name=String(s.name||derived||'').trim(); const [first='',...rest]=name.split(/\s+/); const last=rest.join(' '); const rawNick=s.nicknames||s.aliases||[]; const nickArr=Array.isArray(rawNick)?rawNick: typeof rawNick==='string'? rawNick.split(/[,;]+/): []; if(s.preferredName && !nickArr.includes(s.preferredName)) nickArr.push(s.preferredName); const normNicks = nickArr.map(n=>norm(n)).filter(Boolean); return { id:s.id, name, preferredName:s.preferredName||'', first:first.toLowerCase(), last:last.toLowerCase(), className:(s.className||s.classId||s.grade||''), classKey:simplifyClass(s.className||s.classId||s.grade||''), carTag:(s.carTag||s.tag? String(s.carTag||s.tag).toUpperCase():''), full:norm(name), sxFirst:soundex(first), sxLast:soundex(last), nicknames:normNicks }; }
     function levenshtein(a,b){ a=norm(a); b=norm(b); const m=a.length,n=b.length; if(!m||!n) return Math.max(m,n); const dp=new Array(n+1); for(let j=0;j<=n;j++) dp[j]=j; for(let i=1;i<=m;i++){ let prev=dp[0]++; for(let j=1;j<=n;j++){ const tmp=dp[j]; dp[j]=Math.min(dp[j]+1, dp[j-1]+1, prev + (a[i-1]===b[j-1]?0:1)); prev=tmp; } } return dp[n]; }
     function similarity(a,b){ const A=norm(a), B=norm(b); if(!A||!B) return 0; const dist=levenshtein(A,B); return 1 - (dist / Math.max(A.length,B.length)); }
-    function matchCandidates(qRaw){ const q=norm(qRaw); if(!q) return []; const out=[]; const qTokens=q.split(' ').filter(Boolean); const qFirst=qTokens[0]; const qLast=qTokens.length>1? qTokens[qTokens.length-1]:''; const sxF=soundex(qFirst); const sxL=soundex(qLast); const isFull = qTokens.length>1; for(const s of store.students){ let score=0; // base similarity
+    function matchCandidates(qRaw){
+      const q=norm(qRaw); if(!q) return [];
+      const out=[]; const qTokens=q.split(' ').filter(Boolean); const qFirst=qTokens[0]; const qLast=qTokens.length>1? qTokens[qTokens.length-1]:''; const sxF=soundex(qFirst); const sxL=soundex(qLast); const isFull=qTokens.length>1; const single = qTokens.length===1;
+      // Precompute duplicate counts for first & last names
+      const firstCounts=new Map(); const lastCounts=new Map();
+      for(const s of store.students){ firstCounts.set(s.first,(firstCounts.get(s.first)||0)+1); if(s.last) lastCounts.set(s.last,(lastCounts.get(s.last)||0)+1); }
+      for(const s of store.students){ let score=0;
+        // Base similarity to full name
         score=Math.max(score, similarity(q,s.full));
-        if(isFull){ const nameTokens=s.full.split(' '); const startsAll=qTokens.every((qt,i)=> nameTokens[i]?.startsWith(qt)); if(startsAll) score=Math.max(score,.94); if(qTokens.length===nameTokens.length && qTokens.every((qt,i)=> nameTokens[i]===qt)) score=1; }
+        const nameTokens=s.full.split(' ');
+        if(isFull){
+          // Ordered tokens
+          const startsAll=qTokens.every((qt,i)=> nameTokens[i]?.startsWith(qt)); if(startsAll) score=Math.max(score,.94);
+          if(qTokens.length===nameTokens.length && qTokens.every((qt,i)=> nameTokens[i]===qt)) score=1;
+          // Unordered first/last swap
+          if(qTokens.length===2 && nameTokens.length>=2){ const setQ=new Set(qTokens); const setFL=new Set([s.first,s.last].filter(Boolean)); let unordered=true; for(const t of setQ) if(!Array.from(setFL).some(fl=>fl.startsWith(t))) { unordered=false; break; } if(unordered) score=Math.max(score,.92); }
+        }
         if(s.full.startsWith(q)) score=Math.max(score,.91);
         if(q.includes(s.first)&&q.includes(s.last)) score=Math.max(score,.9);
         if(s.first===qFirst) score=Math.max(score,.85); else if(s.first.startsWith(qFirst)) score=Math.max(score,.78);
         if(qLast){ const lastSim=similarity(qLast,s.last); if(lastSim>.7) score=Math.max(score,.88 + (lastSim-0.7)*0.15); }
         if(sxF && s.sxFirst===sxF) score=Math.max(score,.8);
         if(qLast && sxL && s.sxLast===sxL) score=Math.max(score, score+.03);
+        // Single-token last-name only query support
+        if(single){
+          if(s.last===q){ score=Math.max(score, .9 - (lastCounts.get(s.last)>1? .05:0)); }
+          else if(s.last.startsWith(q)) score=Math.max(score,.8);
+          else { const lsim=similarity(q,s.last); if(lsim>.78) score=Math.max(score,.8 + (lsim-.78)*0.15); }
+        }
+        // Nicknames / preferred names
         if(s.nicknames?.length){ for(const nn of s.nicknames){ if(q===nn) score=Math.max(score,.96); else if(nn.startsWith(q)) score=Math.max(score,.82); } }
-        if(qTokens.length===1 && s.first===qFirst){ const dupCount = store.students.filter(st=>st.first===qFirst).length; if(dupCount===1) score=Math.max(score,.9); }
+        // Unique first name boost (single token)
+        if(single && s.first===qFirst && firstCounts.get(qFirst)===1) score=Math.max(score,.9);
         if(score>0.55) out.push({student:s, score:Math.min(1,score)}); }
-      out.sort((a,b)=>b.score-a.score); return out.slice(0,8); }
+      out.sort((a,b)=>b.score-a.score); return out.slice(0,8);
+    }
 
     // ------------------ UI Helpers ------------------
   function renderTiles(cands){ tilesEl.innerHTML=''; tilesWrap.style.display=cands.length? 'block':'none'; lastShownStudent=cands.length? cands[0].student:null; cands.forEach((c,i)=>{ const s=c.student; const displayName = s.preferredName ? (s.preferredName + (s.last? (' '+s.last):'')) : s.name; const div=document.createElement('div'); div.className='tile'+(i===0?' active':''); div.dataset.id=s.id; div.dataset.tag=s.carTag||''; div.innerHTML=`<div class=\"nm\">${displayName||''}</div><div class=\"meta\">${[s.className||'', s.carTag?('TAG '+s.carTag):''].filter(Boolean).join(' • ')}</div><div class=\"quick\"><button data-act=\"call\" class=\"primary\">Call</button><button data-act=\"family\">Family</button><button data-act=\"ride\">Ride</button><button data-act=\"clear\" class=\"nevermind\">Clear</button></div><div class=\"gesture-banner\"></div>`; attachGesture(div); tilesEl.appendChild(div); }); window.__voiceStore = store.students.slice(); }
@@ -118,7 +141,26 @@
     async function callStudent(stu){ try { await setStudentStatus(stu.id,'called'); statusEl.textContent='Called → '+stu.name; } catch(e){ console.error(e); statusEl.textContent='Call failed'; } }
     async function callByTagLocal(tag){ const TAG=String(tag||'').toUpperCase(); const matches=store.students.filter(s=>s.carTag===TAG); if(!matches.length) return 0; await Promise.allSettled(matches.map(s=> setStudentStatus(s.id,'called'))); return matches.length; }
   function markTileDone(tile){ tile.classList.add('fade-out'); setTimeout(()=>{ if(tile.parentElement) tile.remove(); if(!tilesEl.children.length) hideTiles(); },2000); }
-  tilesEl.addEventListener('click', e=>{ const b=e.target.closest('button[data-act]'); if(!b) return; const tile=b.closest('.tile'); if(!tile) return; const id=tile.dataset.id; const stu=store.students.find(s=>s.id===id); if(!stu) return; if(b.dataset.act==='call'){ callStudent(stu); markTileDone(tile); } else if(b.dataset.act==='family'&&stu.carTag){ callByTagLocal(stu.carTag); markTileDone(tile); } else if(b.dataset.act==='ride'&&stu.carTag){ callByTagLocal(stu.carTag); markTileDone(tile); } else if(b.dataset.act==='clear'){ hideTiles(); statusEl.textContent='Cleared'; } });
+  async function callRideShareForStudent(stu){
+    try {
+      if(!stu || !stu.carTag) return false;
+      const grp = store.tagToGroup.get(stu.carTag);
+      const rideKey = grp?.rideShare;
+      if(rideKey){
+        await setStatusForRideShare(rideKey,'called');
+        statusEl.textContent='Ride share '+rideKey+' called';
+        return true;
+      }
+      // Fallback to family tag if no rideShare key
+      if(stu.carTag){
+        await callByTagLocal(stu.carTag);
+        statusEl.textContent='(No ride-share key) Family tag '+stu.carTag+' called';
+        return true;
+      }
+    } catch(e){ console.error('rideShare call failed', e); statusEl.textContent='Ride share call failed'; }
+    return false;
+  }
+  tilesEl.addEventListener('click', e=>{ const b=e.target.closest('button[data-act]'); if(!b) return; const tile=b.closest('.tile'); if(!tile) return; const id=tile.dataset.id; const stu=store.students.find(s=>s.id===id); if(!stu) return; if(b.dataset.act==='call'){ callStudent(stu); markTileDone(tile); } else if(b.dataset.act==='family'&&stu.carTag){ callByTagLocal(stu.carTag); markTileDone(tile); } else if(b.dataset.act==='ride'){ callRideShareForStudent(stu).then(()=>markTileDone(tile)); } else if(b.dataset.act==='clear'){ hideTiles(); statusEl.textContent='Cleared'; } });
 
     // ------------------ Phrase Processing ------------------
   const phraseCorrections={ 'little boy pause':'ler bwe paw','little boy paws':'ler bwe paw','lil boy pause':'ler bwe paw','lil boy paws':'ler bwe paw','ler boy paw':'ler bwe paw','leb we paw':'ler bwe paw' };
@@ -167,11 +209,21 @@
       setTimeout(()=>{ if(!store.students.length) attachStudentsListener(); }, 5000);
     }
 
-    onCarGroups(groups => { /* reserved: can use for additional grouping logic later */ });
+    onCarGroups(groups => {
+      try {
+        store.groups = Array.isArray(groups)? groups:[];
+        store.tagToGroup = new Map();
+        store.rideShareIndex = new Map(); // rideShareKey -> array of groups
+        for(const g of store.groups){
+          (g.tags||[]).forEach(t=>{ if(t) store.tagToGroup.set(String(t).toUpperCase(), g); });
+          if(g.rideShare){ const key=String(g.rideShare).trim(); if(!store.rideShareIndex.has(key)) store.rideShareIndex.set(key,[]); store.rideShareIndex.get(key).push(g); }
+        }
+      } catch(e){ console.error('carGroups mapping failed', e); }
+    });
 
     // ------------------ Gesture (moved into module for access to functions) ------------------
     function attachGesture(tile){ let sx=0,sy=0; tile.addEventListener('touchstart',ev=>{const t=ev.changedTouches[0]; sx=t.clientX; sy=t.clientY;},{passive:true}); tile.addEventListener('touchend',ev=>{const t=ev.changedTouches[0]; const dx=t.clientX-sx, dy=t.clientY-sy; const adx=Math.abs(dx), ady=Math.abs(dy); const min=40; if(adx<min && ady<min) return; let dir=''; if(adx>ady) dir = dx<0?'left':'right'; else dir = dy<0?'up':'down'; fireGesture(tile,dir); },{passive:true}); }
-    function fireGesture(tile,dir){ const id=tile.dataset.id; if(!id) return; const stu=store.students.find(s=>s.id===id); const banner=tile.querySelector('.gesture-banner'); if(banner){ let label=''; if(dir==='left') label='CALL'; else if(dir==='right') label='FAMILY'; else if(dir==='up') label='RIDE'; else if(dir==='down') label='CLEAR'; banner.textContent=label; banner.className='gesture-banner dir-'+dir; tile.classList.add('gesture'); setTimeout(()=>tile.classList.remove('gesture'),550);} if(!stu) return; if(dir==='left'){ callStudent(stu); markTileDone(tile); } else if((dir==='right'||dir==='up') && stu.carTag){ callByTagLocal(stu.carTag).finally(()=>markTileDone(tile)); } else if(dir==='down'){ hideTiles(); statusEl.textContent='Cleared'; } }
+  function fireGesture(tile,dir){ const id=tile.dataset.id; if(!id) return; const stu=store.students.find(s=>s.id===id); const banner=tile.querySelector('.gesture-banner'); if(banner){ let label=''; if(dir==='left') label='CALL'; else if(dir==='right') label='FAMILY'; else if(dir==='up') label='RIDE'; else if(dir==='down') label='CLEAR'; banner.textContent=label; banner.className='gesture-banner dir-'+dir; tile.classList.add('gesture'); setTimeout(()=>tile.classList.remove('gesture'),550);} if(!stu) return; if(dir==='left'){ callStudent(stu); markTileDone(tile); } else if(dir==='right' && stu.carTag){ callByTagLocal(stu.carTag).finally(()=>markTileDone(tile)); } else if(dir==='up'){ callRideShareForStudent(stu).finally(()=>markTileDone(tile)); } else if(dir==='down'){ hideTiles(); statusEl.textContent='Cleared'; } }
   </script>
 </body>
 </html>
