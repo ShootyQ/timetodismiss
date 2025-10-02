@@ -143,20 +143,28 @@
   function markTileDone(tile){ tile.classList.add('fade-out'); setTimeout(()=>{ if(tile.parentElement) tile.remove(); if(!tilesEl.children.length) hideTiles(); },2000); }
   async function callRideShareForStudent(stu){
     try {
-      if(!stu || !stu.carTag) return false;
+      if(!stu || !stu.carTag){ statusEl.textContent='No tag for ride share'; return false; }
       const grp = store.tagToGroup.get(stu.carTag);
-      const rideKey = grp?.rideShare;
-      if(rideKey){
-        await setStatusForRideShare(rideKey,'called');
-        statusEl.textContent='Ride share '+rideKey+' called';
-        return true;
+      const rideKeyRaw = grp?.rideShare ? String(grp.rideShare).trim() : '';
+      const normKey = rideKeyRaw.toLowerCase();
+      if(rideKeyRaw && store.rideShareIndex.has(normKey)){
+        const entry = store.rideShareIndex.get(normKey); // { keyOriginal, groups:Set, tags:Set }
+        try {
+          await setStatusForRideShare(entry.keyOriginal,'called');
+          statusEl.textContent='Ride share '+entry.keyOriginal+' ('+entry.tags.size+' tags) called';
+          return true;
+        } catch(be){
+          console.warn('setStatusForRideShare failed, fallback per-tag', be);
+          const tagArr = Array.from(entry.tags);
+          await Promise.allSettled(tagArr.map(t=>callByTagLocal(t)));
+          statusEl.textContent='Ride share '+entry.keyOriginal+' fallback ('+tagArr.length+' tags)';
+          return true;
+        }
       }
-      // Fallback to family tag if no rideShare key
-      if(stu.carTag){
-        await callByTagLocal(stu.carTag);
-        statusEl.textContent='(No ride-share key) Family tag '+stu.carTag+' called';
-        return true;
-      }
+      // No rideShare key: treat as family only
+      await callByTagLocal(stu.carTag);
+      statusEl.textContent='(No ride-share key) Family tag '+stu.carTag+' called';
+      return true;
     } catch(e){ console.error('rideShare call failed', e); statusEl.textContent='Ride share call failed'; }
     return false;
   }
@@ -213,11 +221,21 @@
       try {
         store.groups = Array.isArray(groups)? groups:[];
         store.tagToGroup = new Map();
-        store.rideShareIndex = new Map(); // rideShareKey -> array of groups
+        store.rideShareIndex = new Map(); // normKey -> { keyOriginal, groups:Set, tags:Set }
         for(const g of store.groups){
-          (g.tags||[]).forEach(t=>{ if(t) store.tagToGroup.set(String(t).toUpperCase(), g); });
-          if(g.rideShare){ const key=String(g.rideShare).trim(); if(!store.rideShareIndex.has(key)) store.rideShareIndex.set(key,[]); store.rideShareIndex.get(key).push(g); }
+          const tags = Array.isArray(g.tags)? g.tags:[];
+          tags.forEach(t=>{ if(t) store.tagToGroup.set(String(t).toUpperCase(), g); });
+          if(g.rideShare){
+            const keyOriginal = String(g.rideShare).trim();
+            if(!keyOriginal) continue;
+            const normKey = keyOriginal.toLowerCase();
+            if(!store.rideShareIndex.has(normKey)) store.rideShareIndex.set(normKey,{ keyOriginal, groups:new Set(), tags:new Set() });
+            const entry = store.rideShareIndex.get(normKey);
+            entry.groups.add(g);
+            tags.forEach(t=> entry.tags.add(String(t).toUpperCase()));
+          }
         }
+        for(const [k,e] of store.rideShareIndex){ try { console.debug('[rideShareIndex]', e.keyOriginal, 'tags', Array.from(e.tags)); } catch {} }
       } catch(e){ console.error('carGroups mapping failed', e); }
     });
 
