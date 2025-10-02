@@ -66,7 +66,7 @@
   </section>
 
   <script type="module">
-  import { init, onStudents, onCarGroups, setStudentStatus, setStatusForRideShare } from '/app.js?v=23';
+  import { init, onStudents, onCarGroups, setStudentStatus, setStatusForRideShare, setStatusForGroup, setStatusForTag, getGroupByTag } from '/app.js?v=23';
     await init();
 
     const activateBtn   = document.getElementById('activateBtn');
@@ -144,26 +144,35 @@
   async function callRideShareForStudent(stu){
     try {
       if(!stu || !stu.carTag){ statusEl.textContent='No tag for ride share'; return false; }
-      const grp = store.tagToGroup.get(stu.carTag);
-      const rideKeyRaw = grp?.rideShare ? String(grp.rideShare).trim() : '';
-      const normKey = rideKeyRaw.toLowerCase();
-      if(rideKeyRaw && store.rideShareIndex.has(normKey)){
-        const entry = store.rideShareIndex.get(normKey); // { keyOriginal, groups:Set, tags:Set }
-        try {
-          await setStatusForRideShare(entry.keyOriginal,'called');
-          statusEl.textContent='Ride share '+entry.keyOriginal+' ('+entry.tags.size+' tags) called';
-          return true;
-        } catch(be){
-          console.warn('setStatusForRideShare failed, fallback per-tag', be);
-          const tagArr = Array.from(entry.tags);
-          await Promise.allSettled(tagArr.map(t=>callByTagLocal(t)));
-          statusEl.textContent='Ride share '+entry.keyOriginal+' fallback ('+tagArr.length+' tags)';
-          return true;
-        }
+      const TAG = String(stu.carTag).toUpperCase();
+      let grp = store.tagToGroup.get(TAG);
+      // If groups haven't loaded yet, try to resolve directly
+      if(!grp && getGroupByTag){ try { grp = await getGroupByTag(TAG); if(grp){ store.tagToGroup.set(TAG, grp); } } catch{} }
+
+      // Fallback chain mirrors master/mastercaller pages
+      if(grp && grp.id && setStatusForGroup){
+        await setStatusForGroup(grp.id,'called');
+        statusEl.textContent='Family called';
+        return true;
       }
-      // No rideShare key: treat as family only
-      await callByTagLocal(stu.carTag);
-      statusEl.textContent='(No ride-share key) Family tag '+stu.carTag+' called';
+      if(grp && Array.isArray(grp.tags) && grp.tags.length){
+        const tags = grp.tags.map(t=>String(t||'').toUpperCase());
+        await Promise.allSettled(tags.map(t=> setStatusForTag? setStatusForTag(t,'called') : setStatusForRideShare?.(t,'called')));
+        statusEl.textContent='Family tags called';
+        return true;
+      }
+      if(grp && grp.rideShare && setStatusForRideShare){
+        await setStatusForRideShare(grp.rideShare,'called');
+        statusEl.textContent='Ride share called';
+        return true;
+      }
+      // Last resort: just the single tag
+      if(setStatusForTag){
+        await setStatusForTag(TAG,'called');
+      } else {
+        await callByTagLocal(TAG);
+      }
+      statusEl.textContent='Tag '+TAG+' called';
       return true;
     } catch(e){ console.error('rideShare call failed', e); statusEl.textContent='Ride share call failed'; }
     return false;
