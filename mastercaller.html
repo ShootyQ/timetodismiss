@@ -550,12 +550,33 @@
     scanAutoCall?.addEventListener('change', () => {
       localStorage.setItem(LS_SCAN_AUTOCALL, scanAutoCall.checked ? '1':'0');
     });
-    let scanBuffer=''; let scanLastTs=0; const SCAN_GAP=60; // ms between chars considered same scan
-    function resetScanBuffer(){ scanBuffer=''; scanLastTs=0; }
-    function processScan(){
-      const raw = scanBuffer.trim(); resetScanBuffer();
-      if(!raw) return;
+    // Background scan detection: treat only very fast bursts ending with Enter as scans.
+    let scanChars = []; // {ch,time}
+    let scanLastTs=0;
+    const SCAN_SEQ_TIMEOUT = 400; // gap that resets sequence
+    const MAX_SCAN_DURATION = 800; // total ms between first & last char for a valid scan
+    const MIN_SCAN_LEN = 3; // ignore tiny bursts
+    function resetScanBuffer(){ scanChars=[]; scanLastTs=0; }
+    function bufferChar(ch){
+      const now=Date.now();
+      if(!scanChars.length || (now - scanLastTs) <= SCAN_SEQ_TIMEOUT){
+        scanChars.push({ch,time:now});
+        scanLastTs=now;
+      } else { // too slow; start new sequence
+        scanChars=[{ch,time:now}]; scanLastTs=now;
+      }
+    }
+    function tryFinalizeScan(){
+      if(!scanChars.length) return false;
+      const first=scanChars[0].time; const last=scanChars[scanChars.length-1].time; const duration= last-first;
+      if(scanChars.length < MIN_SCAN_LEN) { resetScanBuffer(); return false; }
+      if(duration > MAX_SCAN_DURATION){ resetScanBuffer(); return false; }
+      // Build raw string
+      const raw = scanChars.map(o=>o.ch).join('').trim();
+      resetScanBuffer();
+      if(!raw) return false;
       handleScanCode(raw);
+      return true;
     }
     function handleScanCode(code){
       const upper = code.toUpperCase();
@@ -589,25 +610,23 @@
     }
     window.addEventListener('keydown', (e) => {
       if(!scanEnable?.checked) return; // scanning disabled
-      // Ignore if focused on an input/textarea/select except body or search box? Let normal typing work if slow.
+      if(e.metaKey||e.ctrlKey||e.altKey) return; // ignore combos
       const active = document.activeElement;
-      const isFormEl = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
-      // We still capture if scanner is fast; but don't block user manual typing in search if slower than gap.
+      const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
       if(e.key === 'Enter'){
-        if(scanBuffer){ e.preventDefault(); processScan(); }
+        // Decide if buffered burst qualifies as scan
+        if(tryFinalizeScan()){ if(!isInput) e.preventDefault(); }
+        else resetScanBuffer();
         return;
       }
-      if(e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey){
-        const now = Date.now();
-        if(now - scanLastTs > SCAN_GAP){ // new sequence
-          scanBuffer = '';
-        }
-        scanLastTs = now;
-        scanBuffer += e.key;
-        // Optional: prevent accidental insertion if not in an input
-        if(!isFormEl){ e.preventDefault(); }
-        // Heuristic: very long tags auto-complete when length > 24
-        if(scanBuffer.length > 48){ processScan(); }
+      if(e.key.length === 1){
+        bufferChar(e.key);
+        // Never block normal typing; we let characters pass through.
+        // But if focus is body (not typing anywhere), prevent page scroll from space etc.
+        if(!isInput && e.key === ' '){ e.preventDefault(); }
+      } else if(e.key === 'Backspace' || e.key === 'Escape'){
+        // Human editing pattern -> cancel any pending scan buffer
+        resetScanBuffer();
       }
     }, true);
 
