@@ -19,9 +19,12 @@
     .mode-card.selected{ outline:3px solid var(--accent,#2563eb); outline-offset:2px; border-color:var(--accent,#2563eb); background:#f1f8ff; }
     .actions{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     .muted{ color:#64748b; }
-    .start-box{ display:flex; flex-direction:column; gap:10px; max-width:520px; }
-    .start-box button{ align-self:flex-start; }
-    .session-note{ font-size:.75rem; color:#64748b; }
+  .start-box{ display:flex; flex-direction:column; gap:14px; max-width:740px; margin:10px auto 0; align-items:center; text-align:center; }
+  .start-box button{ font-size:1.15rem; font-weight:800; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 4px 18px -4px rgba(30,58,138,.25); transform:translateY(0); transition: background .18s ease, transform .18s ease, box-shadow .18s ease; }
+  .start-box button:active{ transform:translateY(2px); box-shadow:0 2px 10px -2px rgba(30,58,138,.25); }
+  .start-box button:not([disabled]){ cursor:pointer; }
+  .session-note{ font-size:.8rem; color:#64748b; }
+  .start-box .warn{ color:#b45309; font-weight:600; }
   </style>
 </head>
 <body class="sd-body">
@@ -52,8 +55,8 @@
         </label>
       </div>
       <div class="start-box">
-        <button id="startBtn" class="btn btn-primary" type="button" disabled>Start Calling Now</button>
-        <div class="session-note" id="sessionNote">Choose a mode to enable start.</div>
+        <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
+        <div class="session-note" id="sessionNote">Choose a calling interface above, then start.</div>
       </div>
     </section>
 
@@ -83,8 +86,8 @@
 
     const modesEl = document.getElementById('modes');
     const startBtn = document.getElementById('startBtn');
-    const sessionNote = document.getElementById('sessionNote');
-    let selected = null;
+  const sessionNote = document.getElementById('sessionNote');
+  let selected = null;
 
     modesEl.addEventListener('click', (e) => {
       const card = e.target.closest('.mode-card');
@@ -92,12 +95,17 @@
       const val = card.getAttribute('data-mode');
       [...modesEl.querySelectorAll('.mode-card')].forEach(c => c.classList.toggle('selected', c===card));
       selected = val;
-      startBtn.disabled = !selected;
-      sessionNote.textContent = selected ? 'Ready. Starting will log a session start timestamp.' : 'Choose a mode to enable start.';
+      sessionNote.classList.remove('warn');
+      sessionNote.textContent = selected ? 'Ready. Starting will log a session start timestamp.' : 'Choose a calling interface above, then start.';
     });
 
     async function startSession(){
-      if (!selected) return;
+      if (!selected){
+        sessionNote.textContent = 'Please select an interface first.';
+        sessionNote.classList.add('warn');
+        startBtn.blur();
+        return;
+      }
       startBtn.disabled = true;
       startBtn.textContent = 'Starting…';
       let nav = null;
