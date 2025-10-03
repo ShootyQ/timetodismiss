@@ -203,6 +203,9 @@
       endBtn.textContent = 'Ending…';
       const ended = await endSessionIfAny();
       if (ended){
+        // freeze timer now
+        try { if(autoEndTimer) { clearInterval(autoEndTimer); autoEndTimer = null; } } catch {}
+        if(sessionStartedAt && sessionElapsedEl){ const finalMs = Date.now() - sessionStartedAt.getTime(); sessionElapsedEl.textContent = fmtDur(finalMs); }
         endBtn.textContent = 'Dismissal Ended';
       } else {
         endBtn.textContent = 'End Dismissal';

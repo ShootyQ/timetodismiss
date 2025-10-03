@@ -258,10 +258,84 @@ export function onStudents(classIdOrNull, cb) {
 // Single-student status update.
 export async function setStudentStatus(studentId, status) {
   await waitForTenant();
-  await updateDoc(docPath('students', studentId), {
-    status,
-    updatedAt: serverTimestamp()
+  const studentRef = docPath('students', studentId);
+  await updateDoc(studentRef, { status, updatedAt: serverTimestamp() });
+  try {
+    // Event logging: orgs/{org}/schools/{school}/students/{id}/events
+    const evtCol = collection(studentRef, 'events');
+    await addDoc(evtCol, { status, at: serverTimestamp() });
+  } catch(e){ console.warn('[analytics] event log failed', e); }
+  try {
+    // Update per-day per-student stats (day key in UTC) at orgs/{org}/schools/{school}/studentStats/{YYYY-MM-DD}:{studentId}
+    const now = new Date();
+    const day = now.toISOString().slice(0,10); // YYYY-MM-DD
+    const statsId = day + ':' + studentId;
+    const statsRef = docPath('studentStats', statsId);
+    const snap = await getDoc(statsRef);
+    const data = snap.exists() ? (snap.data()||{}) : { firstStatus: status };
+    // Record first times for each milestone if not already set
+    // We'll store server-side markers and let UI compute durations on read
+    const update = { lastStatus: status, updatedAt: serverTimestamp() };
+    if (!data.calledAt && status === 'called') update.calledAt = serverTimestamp();
+    if (!data.enRouteAt && (status === 'en_route' || status === 'enroute')) update.enRouteAt = serverTimestamp();
+    if (!data.pickedUpAt && status === 'picked_up') update.pickedUpAt = serverTimestamp();
+    // Also persist classId for lookup (fetch once from student doc when needed)
+    try {
+      if (!data.classId) {
+        const sSnap = await getDoc(studentRef);
+        if (sSnap.exists()) { const sd = sSnap.data()||{}; if(sd.classId) update.classId = sd.classId; if(sd.name) update.studentName = sd.name; }
+      }
+    } catch {}
+    await setDoc(statsRef, update, { merge:true });
+  } catch(e){ console.warn('[analytics] stats update failed', e); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Student Daily Stats Retrieval                                       */
+/* ------------------------------------------------------------------ */
+
+// Fetch all studentStats docs for a given date (YYYY-MM-DD).
+export async function getStudentStatsForDay(day){
+  await waitForTenant();
+  if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day)) throw new Error('Day must be YYYY-MM-DD');
+  const statsCol = colPath('studentStats');
+  // We stored docs as {day}:{studentId}; use a client filter until an index/alternate schema is added.
+  const snap = await getDocs(statsCol);
+  const rows = [];
+  snap.docs.forEach(d=>{ if(d.id.startsWith(day+':')) rows.push({ id:d.id, ...d.data() }); });
+  return rows;
+}
+
+// Compute durations (ms) from stats doc server timestamps (serverTimestamp fields become Timestamp objects when read).
+export function computeStudentDurations(stat){
+  const out = { calledToEnRoute:null, enRouteToPickup:null, calledToPickup:null };
+  try {
+    const c = stat.calledAt?.toDate?.();
+    const e = stat.enRouteAt?.toDate?.();
+    const p = stat.pickedUpAt?.toDate?.();
+    if(c && e) out.calledToEnRoute = e - c;
+    if(e && p) out.enRouteToPickup = p - e;
+    if(c && p) out.calledToPickup = p - c;
+  } catch {}
+  return out;
+}
+
+export function summarizeDayStats(stats){
+  const agg = { count:0, calledToEnRoute:0, enRouteToPickup:0, calledToPickup:0, samples:{ calledToEnRoute:0, enRouteToPickup:0, calledToPickup:0 } };
+  stats.forEach(s=>{
+    const d = computeStudentDurations(s);
+    agg.count++;
+    if(typeof d.calledToEnRoute==='number'){ agg.calledToEnRoute += d.calledToEnRoute; agg.samples.calledToEnRoute++; }
+    if(typeof d.enRouteToPickup==='number'){ agg.enRouteToPickup += d.enRouteToPickup; agg.samples.enRouteToPickup++; }
+    if(typeof d.calledToPickup==='number'){ agg.calledToPickup += d.calledToPickup; agg.samples.calledToPickup++; }
   });
+  function avg(total,samples){ return samples? Math.round(total/samples): null; }
+  return {
+    total: agg.count,
+    avgCalledToEnRoute: avg(agg.calledToEnRoute, agg.samples.calledToEnRoute),
+    avgEnRouteToPickup: avg(agg.enRouteToPickup, agg.samples.enRouteToPickup),
+    avgCalledToPickup: avg(agg.calledToPickup, agg.samples.calledToPickup)
+  };
 }
 
 /* ------------------------------------------------------------------ */

@@ -304,7 +304,10 @@
         const signalRef = doc(firestore,'orgs',oid,'schools',sid,'signals','dismissal');
         await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
       } catch(sigErr){ console.warn('[tiles] dismissal signal failed', sigErr); }
-      endSessionBtn.textContent='Dismissal Ended'; tilesEnded=true;
+      tilesEnded=true;
+      try { if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch {}
+      if(tilesStartedAt && tilesSessionElapsed){ const ms = Date.now() - tilesStartedAt.getTime(); tilesSessionElapsed.textContent = tilesFmt(ms); }
+      endSessionBtn.textContent='Dismissal Ended';
     } catch(e){ console.warn('[tiles] end session failed', e); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
   }
   endSessionBtn?.addEventListener('click', endSession);

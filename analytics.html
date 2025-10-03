@@ -40,18 +40,26 @@
     </section>
 
     <section style="margin-top:34px; max-width:760px;">
-      <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Planned Metrics</h2>
-      <ul class="small" style="margin:0 0 4px 18px; padding:0; line-height:1.35;">
-        <li>Average pickup time per student</li>
-        <li>Per-session distribution (0–2m, 2–5m, 5m+)</li>
-        <li>Fastest / slowest outliers</li>
-        <li>Per-class performance rollups</li>
-      </ul>
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Daily Student Metrics</h2>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+        <label class="small" style="font-weight:600;">Date <input id="statsDate" type="date" /></label>
+        <button id="reloadStats" class="btn btn-secondary btn-sm" type="button">Load</button>
+        <div id="statsSummary" class="small muted">Pick a date</div>
+      </div>
+      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:400px;">
+        <table aria-label="Daily student stats" id="statsTable">
+          <thead><tr>
+            <th>Student</th><th>Class</th>
+            <th>Called→EnRoute</th><th>EnRoute→Pickup</th><th>Called→Pickup</th>
+          </tr></thead>
+          <tbody id="statsBody"></tbody>
+        </table>
+      </div>
     </section>
   </main>
 
   <script type="module">
-    import { init, colPath } from '/app.js?v=23';
+  import { init, colPath, getStudentStatsForDay, computeStudentDurations, summarizeDayStats, getClasses } from '/app.js?v=23';
   import { getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp, onSnapshot, getFirestore, collection } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
     await init();
 
@@ -132,6 +140,39 @@
       } catch(err){ console.warn('[analytics] end now failed', err); }
     });
     attachSessions();
+
+    /* ---------------- Daily Student Stats ---------------- */
+    const statsDate = document.getElementById('statsDate');
+    const reloadStats = document.getElementById('reloadStats');
+    const statsBody = document.getElementById('statsBody');
+    const statsSummary = document.getElementById('statsSummary');
+    let classMap = {};
+    try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
+
+    function fmtMs(ms){ if(ms==null) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
+    function ensureDateDefault(){ if(!statsDate.value){ const today=new Date(); statsDate.value = today.toISOString().slice(0,10); } }
+    ensureDateDefault();
+
+    async function loadDay(){
+      const day = statsDate.value; if(!day){ statsSummary.textContent='Pick a date'; return; }
+      statsSummary.textContent='Loading…'; statsBody.innerHTML='';
+      try {
+        const rows = await getStudentStatsForDay(day);
+        rows.sort((a,b)=> (a.studentName||'').localeCompare(b.studentName||''));
+        const tr = [];
+        const durations = rows.map(r=>({ r, d: computeStudentDurations(r) }));
+        durations.forEach(({r,d})=>{
+          tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${fmtMs(d.calledToEnRoute)}</td><td>${fmtMs(d.enRouteToPickup)}</td><td>${fmtMs(d.calledToPickup)}</td></tr>`);
+        });
+        statsBody.innerHTML = tr.join('');
+        const agg = summarizeDayStats(rows);
+        statsSummary.textContent = `${rows.length} students • Avg C→E ${fmtMs(agg.avgCalledToEnRoute)} • Avg E→P ${fmtMs(agg.avgEnRouteToPickup)} • Avg C→P ${fmtMs(agg.avgCalledToPickup)}`;
+      } catch(e){ statsSummary.textContent='Failed to load stats'; console.warn('[analytics] loadDay failed', e); }
+    }
+    reloadStats?.addEventListener('click', loadDay);
+    statsDate?.addEventListener('change', loadDay);
+    // Auto-load today
+    loadDay();
   </script>
 </body>
 </html>

@@ -57,6 +57,9 @@
       <div class="start-box">
         <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
         <div class="session-note" id="sessionNote">Choose a calling interface above, then start.</div>
+        <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
+          <input type="checkbox" id="resetOnStart" /> Reset all statuses to Waiting on start
+        </label>
       </div>
     </section>
 
@@ -73,8 +76,8 @@
   </main>
 
   <script type="module">
-    import { init, onAuthChanged, colPath, docPath } from '/app.js?v=23';
-    import { addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { init, onAuthChanged, colPath } from '/app.js?v=23';
+  import { addDoc, serverTimestamp, getDocs, query, where, writeBatch, getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
     await init();
 
     // Context chip
@@ -87,6 +90,7 @@
     const modesEl = document.getElementById('modes');
     const startBtn = document.getElementById('startBtn');
   const sessionNote = document.getElementById('sessionNote');
+  const resetOnStart = document.getElementById('resetOnStart');
   let selected = null;
   let activeSession = null;
 
@@ -142,6 +146,31 @@
           statsReady: false
         });
         const id = docRef.id;
+
+        // Optional bulk reset of non-waiting statuses
+        if (resetOnStart?.checked) {
+          (async () => {
+            try {
+              const fs = getFirestore();
+              const statuses = ['called','en_route','picked_up'];
+              for (const st of statuses){
+                try {
+                  const qy = query(colPath('students'), where('status','==', st));
+                  const snap = await getDocs(qy);
+                  if (snap.empty) continue;
+                  // Chunk into batches of 450 (below 500 limit)
+                  let batch = writeBatch(fs); let count=0; let committed=0;
+                  for (const d of snap.docs){
+                    batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() });
+                    count++; if (count % 450 === 0){ await batch.commit(); committed+=count; batch = writeBatch(fs); }
+                  }
+                  if (count % 450 !== 0) await batch.commit();
+                } catch(inner){ console.warn('[hub] reset status loop failed for', st, inner); }
+              }
+            } catch(e){ console.warn('[hub] bulk reset failed', e); }
+          })();
+        }
+
         if (selected === 'classic') nav = '/master.html?session=' + encodeURIComponent(id);
         else if (selected === 'tiles') nav = '/mastercaller.html?session=' + encodeURIComponent(id);
         else if (selected === 'voice') nav = '/voice.html?session=' + encodeURIComponent(id);

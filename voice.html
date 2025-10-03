@@ -137,7 +137,10 @@
           const signalRef = doc(fs,'orgs',oid,'schools',sid,'signals','dismissal');
           await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
         } catch(sigErr){ console.warn('[voice] dismissal signal failed', sigErr); }
-        endVoiceBtn.textContent='Dismissal Ended'; voiceEnded=true;
+        voiceEnded=true;
+        try { if(voiceTimer){ clearInterval(voiceTimer); voiceTimer=null; } } catch {}
+        if(voiceStartedAt && voiceElapsedEl){ const ms = Date.now() - voiceStartedAt.getTime(); voiceElapsedEl.textContent = vFmt(ms); }
+        endVoiceBtn.textContent='Dismissal Ended';
       } catch(e){ console.warn('[voice] end session failed', e); endVoiceBtn.textContent='End Dismissal'; endVoiceBtn.disabled=false; }
     }
     endVoiceBtn?.addEventListener('click', endVoiceSession);
