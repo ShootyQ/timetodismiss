@@ -572,6 +572,8 @@
     const SCAN_SEQ_TIMEOUT = 400; // gap that resets sequence
     const MAX_SCAN_DURATION = 800; // total ms between first & last char for a valid scan
     const MIN_SCAN_LEN = 3; // ignore tiny bursts
+    const QUIET_FINALIZE_MS = 150; // if no new char within this window, attempt finalize (scanner usually ends burst)
+    let quietTimer = null;
     function resetScanBuffer(){ scanChars=[]; scanLastTs=0; }
     function bufferChar(ch){
       const now=Date.now();
@@ -581,6 +583,8 @@
       } else { // too slow; start new sequence
         scanChars=[{ch,time:now}]; scanLastTs=now;
       }
+      if(quietTimer){ clearTimeout(quietTimer); }
+      quietTimer = setTimeout(()=>{ tryQuietFinalize(); }, QUIET_FINALIZE_MS);
     }
     function tryFinalizeScan(){
       if(!scanChars.length) return false;
@@ -593,6 +597,14 @@
       if(!raw) return false;
       handleScanCode(raw);
       return true;
+    }
+    function tryQuietFinalize(){
+      // Only attempt if the last keystroke was recently and buffer not empty
+      if(!scanChars.length) return;
+      const now = Date.now();
+      if(now - scanLastTs >= QUIET_FINALIZE_MS){
+        tryFinalizeScan();
+      }
     }
     function handleScanCode(code){
       const rawUpper = code.toUpperCase();
@@ -635,12 +647,29 @@
       try { el.scrollIntoView({behavior:'smooth', block:'center'}); } catch{}
       setTimeout(()=> el.classList.remove('scan-hit'), 1600);
     }
+    // Debug overlay
+    let scanDebugEl = null;
+    function ensureScanDebug(){
+      if(scanDebugEl) return scanDebugEl;
+      scanDebugEl = document.createElement('div');
+      scanDebugEl.id='scanDebug';
+      scanDebugEl.style.cssText='position:fixed;right:6px;bottom:6px;font:11px monospace;background:#0b132bcc;color:#fff;padding:4px 6px;border-radius:6px;z-index:5000;opacity:.75;pointer-events:none;';
+      scanDebugEl.textContent='scan: —';
+      document.body.appendChild(scanDebugEl);
+      return scanDebugEl;
+    }
+    function updateScanDebug(){
+      const el = ensureScanDebug();
+      if(!scanEnable?.checked){ el.textContent='scan: off'; return; }
+      const chars = scanChars.map(c=>c.ch).join('');
+      el.textContent = 'scan: '+(chars||'…');
+    }
     window.addEventListener('keydown', (e) => {
       if(!scanEnable?.checked) return; // scanning disabled
       if(e.metaKey||e.ctrlKey||e.altKey) return; // ignore combos
       const active = document.activeElement;
       const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
-      if(e.key === 'Enter'){
+      if(e.key === 'Enter' || e.key === 'Tab'){
         // Decide if buffered burst qualifies as scan
         if(tryFinalizeScan()){ if(!isInput) e.preventDefault(); }
         else resetScanBuffer();
@@ -648,14 +677,18 @@
       }
       if(e.key.length === 1){
         bufferChar(e.key);
+        updateScanDebug();
         // Never block normal typing; we let characters pass through.
         // But if focus is body (not typing anywhere), prevent page scroll from space etc.
         if(!isInput && e.key === ' '){ e.preventDefault(); }
       } else if(e.key === 'Backspace' || e.key === 'Escape'){
         // Human editing pattern -> cancel any pending scan buffer
         resetScanBuffer();
+        updateScanDebug();
       }
     }, true);
+    // Periodic debug refresh in case quiet finalize cleared
+    setInterval(()=>{ if(scanEnable?.checked) updateScanDebug(); }, 500);
 
     async function bootstrap(claims){
       const allowed = !!(claims && (claims.caller || claims.admin));
