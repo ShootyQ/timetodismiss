@@ -238,6 +238,8 @@
     // Families map TAG -> group
   let tagToGroup = {};
   let rideShareToGroup = {};
+  let carTagIndex = new Map(); // NORMALIZED_TAG -> array of students
+  let studentIdIndex = new Map(); // NORMALIZED_ID -> student
     onCarGroups((groups) => {
       const m = {};
       const rsMap = {};
@@ -451,7 +453,21 @@
         tagToGroup = map; rideShareToGroup = rsMap; // keep render map updated
       });
       const classId = classFilter?.value || null;
-      unsub = onStudents(classId, (list) => { allStudents = Array.isArray(list) ? list : []; applyFilters(); });
+      unsub = onStudents(classId, (list) => {
+        allStudents = Array.isArray(list) ? list : [];
+        rebuildScanIndexes();
+        applyFilters();
+      });
+    }
+    function normScanKey(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').trim(); }
+    function rebuildScanIndexes(){
+      carTagIndex.clear(); studentIdIndex.clear();
+      for(const s of allStudents){
+        const tag = normScanKey(s.carTag||'');
+        if(tag){ if(!carTagIndex.has(tag)) carTagIndex.set(tag, []); carTagIndex.get(tag).push(s); }
+        const sid = normScanKey(s.studentId||s.id||'');
+        if(sid && !studentIdIndex.has(sid)) studentIdIndex.set(sid, s);
+      }
     }
 
     async function populateClasses(){
@@ -579,19 +595,30 @@
       return true;
     }
     function handleScanCode(code){
-      const upper = code.toUpperCase();
+      const rawUpper = code.toUpperCase();
+      const upper = rawUpper.trim();
+      const normalized = normScanKey(upper);
       // Ride share prefix
       if(upper.startsWith('RS:') || upper.startsWith('RS-')){
         const token = upper.replace(/^RS[:\-]/,'');
         callRideShareByTag(token).then(()=>showToast('Ride share called')).catch(()=>showToast('RS not found'));
         return;
       }
-      // Try by car tag first
-      let stu = allStudents.find(s => String(s.carTag||'').trim().toUpperCase() === upper);
-      if(!stu){
-        stu = allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
+      let stu = null;
+      // Fast index lookups
+      if(normalized && carTagIndex.has(normalized)){
+        const arr = carTagIndex.get(normalized) || [];
+        stu = arr[0];
       }
-      if(!stu){ showToast('Not found: '+upper); return; }
+      if(!stu && normalized && studentIdIndex.has(normalized)){
+        stu = studentIdIndex.get(normalized);
+      }
+      // Fallback legacy exact (with punctuation) if normalization failed
+      if(!stu){
+        stu = allStudents.find(s => String(s.carTag||'').trim().toUpperCase() === upper) ||
+              allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
+      }
+      if(!stu){ showToast('Car/ID not found'); return; }
       highlightStudentTile(stu.id);
       const auto = scanAutoCall?.checked;
       if(auto){
