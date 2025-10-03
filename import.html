@@ -119,9 +119,9 @@
     // UI text per entity
     const samples = {
       students:
-`name,classId,carTag
-Nova Bloodsaw,5,B4
-John Lee,3B,T3`,
+`firstName,lastName,preferredName,carTag,studentId,laneId,busId,classId
+Nova,Bloodsaw,Nova,B4,12345,L1,BUS001,5
+John,Lee,,T3,12346,L2,BUS002,3B`,
       classes:
 `id,name
 K,Kindergarten
@@ -133,12 +133,12 @@ smith,Smith Family,K4 A2 T3
 baker,Baker Family,G1 A7` // tags can be space or comma separated in one column, or use tag1,tag2 headers
     };
     const hints = {
-  students: 'Columns: name, classId, carTag/tag. Optional: studentId, firstName, lastName (we will still create these fields as empty when not provided). Status is always set to waiting.',
+  students: 'Columns: firstName, lastName, preferredName, carTag, studentId, laneId, busId, classId. Required: firstName, classId, carTag. Optional fields will be created empty if not provided. Legacy "name" field supported for compatibility.',
       classes: 'Columns: id (class id), name/title (display name).',
       families: 'Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
     };
     const headersView = {
-  students: ['#','Name','Class','Tag'],
+  students: ['#','First Name','Last Name','Preferred','Class','Car Tag','Student ID','Lane','Bus'],
       classes: ['#','Class ID','Name','Order'],
       families: ['#','Family ID','Name','Tags']
     };
@@ -196,15 +196,35 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
       if (!records.length) return [];
       const rows = [];
       for (const rec of records){
-        const firstName = pick(rec, 'firstname','first');
-        const lastName  = pick(rec, 'lastname','last');
-        const display   = pick(rec, 'name','displayname');
-        const id        = pick(rec, 'studentid','id');
-        const classId   = pick(rec, 'classid','class','classcode');
-        const tag       = up(pick(rec, 'cartag','tag'));
+        const firstName     = pick(rec, 'firstname','first');
+        const lastName      = pick(rec, 'lastname','last');
+        const preferredName = pick(rec, 'preferredname','preferred');
+        const display       = pick(rec, 'name','displayname'); // legacy field support
+        const id            = pick(rec, 'studentid','id');
+        const classId       = pick(rec, 'classid','class','classcode');
+        const tag           = up(pick(rec, 'cartag','tag'));
+        const laneId        = pick(rec, 'laneid','lane');
+        const busId         = pick(rec, 'busid','bus');
+        
+        // Build display name: use legacy name field if present, otherwise construct from first/last
         const name = display || [lastName, firstName].filter(Boolean).join(', ');
-        if (!(firstName||lastName||name||id||tag||classId)) continue;
-        rows.push({ firstName, lastName, name, id, classId, tag, carTag: tag, status: 'waiting' });
+        
+        // Skip row if missing required fields (firstName, classId, carTag)
+        if (!firstName || !classId || !tag) continue;
+        
+        rows.push({ 
+          firstName, 
+          lastName, 
+          preferredName,
+          name, 
+          id, 
+          classId, 
+          tag, 
+          carTag: tag, 
+          laneId,
+          busId,
+          status: 'waiting' 
+        });
       }
       return rows;
     }
@@ -264,7 +284,7 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
         const r = slice[i];
         let tds = '';
         if (e === 'students'){
-          tds = `<td>${i+1}</td><td>${r.name}</td><td>${r.classId||''}</td><td>${r.tag||''}</td>`;
+          tds = `<td>${i+1}</td><td>${r.firstName||''}</td><td>${r.lastName||''}</td><td>${r.preferredName||''}</td><td>${r.classId||''}</td><td>${r.tag||''}</td><td>${r.id||''}</td><td>${r.laneId||''}</td><td>${r.busId||''}</td>`;
         } else if (e === 'classes'){
           tds = `<td>${i+1}</td><td>${r.id}</td><td>${r.name||r.title||''}</td><td>${r.order ?? ''}</td>`;
         } else {
@@ -311,11 +331,14 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
             const payload = {
               firstName: r.firstName||'',
               lastName: r.lastName||'',
+              preferredName: r.preferredName||'',
               name: r.name||[r.lastName||'', r.firstName||''].filter(Boolean).join(', '),
               id: r.id||'',
               classId: r.classId||'',
               tag: r.tag||'',
               carTag: r.carTag||r.tag||'',
+              laneId: r.laneId||'',
+              busId: r.busId||'',
               status: 'waiting',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()

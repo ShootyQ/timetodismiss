@@ -149,6 +149,12 @@
           <option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option>
         </select>
       </label>
+      <label class="small">Sort
+        <select id="sortSel" aria-label="Sort by">
+          <option value="first" selected>First Name</option>
+          <option value="last">Last Name</option>
+        </select>
+      </label>
       <div class="spacer"></div>
   <span id="tilesCount" class="small muted">—</span>
     </div>
@@ -181,6 +187,7 @@
     const toast = document.getElementById('toast');
   const colsSel = document.getElementById('colsSel');
   const rowsSel = document.getElementById('rowsSel');
+  const sortSel = document.getElementById('sortSel');
   const tilesCount = document.getElementById('tilesCount');
   let current = null;
 
@@ -255,16 +262,26 @@
       const rows = [];
       let prevLetter = '';
       const items = (list||[]);
+      const sortBy = sortSel?.value || 'first';
       tilesCount.textContent = `${items.length} students`;
       for (const s of items){
         const tag = s.carTag ? String(s.carTag).trim().toUpperCase() : '';
         const grp = tag ? tagToGroup[tag] : null;
         const fam = grp?.name || s.groupName || s.carName || '';
         const statusCls = s.status ? String(s.status) : '';
-        const first = (s.name || '').trim();
-        const firstName = first.split(/\s+/)[0] || '';
-        const initial = firstName.charAt(0).toUpperCase();
-        const letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
+        
+        // Determine the letter grouping based on sort method
+        let sortName, initial, letter;
+        if (sortBy === 'last') {
+          // Use last name for letter grouping
+          sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
+        } else {
+          // Use first name for letter grouping
+          sortName = (s.firstName || '').trim() || (s.name || '').trim().split(/\s+/)[0] || '';
+        }
+        initial = sortName.charAt(0).toUpperCase();
+        letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
+        
         const isHead = letter !== prevLetter;
         if (isHead) {
           rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
@@ -287,6 +304,7 @@
 
     function applyFilters(){
       const q = (search?.value || '').trim().toLowerCase();
+      const sortBy = sortSel?.value || 'first';
       const base = !q ? allStudents : allStudents.filter(s => {
         const tag = (s.carTag || '').toString().toLowerCase();
         const fam = (s.groupName || s.carName || '').toString().toLowerCase();
@@ -297,9 +315,24 @@
         const as = order[a.status] ?? 0;
         const bs = order[b.status] ?? 0;
         if (as !== bs) return as - bs;
-        const an = (a.name||'').toLowerCase();
-        const bn = (b.name||'').toLowerCase();
-        return an.localeCompare(bn);
+        
+        // Sort by first name or last name based on selection
+        let aSortKey, bSortKey;
+        if (sortBy === 'last') {
+          // Extract last name (last word) or use full name as fallback
+          const aLastName = (a.lastName || '').trim() || (a.name || '').trim().split(/\s+/).pop() || '';
+          const bLastName = (b.lastName || '').trim() || (b.name || '').trim().split(/\s+/).pop() || '';
+          aSortKey = aLastName.toLowerCase();
+          bSortKey = bLastName.toLowerCase();
+        } else {
+          // Extract first name (first word) or use full name as fallback
+          const aFirstName = (a.firstName || '').trim() || (a.name || '').trim().split(/\s+/)[0] || '';
+          const bFirstName = (b.firstName || '').trim() || (b.name || '').trim().split(/\s+/)[0] || '';
+          aSortKey = aFirstName.toLowerCase();
+          bSortKey = bFirstName.toLowerCase();
+        }
+        
+        return aSortKey.localeCompare(bSortKey);
       });
       render(list);
     }
@@ -416,6 +449,7 @@
 
     classFilter?.addEventListener('change', resubscribe);
     search?.addEventListener('input', applyFilters);
+    sortSel?.addEventListener('change', applyFilters);
 
     // Direct ride share QR scan (rs=TOKEN)
     document.addEventListener('scan:ride-share', async (e) => {
