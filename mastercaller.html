@@ -615,46 +615,51 @@
       const rawUpper = code.toUpperCase();
       const upper = rawUpper.trim();
       const normalized = normScanKey(upper);
+      
       // Ride share prefix
       if(upper.startsWith('RS:') || upper.startsWith('RS-')){
         const token = upper.replace(/^RS[:\-]/,'');
         callRideShareByTag(token).then(()=>showToast('Ride share called')).catch(()=>showToast('RS not found'));
         return;
       }
-      // 1. Prefer treating scan as a CAR TAG / FAMILY call.
-      if(normalized && carTagIndex.has(normalized)){
-        const callTag = origTagByNormalized.get(normalized) || upper; // preserve punctuation if present originally
-        // Use setStatusForTag which resolves group/family automatically
-        setStatusForTag(callTag, 'called')
-          .then(()=> {
-            // Highlight all students sharing the tag
-            const arr = carTagIndex.get(normalized)||[];
-            arr.forEach(st => highlightStudentTile(st.id));
-            showToast('Family called');
-          })
-          .catch(()=> showToast('Family call failed'));
-        return; // Do not continue to single-student logic
-      }
+      
+      // ALWAYS try family call first (works even if students not loaded yet)
+      // This matches master.html behavior
+      setStatusForTag(upper, 'called')
+        .then(()=> {
+          // Highlight all students sharing the tag (if loaded)
+          const arr = carTagIndex.get(normalized)||[];
+          arr.forEach(st => highlightStudentTile(st.id));
+          showToast('Family called');
+        })
+        .catch((err)=> {
+          console.log('[scan] Family call failed, trying as student ID:', err);
+          // If family call failed, try as individual student
+          handleAsStudent(upper, normalized);
+        });
+    }
+    
+    function handleAsStudent(upper, normalized){
       let stu = null;
       // Fast index lookups
-      if(normalized && carTagIndex.has(normalized)){
-        const arr = carTagIndex.get(normalized) || [];
-        stu = arr[0];
-      }
-      if(!stu && normalized && studentIdIndex.has(normalized)){
+      if(normalized && studentIdIndex.has(normalized)){
         stu = studentIdIndex.get(normalized);
       }
       // Fallback legacy exact (with punctuation) if normalization failed
       if(!stu){
-        stu = allStudents.find(s => String(s.carTag||'').trim().toUpperCase() === upper) ||
-              allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
+        stu = allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
       }
       if(!stu){ showToast('Car/ID not found'); return; }
       highlightStudentTile(stu.id);
       const auto = scanAutoCall?.checked;
       if(auto){
-        if(stu.status === 'waiting'){ setStudentStatus(stu.id,'called').then(()=>showToast('Called '+(stu.firstName||stu.name||''))).catch(()=>showToast('Call failed')); }
-        else showToast('Found '+(stu.firstName||stu.name||''));
+        if(stu.status === 'waiting'){ 
+          setStudentStatus(stu.id,'called')
+            .then(()=>showToast('Called '+(stu.firstName||stu.name||'')))
+            .catch(()=>showToast('Call failed')); 
+        } else {
+          showToast('Found '+(stu.firstName||stu.name||''));
+        }
       } else {
         showToast('Found '+(stu.firstName||stu.name||''));
       }
