@@ -156,8 +156,17 @@
         </select>
       </label>
       <div class="spacer"></div>
-  <span id="tilesCount" class="small muted">—</span>
+      <div class="small" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+        <a id="toClassic" class="btn btn-outline" href="/master.html" style="font-size:.7rem;">Classic</a>
+        <a id="toVoice" class="btn btn-outline" href="/voice.html" style="font-size:.7rem;">Voice</a>
+        <a id="toHub" class="btn btn-outline" href="/callerhub.html" style="font-size:.7rem;">Hub</a>
+        <button id="endSessionBtn" class="btn btn-danger" type="button" style="font-size:.7rem;">End Dismissal</button>
+      </div>
+      <span id="tilesCount" class="small muted">—</span>
     </div>
+        <div id="tilesSessionBar" class="small muted" style="margin:4px 3% 10px; display:none;">
+          <span id="tilesSessionMode">Session</span> • <span id="tilesSessionElapsed">00:00</span><span id="tilesSessionAutoEnd"></span>
+        </div>
 
     <div class="tiles-container">
       <ul id="tiles" class="tiles-grid" aria-live="polite"></ul>
@@ -189,6 +198,15 @@
   const rowsSel = document.getElementById('rowsSel');
   const sortSel = document.getElementById('sortSel');
   const tilesCount = document.getElementById('tilesCount');
+  const toClassic = document.getElementById('toClassic');
+  const toVoice = document.getElementById('toVoice');
+  const toHub = document.getElementById('toHub');
+  const endSessionBtn = document.getElementById('endSessionBtn');
+  const tilesSessionBar = document.getElementById('tilesSessionBar');
+  const tilesSessionMode = document.getElementById('tilesSessionMode');
+  const tilesSessionElapsed = document.getElementById('tilesSessionElapsed');
+  const tilesSessionAutoEnd = document.getElementById('tilesSessionAutoEnd');
+  let tilesStartedAt = null; let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null;
   let current = null;
 
     function showToast(msg){ if(!toast) return; toast.textContent = msg||''; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1500); }
@@ -238,6 +256,52 @@
     rowsSel.addEventListener('change', applyGridSize);
     window.addEventListener('resize', applyGridSize);
     loadGridPrefs();
+
+  // Session linking
+  const urlParams = new URLSearchParams(location.search);
+  const sessionId = urlParams.get('session');
+  if (sessionId){
+    if (toClassic) toClassic.href = '/master.html?session=' + encodeURIComponent(sessionId);
+    if (toVoice) toVoice.href = '/voice.html?session=' + encodeURIComponent(sessionId);
+    if (toHub) toHub.href = '/callerhub.html?session=' + encodeURIComponent(sessionId);
+    if (tilesSessionBar) tilesSessionBar.style.display='block';
+    (async ()=>{
+      try{
+        const { getDoc, doc, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const oid=globalThis.SD?.orgId; const sid=globalThis.SD?.schoolId; if(!oid||!sid) return;
+        const fs = getFirestore();
+        const sRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
+        const snap = await getDoc(sRef); if(snap.exists()){ const data=snap.data(); tilesStartedAt = data.startedAt?.toDate?.()||null; if(data.endedAt) { tilesEnded=true; endSessionBtn.textContent='Dismissal Ended'; endSessionBtn.disabled=true; } tilesSessionMode.textContent = 'Session ('+(data.mode||'tiles')+')'; }
+        const setRef = doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
+        const setSnap = await getDoc(setRef); if(setSnap.exists()){ const cfg=setSnap.data(); if(cfg.autoEndMinutes>=5&&cfg.autoEndMinutes<=240) autoEndMinutes=cfg.autoEndMinutes; }
+        startTilesTimer();
+      }catch(e){ console.warn('[tiles] load session/settings failed', e); }
+    })();
+  }
+
+  async function endSession(){
+    if (!sessionId){ endSessionBtn.disabled = true; endSessionBtn.textContent='No Session'; return; }
+    if(tilesEnded) return;
+    if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return;
+    endSessionBtn.disabled = true; endSessionBtn.textContent='Ending…';
+    try {
+      const { updateDoc, doc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      // Use app.js helpers indirectly; rely on global SD context
+      const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId;
+      if (!oid || !sid) throw new Error('Missing org/school context');
+      const path = ['orgs', oid, 'schools', sid, 'callSessions', sessionId];
+      const firestore = (await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js')).getFirestore?.() || null;
+      // Build ref via doc() overload using spread path
+      const ref = doc(firestore, ...path);
+      await updateDoc(ref, { endedAt: serverTimestamp() });
+      endSessionBtn.textContent='Dismissal Ended'; tilesEnded=true;
+    } catch(e){ console.warn('[tiles] end session failed', e); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
+  }
+  endSessionBtn?.addEventListener('click', endSession);
+
+  function tilesFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
+  function startTilesTimer(){ if(!tilesStartedAt) return; function tick(){ const now=new Date(); const elapsed= now - tilesStartedAt; if(tilesSessionElapsed) tilesSessionElapsed.textContent=tilesFmt(elapsed); const limit = autoEndMinutes*60000; if(!tilesEnded){ const remain = limit - elapsed; if(remain<=0){ autoEndTiles(); } else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent=' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); tilesTimer=setInterval(tick,1000); }
+  async function autoEndTiles(){ if(tilesEnded) return; try{ await endSession(); }catch{} }
 
   // Removed sound feedback for callers (silent operations)
   function ding(){ /* no-op */ }

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Analytics</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-03-AN1" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .ana-main{ padding:18px 0 40px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; }
+    th,td{ padding:.5rem .65rem; border-bottom:1px solid #e5e7eb; text-align:left; font-size:.85rem; }
+    thead th{ background:#f8fafc; font-size:.75rem; letter-spacing:.05em; text-transform:uppercase; color:#334155; }
+    .badge{ display:inline-block; padding:.2rem .45rem; border-radius:8px; background:#f1f5f9; font-weight:600; font-size:.65rem; }
+    .muted{ color:#64748b; }
+    .actions{ display:flex; gap:6px; }
+    .small{ font-size:.8rem; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container ana-main">
+    <header class="titlebar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+      <h1 class="page-title" style="margin:0;">Dismissal Analytics</h1>
+      <a href="/admin.html" class="btn btn-outline">Admin</a>
+    </header>
+    <p class="small muted" id="ctxSchool">—</p>
+
+    <section style="margin-top:10px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 6px;">Recent Sessions</h2>
+      <div class="small muted" id="sessionsMeta">Loading…</div>
+      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; margin-top:8px;">
+        <table aria-label="Recent sessions">
+          <thead><tr><th>Start</th><th>End</th><th>Duration</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="sessBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:760px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Planned Metrics</h2>
+      <ul class="small" style="margin:0 0 4px 18px; padding:0; line-height:1.35;">
+        <li>Average pickup time per student</li>
+        <li>Per-session distribution (0–2m, 2–5m, 5m+)</li>
+        <li>Fastest / slowest outliers</li>
+        <li>Per-class performance rollups</li>
+      </ul>
+    </section>
+  </main>
+
+  <script type="module">
+    import { init, colPath } from '/app.js?v=23';
+    import { getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+    await init();
+
+    const ctxSchool = document.getElementById('ctxSchool');
+    function updateCtx(){ const n = window.SD && (window.SD.schoolName || window.SD.schoolId); if(ctxSchool) ctxSchool.textContent = n || '—'; }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+    updateCtx();
+
+    const sessBody = document.getElementById('sessBody');
+    const sessionsMeta = document.getElementById('sessionsMeta');
+
+    function fmt(ts){ if(!ts) return '—'; try{ const d=ts.toDate? ts.toDate(): ts; return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }catch{ return '—'; } }
+    function dur(start, end){ if(!start) return '—'; const s=start.toDate? start.toDate(): start; const e=end? (end.toDate? end.toDate(): end): new Date(); let ms=e-s; if(ms<0) ms=0; const secs=Math.floor(ms/1000); const m=Math.floor(secs/60); const rs=secs%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'): rm)+':'+String(rs).padStart(2,'0'); }
+
+    async function load(){
+      try {
+        const col = colPath('callSessions');
+        const snap = await getDocs(query(col, orderBy('startedAt','desc'), limit(25)));
+        const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        sessionsMeta.textContent = rows.length + ' sessions';
+        sessBody.innerHTML = rows.map(r => {
+          const ended = !!r.endedAt;
+          return `<tr data-id="${r.id}">
+            <td>${fmt(r.startedAt)}</td>
+            <td>${fmt(r.endedAt)}</td>
+            <td>${dur(r.startedAt, r.endedAt)}</td>
+            <td>${r.mode||''}</td>
+            <td>${ended? '<span class="badge">Ended</span>' : '<span class="badge" style="background:#fee2e2;color:#991b1b;">Active</span>'}</td>
+            <td class="actions">${ended? '' : `<button data-end="${r.id}" class="btn btn-danger" style="font-size:.65rem; padding:.25rem .45rem;">End Now</button>`}</td>
+          </tr>`;
+        }).join('');
+      } catch(e){ sessionsMeta.textContent='Failed to load sessions'; console.warn(e); }
+    }
+
+    sessBody.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-end]'); if(!btn) return;
+      if(!confirm('End this active session now?')) return;
+      try {
+        const id = btn.getAttribute('data-end');
+        const { colPath } = await import('/app.js?v=23');
+        const col = colPath('callSessions');
+        const ref = doc(col.firestore, col.path + '/' + id); // quick hack: rebuild path string
+        await updateDoc(ref, { endedAt: serverTimestamp() });
+        await load();
+      } catch(err){ console.warn('[analytics] end now failed', err); }
+    });
+
+    load();
+  </script>
+</body>
+</html>

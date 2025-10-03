@@ -31,11 +31,17 @@
       <input id="search" placeholder="Search student, tag, or car..." aria-label="Search" />
 
   <button id="clearCalled" class="btn btn-secondary" type="button">Clear Called</button>
-  <a href="/mastercaller.html" class="btn btn-outline" id="tilesBeta" aria-label="Open tiles beta">TILES beta</a>
-    <a href="/voice.html" class="btn btn-outline" id="voiceCallingLink" title="Hands-free voice calling" aria-label="Voice Calling">Voice Calling 🎤</a>
+  <a href="/mastercaller.html" class="btn btn-outline" id="tilesLink" aria-label="Open tiles view">Tiles View</a>
+  <a href="/voice.html" class="btn btn-outline" id="voiceCallingLink" title="Hands-free voice calling" aria-label="Voice Calling">Voice Calling 🎤</a>
+  <a href="/callerhub.html" class="btn btn-outline" aria-label="Call hub">Hub</a>
   <button id="openScanner" class="btn btn-primary" type="button">Scan</button>
   <button id="endDismissal" class="btn btn-primary" type="button" title="Broadcast that dismissal is over">End Dismissal</button>
     </section>
+    <div id="sessionBar" class="small muted" style="margin:4px 0 10px; display:none;">
+      <span id="sessionMode">—</span>
+      • <span id="sessionElapsed">00:00</span>
+      <span id="sessionAutoEnd" class="muted"></span>
+    </div>
 
     <ul id="masterList" class="student-list master" aria-live="polite" aria-busy="false"></ul>
   </main>
@@ -50,6 +56,80 @@
   const clearBtn    = document.getElementById('clearCalled');
   const scanBtn     = document.getElementById('openScanner');
   const endBtn      = document.getElementById('endDismissal');
+  const tilesLink   = document.getElementById('tilesLink');
+  const voiceLink   = document.getElementById('voiceCallingLink');
+
+  // Propagate session id in navigation if present
+  const urlParams = new URLSearchParams(location.search);
+  const sessionId = urlParams.get('session');
+  let sessionStartedAt = null;
+  let sessionEnded = false;
+  let autoEndMinutes = 30; // default
+  let autoEndTimer = null;
+  const sessionBar = document.getElementById('sessionBar');
+  const sessionModeEl = document.getElementById('sessionMode');
+  const sessionElapsedEl = document.getElementById('sessionElapsed');
+  const sessionAutoEndEl = document.getElementById('sessionAutoEnd');
+  if (sessionId){
+    if (tilesLink) tilesLink.href = '/mastercaller.html?session=' + encodeURIComponent(sessionId);
+    if (voiceLink) voiceLink.href = '/voice.html?session=' + encodeURIComponent(sessionId);
+    // Show session bar early (will populate once data arrives)
+    if (sessionBar) sessionBar.style.display='block';
+    // Fetch session + settings
+    (async () => {
+      try {
+        const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if(!oid||!sid) return;
+        const firestore = (await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js')).getFirestore();
+        const sessRef = doc(firestore, 'orgs', oid, 'schools', sid, 'callSessions', sessionId);
+        const snap = await getDoc(sessRef); if (snap.exists()){ const data = snap.data(); sessionStartedAt = data.startedAt?.toDate?.() || null; if(data.endedAt) sessionEnded = true; sessionModeEl.textContent = 'Session ('+(data.mode||'')+')'; }
+        const settingsRef = doc(firestore,'orgs',oid,'schools',sid,'settings','dismissal');
+        const setSnap = await getDoc(settingsRef); if(setSnap.exists()){ const cfg = setSnap.data(); if(cfg.autoEndMinutes && cfg.autoEndMinutes>=5 && cfg.autoEndMinutes<=240) autoEndMinutes = cfg.autoEndMinutes; }
+        if (sessionEnded){ endBtn.textContent='Dismissal Ended'; endBtn.disabled=true; }
+        startElapsedTimer();
+      } catch(e){ console.warn('[master] load session/settings failed', e); }
+    })();
+  }
+
+  async function endSessionIfAny(){
+    if (!sessionId) return false;
+    try {
+      const mod = apiReady ? api : await import('/app.js?v=23');
+      if (!mod.colPath) return false;
+      const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const ref = doc(mod.colPath('callSessions').parent.firestore, 'orgs', globalThis.SD.orgId, 'schools', globalThis.SD.schoolId, 'callSessions', sessionId);
+      await updateDoc(ref, { endedAt: serverTimestamp() });
+      sessionEnded = true;
+      return true;
+    } catch(e){ console.warn('[master] endSession failed', e); return false; }
+  }
+
+  function fmtDur(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
+  function startElapsedTimer(){
+    if(!sessionStartedAt || sessionEnded) return; // if ended early still show static
+    function tick(){
+      if(!sessionStartedAt) return;
+      const now = new Date();
+      const elapsed = now - sessionStartedAt;
+      if(sessionElapsedEl) sessionElapsedEl.textContent = fmtDur(elapsed);
+      const limitMs = autoEndMinutes * 60 * 1000;
+      if(!sessionEnded){
+        const remain = limitMs - elapsed;
+        if(remain <= 0){
+          autoEndSession();
+        } else if(sessionAutoEndEl){
+          sessionAutoEndEl.textContent = ' • Auto end in '+fmtDur(remain)+' (limit '+autoEndMinutes+'m)';
+        }
+      }
+    }
+    tick();
+    autoEndTimer = setInterval(tick, 1000);
+  }
+  async function autoEndSession(){
+    if(sessionEnded) return;
+    const ok = await endSessionIfAny();
+    if(ok){ if(endBtn){ endBtn.textContent='Auto Ended'; endBtn.disabled=true; } if(sessionAutoEndEl) sessionAutoEndEl.textContent=' • Ended'; }
+  }
 
     // ======= Local state =======
     const MODE_FAMILIES = '__families__';
@@ -96,6 +176,21 @@
         console.error('[master] Failed to import /app.js', err);
       }
     })();
+
+    // Wire end dismissal button to close session (if any)
+    endBtn?.addEventListener('click', async () => {
+      if(sessionEnded) return;
+      if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return;
+      endBtn.disabled = true;
+      endBtn.textContent = 'Ending…';
+      const ended = await endSessionIfAny();
+      if (ended){
+        endBtn.textContent = 'Dismissal Ended';
+      } else {
+        endBtn.textContent = 'End Dismissal';
+        endBtn.disabled = false;
+      }
+    });
 
     // ======= Claims / gate =======
     async function getClaims() {

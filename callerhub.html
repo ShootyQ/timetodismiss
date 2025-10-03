@@ -88,6 +88,26 @@
     const startBtn = document.getElementById('startBtn');
   const sessionNote = document.getElementById('sessionNote');
   let selected = null;
+  let activeSession = null;
+
+    // Check for existing active session (no endedAt)
+    (async () => {
+      try {
+        const { getDocs, query, where, orderBy, limit } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const col = colPath('callSessions');
+        const qy = query(col, where('endedAt','==', null), orderBy('startedAt','desc'), limit(1));
+        const snap = await getDocs(qy);
+        if(!snap.empty){
+          activeSession = { id: snap.docs[0].id, ...snap.docs[0].data() };
+          sessionNote.innerHTML = 'Active session in progress started at <strong>' + (activeSession.startedAt?.toDate?.().toLocaleTimeString?.() || '') + '</strong>. Resume:' +
+            ' <a class="btn btn-outline" style="margin-left:6px;" href="/master.html?session='+activeSession.id+'">Classic</a>'+
+            ' <a class="btn btn-outline" href="/mastercaller.html?session='+activeSession.id+'">Tiles</a>'+
+            ' <a class="btn btn-outline" href="/voice.html?session='+activeSession.id+'">Voice</a>';
+          startBtn.textContent = 'Session Active';
+          startBtn.disabled = true;
+        }
+      } catch(e){ console.warn('[hub] active session check failed', e); }
+    })();
 
     modesEl.addEventListener('click', (e) => {
       const card = e.target.closest('.mode-card');
