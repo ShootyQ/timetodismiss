@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Call Hub</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-03-HUB1" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .hub-main{ padding:18px 0 40px; }
+    .modes-grid{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:20px 0 30px; }
+    .mode-card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:10px; position:relative; }
+    .mode-card input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
+    .mode-card h3{ margin:0; font-size:1rem; font-weight:800; }
+    .mode-card p{ margin:0; font-size:.8rem; line-height:1.3; color:#475569; }
+    .mode-card.selected{ outline:3px solid var(--accent,#2563eb); outline-offset:2px; border-color:var(--accent,#2563eb); background:#f1f8ff; }
+    .actions{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .muted{ color:#64748b; }
+    .start-box{ display:flex; flex-direction:column; gap:10px; max-width:520px; }
+    .start-box button{ align-self:flex-start; }
+    .session-note{ font-size:.75rem; color:#64748b; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container hub-main">
+    <header class="titlebar" style="margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <h1 class="page-title" style="margin:0;">Call Hub</h1>
+      <a href="/index.html" class="btn btn-outline">Home</a>
+    </header>
+    <p class="small muted" id="hubCtx">—</p>
+
+    <section>
+      <p>Select a calling interface. After you choose, you can start a new calling session; we'll record when it began for analytics.</p>
+      <div class="modes-grid" id="modes">
+        <label class="mode-card" data-mode="classic">
+          <input type="radio" name="mode" value="classic" />
+          <h3>Classic List</h3>
+          <p>The original master roster view (master.html).</p>
+        </label>
+        <label class="mode-card" data-mode="tiles">
+          <input type="radio" name="mode" value="tiles" />
+          <h3>Tiles View</h3>
+          <p>Large tap targets; optimized for mobile calling (mastercaller.html).</p>
+        </label>
+        <label class="mode-card" data-mode="voice">
+          <input type="radio" name="mode" value="voice" />
+          <h3>Voice Assist</h3>
+          <p>Experimental voice command driven caller (voice.html).</p>
+        </label>
+      </div>
+      <div class="start-box">
+        <button id="startBtn" class="btn btn-primary" type="button" disabled>Start Calling Now</button>
+        <div class="session-note" id="sessionNote">Choose a mode to enable start.</div>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:760px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Coming Analytics</h2>
+      <ul class="small" style="margin:0 0 4px 18px; padding:0; line-height:1.35;">
+        <li>Session start/end durations</li>
+        <li>Timestamps for each status change (called → en_route / picked_up)</li>
+        <li>Average pickup time per student</li>
+        <li>Performance-based sorting (fastest/slowest pickups)</li>
+      </ul>
+      <p class="small muted" style="margin:4px 0 0;">These will appear once we begin recording sessions.</p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { init, onAuthChanged, colPath, docPath } from '/app.js?v=23';
+    import { addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+    await init();
+
+    // Context chip
+    const hubCtx = document.getElementById('hubCtx');
+    function updateCtx(){ const name = window.SD && (window.SD.schoolName || window.SD.schoolId); if (hubCtx) hubCtx.textContent = name || '—'; }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+    updateCtx();
+
+    const modesEl = document.getElementById('modes');
+    const startBtn = document.getElementById('startBtn');
+    const sessionNote = document.getElementById('sessionNote');
+    let selected = null;
+
+    modesEl.addEventListener('click', (e) => {
+      const card = e.target.closest('.mode-card');
+      if (!card) return;
+      const val = card.getAttribute('data-mode');
+      [...modesEl.querySelectorAll('.mode-card')].forEach(c => c.classList.toggle('selected', c===card));
+      selected = val;
+      startBtn.disabled = !selected;
+      sessionNote.textContent = selected ? 'Ready. Starting will log a session start timestamp.' : 'Choose a mode to enable start.';
+    });
+
+    async function startSession(){
+      if (!selected) return;
+      startBtn.disabled = true;
+      startBtn.textContent = 'Starting…';
+      let nav = null;
+      try {
+        const docRef = await addDoc(colPath('callSessions'), {
+          mode: selected,
+          startedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          userId: (window.SD && window.SD.userId) || (window.SD && window.SD.uid) || null,
+          schoolId: (window.SD && window.SD.schoolId) || null,
+          orgId: (window.SD && window.SD.orgId) || null,
+          // Placeholder fields for future extension
+          endedAt: null,
+          statsReady: false
+        });
+        const id = docRef.id;
+        if (selected === 'classic') nav = '/master.html?session=' + encodeURIComponent(id);
+        else if (selected === 'tiles') nav = '/mastercaller.html?session=' + encodeURIComponent(id);
+        else if (selected === 'voice') nav = '/voice.html?session=' + encodeURIComponent(id);
+      } catch (e){
+        console.error('[callHub] start session failed', e);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Calling Now';
+        sessionNote.textContent = 'Failed to start session.';
+        return;
+      }
+      if (nav){ location.href = nav; }
+    }
+    startBtn.addEventListener('click', startSession);
+
+    onAuthChanged((user) => { if (!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } } });
+  </script>
+</body>
+</html>
