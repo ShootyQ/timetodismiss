@@ -616,6 +616,8 @@
       const upper = rawUpper.trim();
       const normalized = normScanKey(upper);
       
+      console.log('[scan] Processing code:', { raw: code, upper, normalized });
+      
       // Ride share prefix
       if(upper.startsWith('RS:') || upper.startsWith('RS-')){
         const token = upper.replace(/^RS[:\-]/,'');
@@ -625,15 +627,18 @@
       
       // ALWAYS try family call first (works even if students not loaded yet)
       // This matches master.html behavior
+      console.log('[scan] Calling setStatusForTag with:', upper);
       setStatusForTag(upper, 'called')
-        .then(()=> {
+        .then((result)=> {
+          console.log('[scan] setStatusForTag succeeded, result:', result);
           // Highlight all students sharing the tag (if loaded)
           const arr = carTagIndex.get(normalized)||[];
+          console.log('[scan] Found students to highlight:', arr.length);
           arr.forEach(st => highlightStudentTile(st.id));
           showToast('Family called');
         })
         .catch((err)=> {
-          console.log('[scan] Family call failed, trying as student ID:', err);
+          console.warn('[scan] Family call failed, trying as student ID:', err);
           // If family call failed, try as individual student
           handleAsStudent(upper, normalized);
         });
