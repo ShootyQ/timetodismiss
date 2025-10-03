@@ -147,28 +147,28 @@
         });
         const id = docRef.id;
 
-        // Optional bulk reset of non-waiting statuses
+        // Optional bulk reset of non-waiting statuses (await before navigating)
         if (resetOnStart?.checked) {
-          (async () => {
-            try {
-              const fs = getFirestore();
-              const statuses = ['called','en_route','picked_up'];
-              for (const st of statuses){
-                try {
-                  const qy = query(colPath('students'), where('status','==', st));
-                  const snap = await getDocs(qy);
-                  if (snap.empty) continue;
-                  // Chunk into batches of 450 (below 500 limit)
-                  let batch = writeBatch(fs); let count=0; let committed=0;
-                  for (const d of snap.docs){
-                    batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() });
-                    count++; if (count % 450 === 0){ await batch.commit(); committed+=count; batch = writeBatch(fs); }
-                  }
-                  if (count % 450 !== 0) await batch.commit();
-                } catch(inner){ console.warn('[hub] reset status loop failed for', st, inner); }
-              }
-            } catch(e){ console.warn('[hub] bulk reset failed', e); }
-          })();
+          sessionNote.textContent = 'Resetting statuses to Waiting…';
+          try {
+            const fs = getFirestore();
+            const statuses = ['called','en_route','picked_up','absent'];
+            let totalChanged = 0;
+            for (const st of statuses){
+              try {
+                const qy = query(colPath('students'), where('status','==', st));
+                const snap = await getDocs(qy);
+                if (snap.empty) continue;
+                let batch = writeBatch(fs); let count=0;
+                for (const d of snap.docs){
+                  batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() });
+                  count++; totalChanged++; if (count % 450 === 0){ await batch.commit(); batch = writeBatch(fs); }
+                }
+                if (count % 450 !== 0) await batch.commit();
+              } catch(inner){ console.warn('[hub] reset status loop failed for', st, inner); }
+            }
+            sessionNote.textContent = 'Reset ' + totalChanged + ' students to Waiting. Redirecting…';
+          } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
 
         if (selected === 'classic') nav = '/master.html?session=' + encodeURIComponent(id);
@@ -181,7 +181,7 @@
         sessionNote.textContent = 'Failed to start session.';
         return;
       }
-      if (nav){ location.href = nav; }
+  if (nav){ setTimeout(()=>{ location.href = nav; }, 50); }
     }
     startBtn.addEventListener('click', startSession);
 
