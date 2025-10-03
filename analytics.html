@@ -76,6 +76,7 @@
     function dur(start, end){ if(!start) return '—'; const s=start.toDate? start.toDate(): start; const e=end? (end.toDate? end.toDate(): end): new Date(); let ms=e-s; if(ms<0) ms=0; const secs=Math.floor(ms/1000); const m=Math.floor(secs/60); const rs=secs%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'): rm)+':'+String(rs).padStart(2,'0'); }
 
     function sessionDay(ts){ try { const d = ts?.toDate? ts.toDate(): (ts||new Date()); return d.toISOString().slice(0,10); } catch { return '—'; } }
+    let sessionActiveForStatsDate = false; // whether there's an active session for the currently selected stats date
     function renderRows(rows){
       sessionsMeta.textContent = rows.length + ' sessions';
       sessBody.innerHTML = rows.map(r => {
@@ -90,6 +91,12 @@
           <td class="actions">${ended? `<button data-del="${r.id}" class="btn btn-outline" style="font-size:.65rem; padding:.25rem .45rem;">Delete</button>` : `<button data-end="${r.id}" class="btn btn-danger" style="font-size:.65rem; padding:.25rem .45rem;">End Now</button>`}</td>
         </tr>`;
       }).join('');
+      // Determine if any active session matches the currently chosen stats date
+      const chosen = document.getElementById('statsDate')?.value;
+      if(chosen){
+        sessionActiveForStatsDate = rows.some(r => !r.endedAt && sessionDay(r.startedAt) === chosen);
+        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
+      }
     }
 
     async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(window.SD?.orgId && window.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
@@ -162,6 +169,26 @@
     ensureDateDefault();
 
     let liveTickIv = null;
+    function finalizeIncompleteDurations(){
+      // For each stats row, if the necessary end timestamp is missing AND there is no active session for that date, mark N/A
+      const rows = Array.from(statsBody.querySelectorAll('tr[data-stat]'));
+      rows.forEach(tr => {
+        const called = tr.getAttribute('data-called');
+        const enroute = tr.getAttribute('data-enroute');
+        const pickup = tr.getAttribute('data-pickup');
+        const cteEl = tr.querySelector('[data-cte]');
+        const etpEl = tr.querySelector('[data-etp]');
+        const ctpEl = tr.querySelector('[data-ctp]');
+        // Called→EnRoute only valid if both exist
+        if(called && !enroute){ cteEl.textContent='N/A'; }
+        // Intervals requiring pickup
+        if(!pickup){
+          etpEl.textContent = 'N/A';
+          ctpEl.textContent = 'N/A';
+        }
+      });
+      if(liveTickIv){ clearInterval(liveTickIv); liveTickIv=null; }
+    }
     async function loadDay(){
       const day = statsDate.value; if(!day){ statsSummary.textContent='Pick a date'; return; }
       statsSummary.textContent='Loading…'; statsBody.innerHTML='';
@@ -172,7 +199,10 @@
         const durations = rows.map(r=>({ r, d: computeStudentDurations(r) }));
         durations.forEach(({r,d})=>{
           const baseId = r.id.replace(/[^A-Za-z0-9:_-]/g,'');
-          tr.push(`<tr data-stat="${baseId}"><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td data-cte>${fmtMs(d.calledToEnRoute)}</td><td data-etp>${fmtMs(d.enRouteToPickup)}</td><td data-ctp>${fmtMs(d.calledToPickup)}</td></tr>`);
+          const calledMs = r.calledAt?.toDate?.()?.getTime() || '';
+          const enrouteMs = r.enRouteAt?.toDate?.()?.getTime() || '';
+          const pickupMs = r.pickedUpAt?.toDate?.()?.getTime() || '';
+          tr.push(`<tr data-stat="${baseId}" data-called="${calledMs}" data-enroute="${enrouteMs}" data-pickup="${pickupMs}"><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td data-cte>${fmtMs(d.calledToEnRoute)}</td><td data-etp>${fmtMs(d.enRouteToPickup)}</td><td data-ctp>${fmtMs(d.calledToPickup)}</td></tr>`);
         });
         statsBody.innerHTML = tr.join('');
         const agg = summarizeDayStats(rows);
@@ -181,22 +211,23 @@
         // Live tick for in-progress rows (where a later timestamp is missing)
         if(liveTickIv) { clearInterval(liveTickIv); liveTickIv=null; }
         function liveTick(){
+          if(!sessionActiveForStatsDate){ return; }
           const now = Date.now();
-          rows.forEach(r=>{
-            const rowEl = statsBody.querySelector(`tr[data-stat="${r.id.replace(/[^A-Za-z0-9:_-]/g,'')}"]`);
-            if(!rowEl) return;
-            const c = r.calledAt?.toDate?.();
-            const e = r.enRouteAt?.toDate?.();
-            const p = r.pickedUpAt?.toDate?.();
+          // Iterate DOM rows for up-to-date state
+          statsBody.querySelectorAll('tr[data-stat]').forEach(rowEl => {
+            const called = parseInt(rowEl.getAttribute('data-called')) || 0;
+            const enroute = parseInt(rowEl.getAttribute('data-enroute')) || 0;
+            const pickup = parseInt(rowEl.getAttribute('data-pickup')) || 0;
             const cteEl = rowEl.querySelector('[data-cte]');
             const etpEl = rowEl.querySelector('[data-etp]');
             const ctpEl = rowEl.querySelector('[data-ctp]');
-            if(c && !e){ const ms = now - c.getTime(); cteEl.textContent = fmtMs(ms); ctpEl.textContent = fmtMs(p? (p.getTime()-c.getTime()): ms); }
-            if(e && !p){ const ms = now - e.getTime(); etpEl.textContent = fmtMs(ms); if(c) ctpEl.textContent = fmtMs(now - c.getTime()); }
+            if(called && !enroute){ const ms = now - called; cteEl.textContent = fmtMs(ms); ctpEl.textContent = pickup? fmtMs(pickup-called): fmtMs(ms); }
+            if(enroute && !pickup){ const ms = now - enroute; etpEl.textContent = fmtMs(ms); if(called) ctpEl.textContent = fmtMs(now - called); }
           });
         }
         liveTick();
         liveTickIv = setInterval(liveTick, 1000);
+        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
       } catch(e){ statsSummary.textContent='Failed to load stats'; console.warn('[analytics] loadDay failed', e); }
     }
     reloadStats?.addEventListener('click', loadDay);
