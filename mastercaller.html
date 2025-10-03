@@ -666,6 +666,46 @@
       try { el.scrollIntoView({behavior:'smooth', block:'center'}); } catch{}
       setTimeout(()=> el.classList.remove('scan-hit'), 1600);
     }
+      // === Camera / external QR scanner events (shared with master.html) ===
+      document.addEventListener('scan:car-tag', async (e) => {
+        const raw = (e && e.detail && e.detail.tag) ? String(e.detail.tag).trim().toUpperCase() : '';
+        if(!raw) return;
+        // Attempt family call chain mirroring master.html order
+        try {
+          // Prefer full group logic via setStatusForTag (which resolves group internally)
+          await setStatusForTag(raw, 'called');
+          // Highlight any matching students (if loaded)
+          const norm = normScanKey(raw);
+          (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
+          showToast('Family called');
+        } catch(err){
+          console.warn('[tiles] scan:car-tag fallback attempt', err);
+          // Fallback: try normalized stripped punctuation
+          const norm = normScanKey(raw);
+          if(norm && norm !== raw){
+            try {
+              await setStatusForTag(norm, 'called');
+              (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
+              showToast('Family called');
+              return;
+            } catch {}
+          }
+          showToast('Tag not found');
+        }
+      });
+      document.addEventListener('scan:student-id', async (e) => {
+        const sid = (e && e.detail && e.detail.id) ? String(e.detail.id).trim() : '';
+        if(!sid) return;
+        // Try to locate student by id or studentId field
+        const norm = normScanKey(sid);
+        let stu = allStudents.find(s => s.id === sid) || allStudents.find(s => normScanKey(s.studentId||'') === norm);
+        if(!stu){ showToast('Student not loaded yet'); return; }
+        try {
+          await setStudentStatus(stu.id, 'called');
+          highlightStudentTile(stu.id);
+          showToast('Called '+(stu.firstName||stu.name||''));
+        } catch { showToast('Call failed'); }
+      });
     // Debug overlay
     let scanDebugEl = null;
     function ensureScanDebug(){
