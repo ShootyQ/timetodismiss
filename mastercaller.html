@@ -240,6 +240,7 @@
   let rideShareToGroup = {};
   let carTagIndex = new Map(); // NORMALIZED_TAG -> array of students
   let studentIdIndex = new Map(); // NORMALIZED_ID -> student
+  let origTagByNormalized = new Map(); // NORMALIZED_TAG -> FIRST ORIGINAL (with punctuation) TAG
     onCarGroups((groups) => {
       const m = {};
       const rsMap = {};
@@ -461,10 +462,14 @@
     }
     function normScanKey(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'').trim(); }
     function rebuildScanIndexes(){
-      carTagIndex.clear(); studentIdIndex.clear();
+      carTagIndex.clear(); studentIdIndex.clear(); origTagByNormalized.clear();
       for(const s of allStudents){
         const tag = normScanKey(s.carTag||'');
         if(tag){ if(!carTagIndex.has(tag)) carTagIndex.set(tag, []); carTagIndex.get(tag).push(s); }
+        if(tag && !origTagByNormalized.has(tag)){
+          const raw = (s.carTag||'').toString().trim().toUpperCase();
+          origTagByNormalized.set(tag, raw);
+        }
         const sid = normScanKey(s.studentId||s.id||'');
         if(sid && !studentIdIndex.has(sid)) studentIdIndex.set(sid, s);
       }
@@ -615,6 +620,20 @@
         const token = upper.replace(/^RS[:\-]/,'');
         callRideShareByTag(token).then(()=>showToast('Ride share called')).catch(()=>showToast('RS not found'));
         return;
+      }
+      // 1. Prefer treating scan as a CAR TAG / FAMILY call.
+      if(normalized && carTagIndex.has(normalized)){
+        const callTag = origTagByNormalized.get(normalized) || upper; // preserve punctuation if present originally
+        // Use setStatusForTag which resolves group/family automatically
+        setStatusForTag(callTag, 'called')
+          .then(()=> {
+            // Highlight all students sharing the tag
+            const arr = carTagIndex.get(normalized)||[];
+            arr.forEach(st => highlightStudentTile(st.id));
+            showToast('Family called');
+          })
+          .catch(()=> showToast('Family call failed'));
+        return; // Do not continue to single-student logic
       }
       let stu = null;
       // Fast index lookups
