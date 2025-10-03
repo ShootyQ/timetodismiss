@@ -115,6 +115,11 @@
       padding: .4rem .55rem;
     }
 
+    /* Scanner highlight */
+    .tile-btn.scan-hit{ outline:3px solid #2563eb; box-shadow:0 0 0 4px rgba(37,99,235,.35); position:relative; }
+    @keyframes scanFlash{ 0%{ background:#dbeafe; } 50%{ background:#fff; } 100%{ background:inherit; } }
+    .tile-btn.scan-hit{ animation: scanFlash 1.3s ease; }
+
     /* iOS Safari: prevent page zoom on focus by ensuring >=16px */
   .tiles-toolbar input,
   .tiles-toolbar select,
@@ -155,6 +160,12 @@
           <option value="last">Last Name</option>
         </select>
       </label>
+      <label class="small" style="display:flex; align-items:center; gap:4px;">
+        <input type="checkbox" id="scanEnable" /> Scan
+      </label>
+      <label class="small" id="scanAutoWrap" style="display:none; align-items:center; gap:4px;">
+        <input type="checkbox" id="scanAutoCall" /> Auto Call
+      </label>
       <div class="spacer"></div>
       <div class="small" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
         <a id="toClassic" class="btn btn-outline" href="/master.html" style="font-size:.7rem;">Classic</a>
@@ -167,6 +178,8 @@
         <div id="tilesSessionBar" class="small muted" style="margin:4px 3% 10px; display:none;">
           <span id="tilesSessionMode">Session</span> • <span id="tilesSessionElapsed">00:00</span><span id="tilesSessionAutoEnd"></span>
         </div>
+
+    <div class="small muted" id="scanHelp" style="margin:0 3% 6px; display:none;">Scanner enabled: scan car tag or student ID. Prefix RS:TAG for ride share. Press Enter ends scan.</div>
 
     <div class="tiles-container">
       <ul id="tiles" class="tiles-grid" aria-live="polite"></ul>
@@ -197,6 +210,10 @@
   const colsSel = document.getElementById('colsSel');
   const rowsSel = document.getElementById('rowsSel');
   const sortSel = document.getElementById('sortSel');
+  const scanEnable = document.getElementById('scanEnable');
+  const scanAutoCall = document.getElementById('scanAutoCall');
+  const scanAutoWrap = document.getElementById('scanAutoWrap');
+  const scanHelp = document.getElementById('scanHelp');
   const tilesCount = document.getElementById('tilesCount');
   const toClassic = document.getElementById('toClassic');
   const toVoice = document.getElementById('toVoice');
@@ -511,6 +528,88 @@
         }
       } finally { closeSheet(); }
     });
+
+    /* ---------------- Scanner Support (Bluetooth HID) ---------------- */
+    const LS_SCAN_ENABLED = 'MC_SCAN_ENABLED';
+    const LS_SCAN_AUTOCALL = 'MC_SCAN_AUTOCALL';
+    function loadScanPrefs(){
+      const en = localStorage.getItem(LS_SCAN_ENABLED) === '1';
+      const ac = localStorage.getItem(LS_SCAN_AUTOCALL) === '1';
+      if(scanEnable) scanEnable.checked = en;
+      if(scanAutoCall) scanAutoCall.checked = ac;
+      if(scanAutoWrap) scanAutoWrap.style.display = en ? 'flex' : 'none';
+      if(scanHelp) scanHelp.style.display = en ? 'block':'none';
+    }
+    loadScanPrefs();
+    scanEnable?.addEventListener('change', () => {
+      localStorage.setItem(LS_SCAN_ENABLED, scanEnable.checked ? '1':'0');
+      if(scanAutoWrap) scanAutoWrap.style.display = scanEnable.checked ? 'flex':'none';
+      if(scanHelp) scanHelp.style.display = scanEnable.checked ? 'block':'none';
+      if(!scanEnable.checked){ resetScanBuffer(); }
+    });
+    scanAutoCall?.addEventListener('change', () => {
+      localStorage.setItem(LS_SCAN_AUTOCALL, scanAutoCall.checked ? '1':'0');
+    });
+    let scanBuffer=''; let scanLastTs=0; const SCAN_GAP=60; // ms between chars considered same scan
+    function resetScanBuffer(){ scanBuffer=''; scanLastTs=0; }
+    function processScan(){
+      const raw = scanBuffer.trim(); resetScanBuffer();
+      if(!raw) return;
+      handleScanCode(raw);
+    }
+    function handleScanCode(code){
+      const upper = code.toUpperCase();
+      // Ride share prefix
+      if(upper.startsWith('RS:') || upper.startsWith('RS-')){
+        const token = upper.replace(/^RS[:\-]/,'');
+        callRideShareByTag(token).then(()=>showToast('Ride share called')).catch(()=>showToast('RS not found'));
+        return;
+      }
+      // Try by car tag first
+      let stu = allStudents.find(s => String(s.carTag||'').trim().toUpperCase() === upper);
+      if(!stu){
+        stu = allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
+      }
+      if(!stu){ showToast('Not found: '+upper); return; }
+      highlightStudentTile(stu.id);
+      const auto = scanAutoCall?.checked;
+      if(auto){
+        if(stu.status === 'waiting'){ setStudentStatus(stu.id,'called').then(()=>showToast('Called '+(stu.firstName||stu.name||''))).catch(()=>showToast('Call failed')); }
+        else showToast('Found '+(stu.firstName||stu.name||''));
+      } else {
+        showToast('Found '+(stu.firstName||stu.name||''));
+      }
+    }
+    function highlightStudentTile(id){
+      const el = tiles.querySelector(`.tile-btn[data-id="${id}"]`);
+      if(!el) return;
+      el.classList.add('scan-hit');
+      try { el.scrollIntoView({behavior:'smooth', block:'center'}); } catch{}
+      setTimeout(()=> el.classList.remove('scan-hit'), 1600);
+    }
+    window.addEventListener('keydown', (e) => {
+      if(!scanEnable?.checked) return; // scanning disabled
+      // Ignore if focused on an input/textarea/select except body or search box? Let normal typing work if slow.
+      const active = document.activeElement;
+      const isFormEl = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT' || active.isContentEditable);
+      // We still capture if scanner is fast; but don't block user manual typing in search if slower than gap.
+      if(e.key === 'Enter'){
+        if(scanBuffer){ e.preventDefault(); processScan(); }
+        return;
+      }
+      if(e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey){
+        const now = Date.now();
+        if(now - scanLastTs > SCAN_GAP){ // new sequence
+          scanBuffer = '';
+        }
+        scanLastTs = now;
+        scanBuffer += e.key;
+        // Optional: prevent accidental insertion if not in an input
+        if(!isFormEl){ e.preventDefault(); }
+        // Heuristic: very long tags auto-complete when length > 24
+        if(scanBuffer.length > 48){ processScan(); }
+      }
+    }, true);
 
     async function bootstrap(claims){
       const allowed = !!(claims && (claims.caller || claims.admin));
