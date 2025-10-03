@@ -266,16 +266,22 @@
     if (toHub) toHub.href = '/callerhub.html?session=' + encodeURIComponent(sessionId);
     if (tilesSessionBar) tilesSessionBar.style.display='block';
     (async ()=>{
+      await waitForContext();
       try{
-        const { getDoc, doc, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const { doc, onSnapshot, getFirestore, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
         const oid=globalThis.SD?.orgId; const sid=globalThis.SD?.schoolId; if(!oid||!sid) return;
         const fs = getFirestore();
         const sRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
-        const snap = await getDoc(sRef); if(snap.exists()){ const data=snap.data(); tilesStartedAt = data.startedAt?.toDate?.()||null; if(data.endedAt) { tilesEnded=true; endSessionBtn.textContent='Dismissal Ended'; endSessionBtn.disabled=true; } tilesSessionMode.textContent = 'Session ('+(data.mode||'tiles')+')'; }
         const setRef = doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
-        const setSnap = await getDoc(setRef); if(setSnap.exists()){ const cfg=setSnap.data(); if(cfg.autoEndMinutes>=5&&cfg.autoEndMinutes<=240) autoEndMinutes=cfg.autoEndMinutes; }
-        startTilesTimer();
-      }catch(e){ console.warn('[tiles] load session/settings failed', e); }
+        try { const setSnap = await getDoc(setRef); if(setSnap.exists()){ const cfg=setSnap.data(); if(cfg.autoEndMinutes>=5&&cfg.autoEndMinutes<=240) autoEndMinutes=cfg.autoEndMinutes; } } catch {}
+        onSnapshot(sRef,(snap)=>{
+          if(!snap.exists()) return;
+          const data = snap.data();
+          if(data.startedAt && !tilesStartedAt){ tilesStartedAt = data.startedAt.toDate(); startTilesTimer(); }
+          if(data.mode) tilesSessionMode.textContent = 'Session ('+(data.mode||'tiles')+')';
+          if(data.endedAt && !tilesEnded){ tilesEnded=true; endSessionBtn.textContent='Dismissal Ended'; endSessionBtn.disabled=true; if(tilesSessionElapsed && tilesStartedAt){ tilesSessionElapsed.textContent = tilesFmt(data.endedAt.toDate()-tilesStartedAt); } }
+        }, (err)=> console.warn('[tiles] session snapshot error', err));
+      }catch(e){ console.warn('[tiles] session watcher init failed', e); }
     })();
   }
 
@@ -285,7 +291,7 @@
     if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return;
     endSessionBtn.disabled = true; endSessionBtn.textContent='Ending…';
     try {
-      const { updateDoc, doc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const { updateDoc, doc, serverTimestamp, setDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
       // Use app.js helpers indirectly; rely on global SD context
       const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId;
       if (!oid || !sid) throw new Error('Missing org/school context');
@@ -294,12 +300,17 @@
       // Build ref via doc() overload using spread path
       const ref = doc(firestore, ...path);
       await updateDoc(ref, { endedAt: serverTimestamp() });
+      try {
+        const signalRef = doc(firestore,'orgs',oid,'schools',sid,'signals','dismissal');
+        await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
+      } catch(sigErr){ console.warn('[tiles] dismissal signal failed', sigErr); }
       endSessionBtn.textContent='Dismissal Ended'; tilesEnded=true;
     } catch(e){ console.warn('[tiles] end session failed', e); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
   }
   endSessionBtn?.addEventListener('click', endSession);
 
   function tilesFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
+  async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
   function startTilesTimer(){ if(!tilesStartedAt) return; function tick(){ const now=new Date(); const elapsed= now - tilesStartedAt; if(tilesSessionElapsed) tilesSessionElapsed.textContent=tilesFmt(elapsed); const limit = autoEndMinutes*60000; if(!tilesEnded){ const remain = limit - elapsed; if(remain<=0){ autoEndTiles(); } else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent=' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); tilesTimer=setInterval(tick,1000); }
   async function autoEndTiles(){ if(tilesEnded) return; try{ await endSession(); }catch{} }
 

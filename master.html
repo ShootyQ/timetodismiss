@@ -73,21 +73,25 @@
   if (sessionId){
     if (tilesLink) tilesLink.href = '/mastercaller.html?session=' + encodeURIComponent(sessionId);
     if (voiceLink) voiceLink.href = '/voice.html?session=' + encodeURIComponent(sessionId);
-    // Show session bar early (will populate once data arrives)
     if (sessionBar) sessionBar.style.display='block';
-    // Fetch session + settings
     (async () => {
+      await waitForContext();
       try {
-        const { getDoc, doc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const { doc, onSnapshot, getFirestore, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
         const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if(!oid||!sid) return;
-        const firestore = (await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js')).getFirestore();
-        const sessRef = doc(firestore, 'orgs', oid, 'schools', sid, 'callSessions', sessionId);
-        const snap = await getDoc(sessRef); if (snap.exists()){ const data = snap.data(); sessionStartedAt = data.startedAt?.toDate?.() || null; if(data.endedAt) sessionEnded = true; sessionModeEl.textContent = 'Session ('+(data.mode||'')+')'; }
-        const settingsRef = doc(firestore,'orgs',oid,'schools',sid,'settings','dismissal');
-        const setSnap = await getDoc(settingsRef); if(setSnap.exists()){ const cfg = setSnap.data(); if(cfg.autoEndMinutes && cfg.autoEndMinutes>=5 && cfg.autoEndMinutes<=240) autoEndMinutes = cfg.autoEndMinutes; }
-        if (sessionEnded){ endBtn.textContent='Dismissal Ended'; endBtn.disabled=true; }
-        startElapsedTimer();
-      } catch(e){ console.warn('[master] load session/settings failed', e); }
+        const fs = getFirestore();
+        const sessRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
+        const settingsRef = doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
+        // Load settings once
+        try { const setSnap = await getDoc(settingsRef); if(setSnap.exists()){ const cfg=setSnap.data(); if(cfg.autoEndMinutes>=5&&cfg.autoEndMinutes<=240) autoEndMinutes=cfg.autoEndMinutes; } } catch {}
+        onSnapshot(sessRef, (snap)=>{
+          if(!snap.exists()) return;
+          const data = snap.data();
+          if(data.startedAt && !sessionStartedAt){ sessionStartedAt = data.startedAt.toDate(); startElapsedTimer(); }
+          if(data.mode) sessionModeEl.textContent = 'Session ('+data.mode+')';
+          if(data.endedAt && !sessionEnded){ sessionEnded = true; endBtn.textContent='Dismissal Ended'; endBtn.disabled=true; if(sessionElapsedEl) sessionElapsedEl.textContent = fmtDur(data.endedAt.toDate()-sessionStartedAt); }
+        }, (err)=> console.warn('[master] session snapshot error', err));
+      } catch(e){ console.warn('[master] session watcher init failed', e); }
     })();
   }
 
@@ -96,15 +100,29 @@
     try {
       const mod = apiReady ? api : await import('/app.js?v=23');
       if (!mod.colPath) return false;
-      const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-      const ref = doc(mod.colPath('callSessions').parent.firestore, 'orgs', globalThis.SD.orgId, 'schools', globalThis.SD.schoolId, 'callSessions', sessionId);
+      const { doc, updateDoc, serverTimestamp, increment, setDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const fs = mod.colPath('callSessions').parent.firestore;
+      const ref = doc(fs, 'orgs', globalThis.SD.orgId, 'schools', globalThis.SD.schoolId, 'callSessions', sessionId);
       await updateDoc(ref, { endedAt: serverTimestamp() });
+      // Broadcast dismissal-over signal so class boards get confetti
+      try {
+        const signalRef = doc(fs,'orgs',globalThis.SD.orgId,'schools',globalThis.SD.schoolId,'signals','dismissal');
+        await setDoc(signalRef, { message: 'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
+      } catch(sigErr){ console.warn('[master] dismissal signal failed', sigErr); }
       sessionEnded = true;
       return true;
     } catch(e){ console.warn('[master] endSession failed', e); return false; }
   }
 
   function fmtDur(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
+  async function waitForContext(maxMs=15000){
+    const start = Date.now();
+    while(Date.now()-start < maxMs){
+      if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true;
+      await new Promise(r=>setTimeout(r,120));
+    }
+    return false;
+  }
   function startElapsedTimer(){
     if(!sessionStartedAt || sessionEnded) return; // if ended early still show static
     function tick(){
