@@ -77,7 +77,7 @@
 
   <script type="module">
   import { init, onAuthChanged, colPath } from '/app.js?v=23';
-  import { addDoc, serverTimestamp, getDocs, query, where, writeBatch, getFirestore } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { addDoc, serverTimestamp, getDocs, query, where, writeBatch, getFirestore, onSnapshot, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
     await init();
 
     // Context chip
@@ -92,63 +92,110 @@
   const sessionNote = document.getElementById('sessionNote');
   const resetOnStart = document.getElementById('resetOnStart');
   let selected = null;
-  let activeSession = null;
+  let activeSession = null; // { id, ...data }
+  let joinMode = false;     // true when we are in "join existing session" state
+  const LS_LAST_MODE = 'HUB_LAST_MODE';
 
-    // Check for existing active session (no endedAt)
-    (async () => {
+    // Realtime watcher for active session (endedAt == null)
+    (function watchActive(){
       try {
-        const { getDocs, query, where, orderBy, limit } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
         const col = colPath('callSessions');
         const qy = query(col, where('endedAt','==', null), orderBy('startedAt','desc'), limit(1));
-        const snap = await getDocs(qy);
-        if(!snap.empty){
-          activeSession = { id: snap.docs[0].id, ...snap.docs[0].data() };
-          sessionNote.innerHTML = 'Active session in progress started at <strong>' + (activeSession.startedAt?.toDate?.().toLocaleTimeString?.() || '') + '</strong>. Resume:' +
-            ' <a class="btn btn-outline" style="margin-left:6px;" href="/master.html?session='+activeSession.id+'">Classic</a>'+
-            ' <a class="btn btn-outline" href="/mastercaller.html?session='+activeSession.id+'">Tiles</a>'+
-            ' <a class="btn btn-outline" href="/voice.html?session='+activeSession.id+'">Voice</a>';
-          startBtn.textContent = 'Session Active';
-          startBtn.disabled = true;
-        }
-      } catch(e){ console.warn('[hub] active session check failed', e); }
+        onSnapshot(qy, (snap) => {
+          const prevId = activeSession?.id || null;
+          if (snap.empty){
+            activeSession = null;
+            joinMode = false;
+            // Restore start UI if no active session
+            startBtn.textContent = 'Start Calling Now';
+            startBtn.disabled = false;
+            if(!selected){
+              const last = localStorage.getItem(LS_LAST_MODE);
+              if(last){ selectModeCard(last); }
+            }
+            sessionNote.innerHTML = 'Choose a calling interface above, then start.';
+            resetOnStart?.closest('label')?.removeAttribute('hidden');
+            return;
+          }
+          // Use most recent (first doc)
+            const d = snap.docs[0];
+            activeSession = { id: d.id, ...d.data() };
+            joinMode = true;
+            const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
+            sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Select your view and join.';
+            startBtn.textContent = 'Join Active Session';
+            startBtn.disabled = false;
+            // Hide reset option when joining
+            resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
+            // If a previous selection existed keep it; else restore last mode
+            if(!selected){
+              const last = localStorage.getItem(LS_LAST_MODE) || 'classic';
+              selectModeCard(last);
+            }
+            if(prevId && prevId !== activeSession.id){
+              console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
+            }
+        }, (err)=> console.warn('[hub] active session snapshot error', err));
+      } catch(e){ console.warn('[hub] active session watcher failed', e); }
     })();
 
+    function selectModeCard(val){
+      const card = modesEl.querySelector('.mode-card[data-mode="'+val+'"]');
+      if(!card) return;
+      [...modesEl.querySelectorAll('.mode-card')].forEach(c => c.classList.toggle('selected', c===card));
+      selected = val;
+      localStorage.setItem(LS_LAST_MODE, val);
+      sessionNote.classList.remove('warn');
+      if(joinMode){
+        sessionNote.innerHTML = 'Active session since <strong>' + (activeSession?.startedAt?.toDate?.()?.toLocaleTimeString?.()||'') + '</strong>. Press Join.';
+      } else {
+        sessionNote.textContent = 'Ready. Starting will log a session start timestamp.';
+      }
+    }
     modesEl.addEventListener('click', (e) => {
       const card = e.target.closest('.mode-card');
       if (!card) return;
-      const val = card.getAttribute('data-mode');
-      [...modesEl.querySelectorAll('.mode-card')].forEach(c => c.classList.toggle('selected', c===card));
-      selected = val;
-      sessionNote.classList.remove('warn');
-      sessionNote.textContent = selected ? 'Ready. Starting will log a session start timestamp.' : 'Choose a calling interface above, then start.';
+      selectModeCard(card.getAttribute('data-mode'));
     });
 
+    function navFor(mode, id){
+      if (mode === 'classic') return '/master.html?session='+encodeURIComponent(id);
+      if (mode === 'tiles') return '/mastercaller.html?session='+encodeURIComponent(id);
+      if (mode === 'voice') return '/voice.html?session='+encodeURIComponent(id);
+      return '/master.html?session='+encodeURIComponent(id);
+    }
+
     async function startSession(){
-      if (!selected){
+      if(!selected){
         sessionNote.textContent = 'Please select an interface first.';
         sessionNote.classList.add('warn');
         startBtn.blur();
         return;
       }
+      // JOIN FLOW
+      if(joinMode && activeSession && activeSession.id){
+        startBtn.disabled = true;
+        startBtn.textContent = 'Joining…';
+        const nav = navFor(selected, activeSession.id);
+        setTimeout(()=>{ location.href = nav; }, 30);
+        return;
+      }
+      // START NEW SESSION FLOW
       startBtn.disabled = true;
       startBtn.textContent = 'Starting…';
-      let nav = null;
       try {
         const docRef = await addDoc(colPath('callSessions'), {
           mode: selected,
           startedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          userId: (window.SD && window.SD.userId) || (window.SD && window.SD.uid) || null,
-          schoolId: (window.SD && window.SD.schoolId) || null,
-          orgId: (window.SD && window.SD.orgId) || null,
-          // Placeholder fields for future extension
-          endedAt: null,
-          statsReady: false
+            createdAt: serverTimestamp(),
+            userId: (window.SD && window.SD.userId) || (window.SD && window.SD.uid) || null,
+            schoolId: (window.SD && window.SD.schoolId) || null,
+            orgId: (window.SD && window.SD.orgId) || null,
+            endedAt: null,
+            statsReady: false
         });
         const id = docRef.id;
-
-        // Optional bulk reset of non-waiting statuses (await before navigating)
-        if (resetOnStart?.checked) {
+        if (resetOnStart?.checked){
           sessionNote.textContent = 'Resetting statuses to Waiting…';
           try {
             const fs = getFirestore();
@@ -165,23 +212,19 @@
                   count++; totalChanged++; if (count % 450 === 0){ await batch.commit(); batch = writeBatch(fs); }
                 }
                 if (count % 450 !== 0) await batch.commit();
-              } catch(inner){ console.warn('[hub] reset status loop failed for', st, inner); }
+              } catch(inner){ console.warn('[hub] reset loop failed for', st, inner); }
             }
-            sessionNote.textContent = 'Reset ' + totalChanged + ' students to Waiting. Redirecting…';
+            sessionNote.textContent = 'Reset '+totalChanged+' students to Waiting. Redirecting…';
           } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
-
-        if (selected === 'classic') nav = '/master.html?session=' + encodeURIComponent(id);
-        else if (selected === 'tiles') nav = '/mastercaller.html?session=' + encodeURIComponent(id);
-        else if (selected === 'voice') nav = '/voice.html?session=' + encodeURIComponent(id);
-      } catch (e){
+        const nav = navFor(selected, id);
+        setTimeout(()=>{ location.href = nav; }, 50);
+      } catch(e){
         console.error('[callHub] start session failed', e);
         startBtn.disabled = false;
         startBtn.textContent = 'Start Calling Now';
         sessionNote.textContent = 'Failed to start session.';
-        return;
       }
-  if (nav){ setTimeout(()=>{ location.href = nav; }, 50); }
     }
     startBtn.addEventListener('click', startSession);
 
