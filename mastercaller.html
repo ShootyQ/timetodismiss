@@ -612,112 +612,76 @@
       }
     }
     function handleScanCode(code){
-      const rawUpper = code.toUpperCase();
-      const upper = rawUpper.trim();
-      const normalized = normScanKey(upper);
-      
-      console.log('[scan] Processing code:', { raw: code, upper, normalized });
-      
-      // Ride share prefix
-      if(upper.startsWith('RS:') || upper.startsWith('RS-')){
-        const token = upper.replace(/^RS[:\-]/,'');
-        callRideShareByTag(token).then(()=>showToast('Ride share called')).catch(()=>showToast('RS not found'));
+      const raw = String(code||'').trim();
+      if(!raw) return;
+      function parse(str){
+        const s = str.trim();
+        // Direct ride share prefix forms (RS:, RS-, RS=)
+        if(/^RS[:=\-]/i.test(s)) return { rideShare: s.replace(/^RS[:=\-]/i,'').trim() };
+        // key=value multi-part
+        if(s.includes('=')){
+          const parts = s.split(/[&;\n]/).map(p=>p.trim()).filter(Boolean);
+          const kv = {};
+          for(const p of parts){
+            const i = p.indexOf('='); if(i<=0) continue;
+            const k = decodeURIComponent(p.slice(0,i)).trim().toLowerCase();
+            const v = decodeURIComponent(p.slice(i+1)).trim();
+            if(k) kv[k]=v;
+          }
+          if(kv.rs || kv.rideshare || kv['rideShare']) return { rideShare: kv.rs||kv.rideshare||kv['rideShare'] };
+          if(kv.student || kv.sid || kv.stud) return { studentId: kv.student||kv.sid||kv.stud };
+          if(kv.car || kv.tag || kv.plate || kv.ticket) return { carTag: kv.car||kv.tag||kv.plate||kv.ticket };
+        }
+        // Bare token -> car tag
+        return { carTag: s };
+      }
+      const parsed = parse(raw);
+      const rideShare = parsed.rideShare ? String(parsed.rideShare).toUpperCase() : '';
+      // Remove spaces; keep dashes (matching camera scanner normalization pattern)
+      const carTagRaw = parsed.carTag ? String(parsed.carTag).toUpperCase().replace(/\s+/g,'') : '';
+      const studentRaw = parsed.studentId ? String(parsed.studentId).trim() : '';
+      console.log('[scan] HID parsed', { raw, rideShare, carTagRaw, studentRaw });
+
+      // 1. Ride share direct
+      if(rideShare){
+        callRideShareByTag(rideShare)
+          .then(()=>showToast('Ride share called'))
+          .catch(err=>{ console.warn('[scan] ride share call failed', err); showToast('RS not found'); });
         return;
       }
-      
-      // ALWAYS try family call first (works even if students not loaded yet)
-      // This matches master.html behavior
-      console.log('[scan] Calling setStatusForTag with:', upper);
-      setStatusForTag(upper, 'called')
-        .then((updated)=> {
-          console.log('[scan] setStatusForTag completed, updated count:', updated);
-          const arr = carTagIndex.get(normalized)||[];
-          console.log('[scan] Highlight matches:', arr.length);
-          arr.forEach(st => highlightStudentTile(st.id));
-          showToast(updated > 0 ? 'Family called' : 'No match');
-          if (updated === 0) {
-            // fall back to student ID attempt
-            handleAsStudent(upper, normalized);
-          }
-        })
-        .catch((err)=> {
-          console.warn('[scan] Family call error, trying as student ID:', err);
-          handleAsStudent(upper, normalized);
-        });
-    }
-    
-    function handleAsStudent(upper, normalized){
-      let stu = null;
-      // Fast index lookups
-      if(normalized && studentIdIndex.has(normalized)){
-        stu = studentIdIndex.get(normalized);
+
+      // 2. Family/Car Tag attempt
+      if(carTagRaw){
+        const normalized = normScanKey(carTagRaw);
+        setStatusForTag(carTagRaw, 'called')
+          .then(updated => {
+            console.log('[scan] family attempt via tag', { tag: carTagRaw, updated });
+            if(updated>0){
+              (carTagIndex.get(normalized)||[]).forEach(st => highlightStudentTile(st.id));
+              showToast('Family called');
+            } else if(studentRaw){
+              handleAsStudent(studentRaw.toUpperCase(), normScanKey(studentRaw));
+            } else {
+              // treat as possible student ID
+              handleAsStudent(carTagRaw, normalized);
+            }
+          })
+          .catch(err => {
+            console.warn('[scan] family call error', err);
+            if(studentRaw){ handleAsStudent(studentRaw.toUpperCase(), normScanKey(studentRaw)); }
+            else handleAsStudent(carTagRaw, normScanKey(carTagRaw));
+          });
+        return;
       }
-      // Fallback legacy exact (with punctuation) if normalization failed
-      if(!stu){
-        stu = allStudents.find(s => String(s.studentId||'').trim().toUpperCase() === upper);
+
+      // 3. Student-only scan
+      if(studentRaw){
+        handleAsStudent(studentRaw.toUpperCase(), normScanKey(studentRaw));
+        return;
       }
-      if(!stu){ showToast('Car/ID not found'); return; }
-      highlightStudentTile(stu.id);
-      const auto = scanAutoCall?.checked;
-      if(auto){
-        if(stu.status === 'waiting'){ 
-          setStudentStatus(stu.id,'called')
-            .then(()=>showToast('Called '+(stu.firstName||stu.name||'')))
-            .catch(()=>showToast('Call failed')); 
-        } else {
-          showToast('Found '+(stu.firstName||stu.name||''));
-        }
-      } else {
-        showToast('Found '+(stu.firstName||stu.name||''));
-      }
+
+      showToast('No match');
     }
-    function highlightStudentTile(id){
-      const el = tiles.querySelector(`.tile-btn[data-id="${id}"]`);
-      if(!el) return;
-      el.classList.add('scan-hit');
-      try { el.scrollIntoView({behavior:'smooth', block:'center'}); } catch{}
-      setTimeout(()=> el.classList.remove('scan-hit'), 1600);
-    }
-      // === Camera / external QR scanner events (shared with master.html) ===
-      document.addEventListener('scan:car-tag', async (e) => {
-        const raw = (e && e.detail && e.detail.tag) ? String(e.detail.tag).trim().toUpperCase() : '';
-        if(!raw) return;
-        // Attempt family call chain mirroring master.html order
-        try {
-          // Prefer full group logic via setStatusForTag (which resolves group internally)
-          const updated = await setStatusForTag(raw, 'called');
-          // Highlight any matching students (if loaded)
-          const norm = normScanKey(raw);
-          (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
-          showToast(updated > 0 ? 'Family called' : 'No match');
-        } catch(err){
-          console.warn('[tiles] scan:car-tag fallback attempt', err);
-          // Fallback: try normalized stripped punctuation
-          const norm = normScanKey(raw);
-          if(norm && norm !== raw){
-            try {
-              const updated2 = await setStatusForTag(norm, 'called');
-              (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
-              showToast(updated2 > 0 ? 'Family called' : 'No match');
-              return;
-            } catch {}
-          }
-          showToast('Tag not found');
-        }
-      });
-      document.addEventListener('scan:student-id', async (e) => {
-        const sid = (e && e.detail && e.detail.id) ? String(e.detail.id).trim() : '';
-        if(!sid) return;
-        // Try to locate student by id or studentId field
-        const norm = normScanKey(sid);
-        let stu = allStudents.find(s => s.id === sid) || allStudents.find(s => normScanKey(s.studentId||'') === norm);
-        if(!stu){ showToast('Student not loaded yet'); return; }
-        try {
-          await setStudentStatus(stu.id, 'called');
-          highlightStudentTile(stu.id);
-          showToast('Called '+(stu.firstName||stu.name||''));
-        } catch { showToast('Call failed'); }
-      });
     // Debug overlay
     let scanDebugEl = null;
     function ensureScanDebug(){
