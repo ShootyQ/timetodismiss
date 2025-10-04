@@ -345,6 +345,15 @@ export function summarizeDayStats(stats){
 function normTag(s){
   return (s || '').toString().toUpperCase().trim();
 }
+// Compressed normalization used by scanner.js (removes internal whitespace & non A-Z0-9-/ except dash)
+function tightTag(s){
+  return (s || '')
+    .toString()
+    .toUpperCase()
+    .replace(/\s+/g,'')
+    .replace(/[^A-Z0-9\-]/g,'')
+    .trim();
+}
 
 // Live map of tag -> name (legacy cars + multi-tag groups). Groups take precedence.
 export function onCars(cb) {
@@ -402,11 +411,28 @@ export function onCarGroups(cb){
 export async function getGroupByTag(tag){
   await waitForTenant();
   const t = normTag(tag);
-  const qy = query(colPath('carGroups'), where('tags', 'array-contains', t));
-  const snap = await getDocs(qy);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  let snap;
+  try {
+    const qy = query(colPath('carGroups'), where('tags', 'array-contains', t));
+    snap = await getDocs(qy);
+    if (!snap.empty){
+      const d = snap.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+  } catch(e){ /* fall through to tight */ }
+  // Retry with tight/whitespace-stripped variant if different (scanner emits this form)
+  const tight = tightTag(tag);
+  if (tight && tight !== t){
+    try {
+      const qy2 = query(colPath('carGroups'), where('tags', 'array-contains', tight));
+      const snap2 = await getDocs(qy2);
+      if (!snap2.empty){
+        const d2 = snap2.docs[0];
+        return { id: d2.id, ...d2.data() };
+      }
+    } catch(e2){ /* ignore */ }
+  }
+  return null;
 }
 
 // Utility: chunk an array (for Firestore 'in' queries limit of 10)
@@ -439,16 +465,38 @@ export async function setStatusForTag(tag, status) {
   await waitForTenant();
   const grp = await getGroupByTag(tag);
   if (grp && Array.isArray(grp.tags) && grp.tags.length){
+    try { console.debug('[setStatusForTag] resolved group', { tag, groupId: grp.id, tags: grp.tags }); } catch {}
     return setStatusForGroup(grp.id, status);
   }
-  // Fallback to single-tag behavior
-  const t = normTag(tag);
-  const qy = query(colPath('students'), where('carTag', '==', t));
-  const snap = await getDocs(qy);
-  if (snap.empty) return;
-  const batch = writeBatch(db);
-  snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
-  await batch.commit();
+  // Fallback to single-tag behavior (attempt original & tight variants)
+  const original = normTag(tag);
+  const compressed = tightTag(tag);
+  try { console.debug('[setStatusForTag] fallback single tag path', { original, compressed, status }); } catch {}
+  // Try original first
+  let snap;
+  try {
+    const qy = query(colPath('students'), where('carTag', '==', original));
+    snap = await getDocs(qy);
+    if (!snap.empty){
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
+      await batch.commit();
+      try { console.debug('[setStatusForTag] updated original tag students', { tag: original, count: snap.size }); } catch {}
+      return;
+    }
+  } catch(e){ /* ignore & retry compressed */ }
+  if (compressed && compressed !== original){
+    try {
+      const qy2 = query(colPath('students'), where('carTag', '==', compressed));
+      const snap2 = await getDocs(qy2);
+      if (!snap2.empty){
+        const batch2 = writeBatch(db);
+        snap2.forEach(d => batch2.update(d.ref, { status, updatedAt: serverTimestamp() }));
+        await batch2.commit();
+        try { console.debug('[setStatusForTag] updated compressed tag students', { tag: compressed, count: snap2.size }); } catch {}
+      }
+    } catch(e2){ /* final fallback: no-op */ }
+  }
 }
 
 // Strict: update status only for students whose carTag exactly matches the provided tag.
