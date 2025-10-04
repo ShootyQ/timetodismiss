@@ -629,17 +629,19 @@
       // This matches master.html behavior
       console.log('[scan] Calling setStatusForTag with:', upper);
       setStatusForTag(upper, 'called')
-        .then((result)=> {
-          console.log('[scan] setStatusForTag succeeded, result:', result);
-          // Highlight all students sharing the tag (if loaded)
+        .then((updated)=> {
+          console.log('[scan] setStatusForTag completed, updated count:', updated);
           const arr = carTagIndex.get(normalized)||[];
-          console.log('[scan] Found students to highlight:', arr.length);
+          console.log('[scan] Highlight matches:', arr.length);
           arr.forEach(st => highlightStudentTile(st.id));
-          showToast('Family called');
+          showToast(updated > 0 ? 'Family called' : 'No match');
+          if (updated === 0) {
+            // fall back to student ID attempt
+            handleAsStudent(upper, normalized);
+          }
         })
         .catch((err)=> {
-          console.warn('[scan] Family call failed, trying as student ID:', err);
-          // If family call failed, try as individual student
+          console.warn('[scan] Family call error, trying as student ID:', err);
           handleAsStudent(upper, normalized);
         });
     }
@@ -683,20 +685,20 @@
         // Attempt family call chain mirroring master.html order
         try {
           // Prefer full group logic via setStatusForTag (which resolves group internally)
-          await setStatusForTag(raw, 'called');
+          const updated = await setStatusForTag(raw, 'called');
           // Highlight any matching students (if loaded)
           const norm = normScanKey(raw);
           (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
-          showToast('Family called');
+          showToast(updated > 0 ? 'Family called' : 'No match');
         } catch(err){
           console.warn('[tiles] scan:car-tag fallback attempt', err);
           // Fallback: try normalized stripped punctuation
           const norm = normScanKey(raw);
           if(norm && norm !== raw){
             try {
-              await setStatusForTag(norm, 'called');
+              const updated2 = await setStatusForTag(norm, 'called');
               (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
-              showToast('Family called');
+              showToast(updated2 > 0 ? 'Family called' : 'No match');
               return;
             } catch {}
           }

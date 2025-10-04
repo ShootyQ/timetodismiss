@@ -446,18 +446,21 @@ export async function setStatusForGroup(groupId, status){
   const d = await getDoc(docPath('carGroups', groupId));
   if (!d.exists()) return;
   const tags = (d.data().tags || []).map(normTag).filter(Boolean);
-  if (tags.length === 0) return;
+  if (tags.length === 0) return 0;
 
   // Firestore 'in' supports up to 10 items
   const batches = chunk(tags, 10);
+  let total = 0;
   for (const batchTags of batches){
     const qy = query(colPath('students'), where('carTag', 'in', batchTags));
     const snap = await getDocs(qy);
     if (snap.empty) continue;
     const wb = writeBatch(db);
-    snap.forEach(d => wb.update(d.ref, { status, updatedAt: serverTimestamp() }));
+    snap.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
     await wb.commit();
   }
+  try { console.debug('[setStatusForGroup] applied', { groupId, status, total }); } catch {}
+  return total;
 }
 
 // Set status for all students that share a given carTag (now resolves group)
@@ -466,7 +469,7 @@ export async function setStatusForTag(tag, status) {
   const grp = await getGroupByTag(tag);
   if (grp && Array.isArray(grp.tags) && grp.tags.length){
     try { console.debug('[setStatusForTag] resolved group', { tag, groupId: grp.id, tags: grp.tags }); } catch {}
-    return setStatusForGroup(grp.id, status);
+    return await setStatusForGroup(grp.id, status);
   }
   // Fallback to single-tag behavior (attempt original & tight variants)
   const original = normTag(tag);
@@ -482,7 +485,7 @@ export async function setStatusForTag(tag, status) {
       snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
       await batch.commit();
       try { console.debug('[setStatusForTag] updated original tag students', { tag: original, count: snap.size }); } catch {}
-      return;
+      return snap.size;
     }
   } catch(e){ /* ignore & retry compressed */ }
   if (compressed && compressed !== original){
@@ -494,9 +497,12 @@ export async function setStatusForTag(tag, status) {
         snap2.forEach(d => batch2.update(d.ref, { status, updatedAt: serverTimestamp() }));
         await batch2.commit();
         try { console.debug('[setStatusForTag] updated compressed tag students', { tag: compressed, count: snap2.size }); } catch {}
+        return snap2.size;
       }
     } catch(e2){ /* final fallback: no-op */ }
   }
+  try { console.debug('[setStatusForTag] no matches', { tag: original }); } catch {}
+  return 0;
 }
 
 // Strict: update status only for students whose carTag exactly matches the provided tag.
@@ -517,27 +523,30 @@ export async function setStatusForExactTag(tag, status) {
 export async function setStatusForRideShare(rideShare, status){
   await waitForTenant();
   const key = String(rideShare || '').trim();
-  if (!key) return;
+  if (!key) return 0;
   const qy = query(colPath('carGroups'), where('rideShare', '==', key));
   const snap = await getDocs(qy);
-  if (snap.empty) return;
+  if (snap.empty) return 0;
   const allTags = [];
   snap.forEach(d => {
     const tags = (d.data().tags || []).map(normTag).filter(Boolean);
     allTags.push(...tags);
   });
   const uniq = Array.from(new Set(allTags));
-  if (!uniq.length) return;
+  if (!uniq.length) return 0;
   // chunk into 10s for 'in' query
   const batches = chunk(uniq, 10);
+  let total = 0;
   for (const batchTags of batches){
     const q2 = query(colPath('students'), where('carTag', 'in', batchTags));
     const s2 = await getDocs(q2);
     if (s2.empty) continue;
     const wb = writeBatch(db);
-    s2.forEach(d => wb.update(d.ref, { status, updatedAt: serverTimestamp() }));
+    s2.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
     await wb.commit();
   }
+  try { console.debug('[setStatusForRideShare] applied', { rideShare: key, status, total }); } catch {}
+  return total;
 }
 
 /* ------------------------------------------------------------------ */

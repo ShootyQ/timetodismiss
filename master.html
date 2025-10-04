@@ -551,7 +551,9 @@
       if (!tag) return;
       try {
         if (!allowOnce('SCAN_TAG:'+tag.toUpperCase())) return;
-        callRideShareByTag(tag);
+        // callRideShareByTag internally decides group vs tag; wrap to log counts if available
+        const res = callRideShareByTag(tag);
+        Promise.resolve(res).then(r => { try { console.debug('[scan:car-tag] result', { tag, returned: r }); } catch {} });
       } catch (err) { console.error('[master] scan tag handler failed', err); }
     });
 
@@ -566,16 +568,20 @@
     });
 
     // Ride share token scanned directly (rs=TOKEN)
-    document.addEventListener('scan:ride-share', (e) => {
+    document.addEventListener('scan:ride-share', async (e) => {
       const rs = (e && e.detail && e.detail.rs) ? String(e.detail.rs).trim() : '';
       if (!rs) return;
       const key = rs.toUpperCase();
       try {
         if (!allowOnce('SCAN_RS:'+key)) return;
         const grp = rideShareToGroup[key];
-        if (grp && apiReady && api.setStatusForGroup) api.setStatusForGroup(grp.id, 'called');
-        else if (apiReady && api.setStatusForRideShare) api.setStatusForRideShare(rs, 'called');
-        else actionQueue.push({ kind:'rsCall', payload: key });
+        if (grp && apiReady && api.setStatusForGroup) {
+          const count = await api.setStatusForGroup(grp.id, 'called');
+          try { console.debug('[scan:ride-share] group update', { rs, groupId: grp.id, count }); } catch {}
+        } else if (apiReady && api.setStatusForRideShare) {
+          const count2 = await api.setStatusForRideShare(rs, 'called');
+          try { console.debug('[scan:ride-share] rideShare key update', { rs, count: count2 }); } catch {}
+        } else actionQueue.push({ kind:'rsCall', payload: key });
       } catch (err) { console.error('[master] ride share scan handler failed', err); }
     });
   </script>
