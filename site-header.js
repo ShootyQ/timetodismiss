@@ -284,6 +284,7 @@
     (function ensureMobileHeaderStyles(){
       const id = 'sd-inline-mobile-menu';
       if (document.getElementById(id)) return;
+      const safe = (function(){ try { return localStorage.getItem('SD_MENU_SAFE') === '1'; } catch { return false; } })();
       const css = `
       @media (max-width: 820px){
         /* Hide legacy header row; show compact toolbar */
@@ -328,10 +329,13 @@
         body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }
         @keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }
         /* Staggered nav items */
-        .hdr-menu-panel .menu-links a{ position:relative; opacity:0; transform:translateX(14px); }
-  body.menu-open .hdr-menu-panel.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
-  /* Fallback: after animation start ensure links become visible even if animations disabled mid-flight */
-  body.menu-open .hdr-menu-panel.open .menu-links a.force-visible{ opacity:1 !important; transform:none !important; }
+      /* Default: links start visible; animation only applied when JS adds .stagger class to panel.
+        This prevents a failure mode where links remain opacity:0 on some devices. */
+      .hdr-menu-panel .menu-links a{ position:relative; opacity:1; transform:none; }
+      body.menu-open .hdr-menu-panel.stagger.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
+      body.menu-open .hdr-menu-panel.stagger.open .menu-links a.force-visible{ opacity:1 !important; transform:none !important; }
+      /* Safe mode (adaptive) — permanently disable stagger if a visibility failure was detected */
+      .hdr-menu-panel.safe-menu .menu-links a{ opacity:1 !important; transform:none !important; animation:none !important; }
         .hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }
         .hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }
         .hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }
@@ -367,6 +371,11 @@
       const closeBtn = document.getElementById('hdrMenuClose');
       if (!btn || !scrim || !panel) return;
 
+      // Determine safe-mode (persisted if a prior animation failure detected)
+      let SAFE_MODE = false;
+      try { SAFE_MODE = localStorage.getItem('SD_MENU_SAFE') === '1'; } catch {}
+      if (SAFE_MODE) panel.classList.add('safe-menu');
+
       let lastFocused = null;
       const focusableSel = 'a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
 
@@ -377,17 +386,31 @@
         scrim.hidden = false;
         panel.hidden = false;
         panel.classList.add('open');
+        // Apply stagger class only if not in safe mode
+        if (!SAFE_MODE) panel.classList.add('stagger');
         // Prepare stagger: force reflow so animation restarts when reopened
         void panel.offsetWidth; // reflow
         // Diagnostic: log how many links are present
         try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
-        // Fallback timer: if any link still invisible after 600ms, force visibility
+        // Fallback timer: check visibility; if failure, enable permanent safe mode
         setTimeout(()=>{
-          panel.querySelectorAll('.menu-links a').forEach(a=>{
-            const cs = getComputedStyle(a);
-            if (cs.opacity === '0') { a.classList.add('force-visible'); }
-          });
-        }, 400); // slightly faster fallback so links appear quicker on slow devices
+          const links = panel.querySelectorAll('.menu-links a');
+          let invisibleCount = 0;
+            links.forEach(a => {
+              const cs = getComputedStyle(a);
+              if (cs.opacity === '0') { a.classList.add('force-visible'); invisibleCount++; }
+            });
+          if (invisibleCount === links.length && links.length > 0 && !SAFE_MODE) {
+            // All links were invisible — enable safe mode permanently
+            SAFE_MODE = true;
+            panel.classList.add('safe-menu');
+            try { localStorage.setItem('SD_MENU_SAFE','1'); } catch {}
+            // Remove stagger to prevent future opacity:0 resets
+            panel.classList.remove('stagger');
+            links.forEach(a => { a.classList.add('force-visible'); });
+            try { console.warn('[hdr] Mobile menu entering SAFE MODE fallback; disabling animations'); } catch {}
+          }
+        }, 420);
         // Attach ripple handlers once
         panel.querySelectorAll('.menu-links a').forEach(a => {
           if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
@@ -416,6 +439,7 @@
         document.body.classList.remove('menu-open');
         btn.setAttribute('aria-expanded','false');
         panel.classList.remove('open');
+        panel.classList.remove('stagger'); // reset so re-open can reapply if not safe
         // let the slide-out finish before hiding for better a11y tree stability
         setTimeout(() => { scrim.hidden = true; panel.hidden = true; }, 260);
         document.removeEventListener('keydown', onKey);
