@@ -165,11 +165,11 @@
             <button id="hdrMenuClose" class="icon-btn" type="button" aria-label="Close menu">✕</button>
           </div>
           <nav class="menu-links">
-            <a href="/class.html" data-requires="viewer">Classes</a>
-            <a href="/master.html"  data-requires="caller">Master Caller</a>
-            <a href="/admin.html"   data-requires="admin">Admin</a>
-            <a href="/superintendent.html" data-requires="superintendent">Superintendent</a>
-            <a href="/prefs.html" data-requires="viewer">Preferences</a>
+            <a href="/class.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Classes</a>
+            <a href="/master.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
+            <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
+            <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
+            <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
           </nav>
           <div class="menu-auth">
             <button id="hdrSignInGoogle" class="btn" type="button">Sign in with Google</button>
@@ -317,8 +317,8 @@
         .hdr-menu-panel .menu-head{ display:flex; align-items:center; justify-content:space-between; padding:2px 2px 8px; border-bottom:1px solid #f1f5f9; }
         .hdr-menu-panel .icon-btn{ background:none; border:0; font-size:22px; padding:6px; }
 
-        .hdr-menu-panel .menu-links{ display:flex; flex-direction:column; gap:2px; padding:10px 0; }
-        .hdr-menu-panel .menu-links a{ display:block; padding:8px 10px; border-radius:10px; font-weight:700; color:#0b132b; text-decoration:none; line-height:1.2; }
+        .hdr-menu-panel .menu-links{ display:flex !important; flex-direction:column; gap:2px; padding:10px 0; }
+        .hdr-menu-panel .menu-links a{ display:block !important; padding:8px 10px; border-radius:10px; font-weight:700; color:#0b132b; text-decoration:none; line-height:1.2; opacity:1 !important; visibility:visible !important; transform:none !important; }
         .hdr-menu-panel .menu-links a:hover{ background:#f8fafc; }
 
         .hdr-menu-panel .menu-auth{ margin-top:auto; display:flex; gap:8px; }
@@ -340,20 +340,9 @@
         .hdr-menu-panel{ will-change:transform; }
         ${HDR_SAFE ? '' : 'body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }'}
         ${HDR_SAFE ? '' : '@keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }'}
-        /* Staggered nav items */
-      /* Default: links start visible; animation only applied when JS adds .stagger class to panel.
-        This prevents a failure mode where links remain opacity:0 on some devices. */
-      .hdr-menu-panel .menu-links a{ position:relative; opacity:1; transform:none; }
-      ${HDR_SAFE ? '' : 'body.menu-open .hdr-menu-panel.stagger.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }'}
-      body.menu-open .hdr-menu-panel.stagger.open .menu-links a.force-visible{ opacity:1 !important; transform:none !important; }
-      /* Safe mode (adaptive) — permanently disable stagger if a visibility failure was detected */
-      .hdr-menu-panel.safe-menu .menu-links a{ opacity:1 !important; transform:none !important; animation:none !important; }
-        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }'}
-        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }'}
-        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }'}
-        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(4){ animation-delay:.18s; }'}
-        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(5){ animation-delay:.22s; }'}
-        ${HDR_SAFE ? '' : '@keyframes hdrItemIn { 0%{ opacity:0; transform:translateX(14px); } 60%{ opacity:1; transform:translateX(-2px);} 100%{ opacity:1; transform:translateX(0);} }'}
+        /* SIMPLIFIED: NO animations that could hide links */
+      .hdr-menu-panel .menu-links a{ position:relative; opacity:1 !important; transform:none !important; display:block !important; visibility:visible !important; }
+        /* Animation keyframes removed - links always visible */
         /* Active / focus states */
         .hdr-menu-panel .menu-links a:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; background:#eff6ff; }
         .hdr-menu-panel .menu-links a:active{ background:#f1f5f9; }
@@ -398,10 +387,15 @@
         scrim.hidden = false;
         panel.hidden = false;
         panel.classList.add('open');
-        // Apply stagger class only if not in adaptive safe mode and not in global HDR_SAFE
-        if (!SAFE_MODE && !HDR_SAFE) panel.classList.add('stagger');
-        // Prepare stagger: force reflow so animation restarts when reopened
-        void panel.offsetWidth; // reflow
+        // Force all links visible immediately
+        panel.querySelectorAll('.menu-links a').forEach(a => {
+          a.style.display = 'block';
+          a.style.opacity = '1';
+          a.style.visibility = 'visible';
+          a.style.transform = 'none';
+          a.removeAttribute('hidden');
+          a.setAttribute('aria-hidden', 'false');
+        });
         // Diagnostic: log how many links are present
         try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
         // EMERGENCY FALLBACK: if zero visible links, force-show ALL links immediately
