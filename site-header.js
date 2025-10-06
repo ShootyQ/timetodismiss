@@ -189,9 +189,12 @@
     try { console.log('[TTD] site-header loaded, BUILD', BUILD_ID); } catch {}
     document.body.prepend(header);
 
-    // By default, hide any role-gated links until claims are evaluated
+    // By default, show viewer-level links so menu is never empty; hide only admin/superintendent
     try {
-      header.querySelectorAll('[data-requires="superintendent"]').forEach(el => {
+      header.querySelectorAll('[data-requires="viewer"]').forEach(el => {
+        el.hidden = false; el.setAttribute('aria-hidden','false'); el.style.display = '';
+      });
+      header.querySelectorAll('[data-requires="admin"],[data-requires="superintendent"]').forEach(el => {
         el.hidden = true; el.setAttribute('aria-hidden','true');
       });
     } catch {}
@@ -401,6 +404,15 @@
         void panel.offsetWidth; // reflow
         // Diagnostic: log how many links are present
         try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
+        // EMERGENCY FALLBACK: if zero visible links, force-show ALL links immediately
+        try {
+          const allLinks = panel.querySelectorAll('.menu-links a');
+          const visibleCount = [...allLinks].filter(a => !a.hidden && a.offsetParent !== null).length;
+          if (visibleCount === 0 && allLinks.length > 0) {
+            allLinks.forEach(a => { a.hidden = false; a.setAttribute('aria-hidden','false'); a.style.display=''; a.style.opacity='1'; a.style.transform='none'; });
+            console.warn('[hdr] EMERGENCY: Forced all links visible (claims not loaded yet)');
+          }
+        } catch {}
         if (!HDR_SAFE){
           // Fallback timer: check visibility; if failure, enable permanent safe mode
           setTimeout(()=>{
@@ -735,14 +747,7 @@
         const canCall  = isAdmin || isCaller; // master caller page
         const canView  = isViewer;            // classes + prefs
 
-        // Hide ALL gated links first
-        const gated = document.querySelectorAll('[data-requires]');
-        gated.forEach(el => {
-          el.hidden = true;
-          el.setAttribute('aria-hidden','true');
-          el.style.display = 'none';
-        });
-
+        // DON'T hide everything first - only hide what user can't access
         // Show helpers
         function reveal(selector){
           document.querySelectorAll(selector).forEach(el => {
@@ -753,11 +758,25 @@
             el.style.pointerEvents = '';
           });
         }
+        function conceal(selector){
+          document.querySelectorAll(selector).forEach(el => {
+            el.hidden = true;
+            el.setAttribute('aria-hidden','true');
+            el.style.display = 'none';
+          });
+        }
 
+        // Show what user CAN access
         if (canView) reveal('[data-requires="viewer"]'); // classes + prefs
         if (canCall) reveal('[data-requires="caller"]'); // master caller
         if (isAdmin) reveal('[data-requires="admin"]');   // admin tools
         if (isSup)   reveal('[data-requires="superintendent"]');
+        
+        // Hide what user CANNOT access
+        if (!canView) conceal('[data-requires="viewer"]');
+        if (!canCall) conceal('[data-requires="caller"]');
+        if (!isAdmin) conceal('[data-requires="admin"]');
+        if (!isSup)   conceal('[data-requires="superintendent"]');
 
         // Role badge label (ordered hierarchy)
         const badges = [];
