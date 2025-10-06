@@ -7,6 +7,15 @@
 (function () {
   // Global build/version id for cache-busting across all pages
   const BUILD_ID = '2025-09-10-HDR4';
+  // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
+  const HDR_SAFE = (() => {
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.get('hdrsafe') === '1') { localStorage.setItem('SD_HDR_SAFE','1'); return true; }
+      if (u.searchParams.get('hdrsafe') === '0') { localStorage.removeItem('SD_HDR_SAFE'); return false; }
+      return localStorage.getItem('SD_HDR_SAFE') === '1';
+    } catch { return false; }
+  })();
 
   // Proactively purge any old Service Workers and caches that could be serving stale assets
   (async function purgeSwAndCaches(){
@@ -322,33 +331,33 @@
         @keyframes hdrPopIn{ 0%{ opacity:0; transform:translateY(-6px) scale(.97);} 100%{ opacity:1; transform:translateY(0) scale(1);} }
 
         /* Layered Slide + Micro Motion enhancements */
-        body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transition:filter .35s, transform .35s; }
-        body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ filter:saturate(.82) brightness(.97); }
+        ${HDR_SAFE ? '' : 'body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transition:filter .35s, transform .35s; }'}
+        ${HDR_SAFE ? '' : 'body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ filter:saturate(.82) brightness(.97); }'}
         /* Panel refined motion */
         .hdr-menu-panel{ will-change:transform; }
-        body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }
-        @keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }
+        ${HDR_SAFE ? '' : 'body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }'}
+        ${HDR_SAFE ? '' : '@keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }'}
         /* Staggered nav items */
       /* Default: links start visible; animation only applied when JS adds .stagger class to panel.
         This prevents a failure mode where links remain opacity:0 on some devices. */
       .hdr-menu-panel .menu-links a{ position:relative; opacity:1; transform:none; }
-      body.menu-open .hdr-menu-panel.stagger.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
+      ${HDR_SAFE ? '' : 'body.menu-open .hdr-menu-panel.stagger.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }'}
       body.menu-open .hdr-menu-panel.stagger.open .menu-links a.force-visible{ opacity:1 !important; transform:none !important; }
       /* Safe mode (adaptive) — permanently disable stagger if a visibility failure was detected */
       .hdr-menu-panel.safe-menu .menu-links a{ opacity:1 !important; transform:none !important; animation:none !important; }
-        .hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }
-        .hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }
-        .hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }
-        .hdr-menu-panel .menu-links a:nth-child(4){ animation-delay:.18s; }
-        .hdr-menu-panel .menu-links a:nth-child(5){ animation-delay:.22s; }
-        @keyframes hdrItemIn { 0%{ opacity:0; transform:translateX(14px); } 60%{ opacity:1; transform:translateX(-2px);} 100%{ opacity:1; transform:translateX(0);} }
+        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }'}
+        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }'}
+        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }'}
+        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(4){ animation-delay:.18s; }'}
+        ${HDR_SAFE ? '' : '.hdr-menu-panel .menu-links a:nth-child(5){ animation-delay:.22s; }'}
+        ${HDR_SAFE ? '' : '@keyframes hdrItemIn { 0%{ opacity:0; transform:translateX(14px); } 60%{ opacity:1; transform:translateX(-2px);} 100%{ opacity:1; transform:translateX(0);} }'}
         /* Active / focus states */
         .hdr-menu-panel .menu-links a:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; background:#eff6ff; }
         .hdr-menu-panel .menu-links a:active{ background:#f1f5f9; }
         /* Ripple effect */
         .hdr-menu-panel .menu-links a{ overflow:hidden; }
-        .hdr-ripple{ position:absolute; border-radius:50%; background:rgba(59,130,246,.28); transform:scale(0); animation:hdrRipple .55s ease-out; pointer-events:none; mix-blend-mode:multiply; }
-        @keyframes hdrRipple { to { transform:scale(2.7); opacity:0; } }
+        ${HDR_SAFE ? '' : '.hdr-ripple{ position:absolute; border-radius:50%; background:rgba(59,130,246,.28); transform:scale(0); animation:hdrRipple .55s ease-out; pointer-events:none; mix-blend-mode:multiply; }'}
+        ${HDR_SAFE ? '' : '@keyframes hdrRipple { to { transform:scale(2.7); opacity:0; } }'}
         /* Reduced motion accessibility */
         @media (prefers-reduced-motion: reduce){
           body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transform:none !important; filter:none !important; }
@@ -386,50 +395,50 @@
         scrim.hidden = false;
         panel.hidden = false;
         panel.classList.add('open');
-        // Apply stagger class only if not in safe mode
-        if (!SAFE_MODE) panel.classList.add('stagger');
+        // Apply stagger class only if not in adaptive safe mode and not in global HDR_SAFE
+        if (!SAFE_MODE && !HDR_SAFE) panel.classList.add('stagger');
         // Prepare stagger: force reflow so animation restarts when reopened
         void panel.offsetWidth; // reflow
         // Diagnostic: log how many links are present
         try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
-        // Fallback timer: check visibility; if failure, enable permanent safe mode
-        setTimeout(()=>{
-          const links = panel.querySelectorAll('.menu-links a');
-          let invisibleCount = 0;
+        if (!HDR_SAFE){
+          // Fallback timer: check visibility; if failure, enable permanent safe mode
+          setTimeout(()=>{
+            const links = panel.querySelectorAll('.menu-links a');
+            let invisibleCount = 0;
             links.forEach(a => {
               const cs = getComputedStyle(a);
               if (cs.opacity === '0') { a.classList.add('force-visible'); invisibleCount++; }
             });
-          if (invisibleCount === links.length && links.length > 0 && !SAFE_MODE) {
-            // All links were invisible — enable safe mode permanently
-            SAFE_MODE = true;
-            panel.classList.add('safe-menu');
-            try { localStorage.setItem('SD_MENU_SAFE','1'); } catch {}
-            // Remove stagger to prevent future opacity:0 resets
-            panel.classList.remove('stagger');
-            links.forEach(a => { a.classList.add('force-visible'); });
-            try { console.warn('[hdr] Mobile menu entering SAFE MODE fallback; disabling animations'); } catch {}
-          }
-        }, 420);
-        // Attach ripple handlers once
-        panel.querySelectorAll('.menu-links a').forEach(a => {
-          if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
-          a.addEventListener('click', (e) => {
-            try {
-              const rect = a.getBoundingClientRect();
-              const r = document.createElement('span');
-              r.className = 'hdr-ripple';
-              const size = Math.max(rect.width, rect.height);
-              const x = e.clientX - rect.left - size/2;
-              const y = e.clientY - rect.top - size/2;
-              r.style.width = r.style.height = size + 'px';
-              r.style.left = x + 'px';
-              r.style.top = y + 'px';
-              a.appendChild(r);
-              setTimeout(()=>{ r.remove(); }, 600);
-            } catch {}
+            if (invisibleCount === links.length && links.length > 0 && !SAFE_MODE) {
+              SAFE_MODE = true;
+              panel.classList.add('safe-menu');
+              try { localStorage.setItem('SD_MENU_SAFE','1'); } catch {}
+              panel.classList.remove('stagger');
+              links.forEach(a => { a.classList.add('force-visible'); });
+              try { console.warn('[hdr] Mobile menu entering SAFE MODE fallback; disabling animations'); } catch {}
+            }
+          }, 320);
+          // Attach ripple handlers once
+          panel.querySelectorAll('.menu-links a').forEach(a => {
+            if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
+            a.addEventListener('click', (e) => {
+              try {
+                const rect = a.getBoundingClientRect();
+                const r = document.createElement('span');
+                r.className = 'hdr-ripple';
+                const size = Math.max(rect.width, rect.height);
+                const x = e.clientX - rect.left - size/2;
+                const y = e.clientY - rect.top - size/2;
+                r.style.width = r.style.height = size + 'px';
+                r.style.left = x + 'px';
+                r.style.top = y + 'px';
+                a.appendChild(r);
+                setTimeout(()=>{ r.remove(); }, 600);
+              } catch {}
+            });
           });
-        });
+        }
         // focus first item for quick keyboard access
         const first = panel.querySelector(focusableSel);
         if (first) setTimeout(() => first.focus(), 50);
@@ -447,9 +456,7 @@
       }
       function onKey(e){ if (e.key === 'Escape') close(); }
 
-      btn.addEventListener('click', () => {
-        if (document.body.classList.contains('menu-open')) close(); else open();
-      });
+      btn.addEventListener('click', () => { if (document.body.classList.contains('menu-open')) close(); else open(); });
       closeBtn && closeBtn.addEventListener('click', close);
       scrim.addEventListener('click', close);
 
@@ -805,8 +812,9 @@
 
     // Unified mobile menu: rely solely on initMobileMenu implementation (body.menu-open toggle)
     const _closeMobileMenu = () => { try { window.SD?.closeMobileMenu && window.SD.closeMobileMenu(); } catch {} };
-    hdrSignInGoogle?.addEventListener('click', () => { _closeMobileMenu(); startSignIn('google'); });
-    hdrSignInMicrosoft?.addEventListener('click', () => { _closeMobileMenu(); startSignIn('microsoft'); });
+  // Important: call startSignIn BEFORE closing menu to keep popup in same gesture
+  hdrSignInGoogle?.addEventListener('click', (e) => { try { console.debug('[hdr] google sign-in button click'); } catch{} startSignIn('google').finally(()=>_closeMobileMenu()); });
+  hdrSignInMicrosoft?.addEventListener('click', (e) => { try { console.debug('[hdr] ms sign-in button click'); } catch{} startSignIn('microsoft').finally(()=>_closeMobileMenu()); });
     hdrSignOut?.addEventListener('click', () => { _closeMobileMenu(); auth.signOut(); });
 
   // Read tenant + roles strictly from token claims (domain only as last-resort fallback elsewhere)
