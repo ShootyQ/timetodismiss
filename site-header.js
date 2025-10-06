@@ -314,6 +314,15 @@
         .hdr-menu-panel .menu-links a[hidden],.hdr-menu-panel .menu-links a[aria-hidden="true"]{display:block !important;}
         .hdr-menu-panel .menu-auth{margin-top:auto;padding:14px;display:flex;flex-direction:column;gap:8px;}
         body.menu-open{overflow:hidden;}
+        /* Mobile account popover (avatar button) */
+        .hdr-account-pop{position:fixed;top:calc(56px + env(safe-area-inset-top,0px));right:10px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 28px -4px rgba(2,6,23,.25);padding:12px 14px;min-width:230px;z-index:1101;display:flex;flex-direction:column;gap:8px;}
+        .hdr-account-pop[hidden]{display:none !important;}
+        .hdr-account-pop .acct-email{font-size:.85rem;font-weight:600;line-height:1.15;word-break:break-all;margin:0;}
+        .hdr-account-pop .acct-roles{font-size:.6rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#475569;opacity:.9;margin-top:-4px;}
+        .hdr-account-pop hr{border:0;height:1px;background:#f1f5f9;margin:2px 0 4px;}
+        .hdr-account-pop button{font-size:.78rem;}
+        /* Hide popover while menu drawer open to prevent layering confusion */
+        body.menu-open #hdrAccountPop{display:none !important;}
       }`;
       const style = document.createElement('style');
       style.id = id; style.textContent = css; document.head.appendChild(style);
@@ -334,6 +343,8 @@
         document.body.classList.add('menu-open');
         btn.setAttribute('aria-expanded','true');
         scrim.hidden = false; panel.hidden = false;
+        // Close mobile account popover if it is open so it doesn't sit under/over the panel
+        try { const pop = document.getElementById('hdrAccountPop'); if (pop) pop.hidden = true; } catch {}
         // Ensure links visible (baseline safety)
         panel.querySelectorAll('.menu-links a').forEach(a=>{ a.hidden=false; a.setAttribute('aria-hidden','false'); a.style.display='block'; });
         const first = panel.querySelector(FOCUS_SEL); if (first) setTimeout(()=>first.focus(),50);
