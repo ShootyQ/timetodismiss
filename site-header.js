@@ -387,7 +387,7 @@
             const cs = getComputedStyle(a);
             if (cs.opacity === '0') { a.classList.add('force-visible'); }
           });
-        }, 600);
+        }, 400); // slightly faster fallback so links appear quicker on slow devices
         // Attach ripple handlers once
         panel.querySelectorAll('.menu-links a').forEach(a => {
           if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
@@ -439,6 +439,13 @@
         if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
         else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
       });
+
+      // Expose programmatic open/close so other handlers (sign-in buttons) can close the panel reliably
+      try {
+        window.SD = window.SD || {};
+        window.SD.openMobileMenu = open;
+        window.SD.closeMobileMenu = close;
+      } catch {}
     })();
 
     const header     = document.querySelector('header.site-header');
@@ -772,30 +779,11 @@
       el.addEventListener('click', (e) => { e.preventDefault(); startSignIn('google'); });
     });
 
-    // Mobile menu helpers
-    function openMenu(){
-      if (!hdrMenuPanel) return;
-      hdrMenuPanel.hidden = false; hdrMenuPanel.classList.add('open');
-      if (hdrMenuScrim){ hdrMenuScrim.hidden = false; hdrMenuScrim.classList.add('open'); }
-      hdrMenuBtn?.setAttribute('aria-expanded','true');
-    }
-    function closeMenu(){
-      if (!hdrMenuPanel) return;
-      hdrMenuPanel.classList.remove('open');
-      if (hdrMenuScrim){ hdrMenuScrim.classList.remove('open'); setTimeout(()=>{ hdrMenuScrim.hidden = true; }, 200); }
-      setTimeout(()=>{ hdrMenuPanel.hidden = true; }, 200);
-      hdrMenuBtn?.setAttribute('aria-expanded','false');
-    }
-    hdrMenuBtn?.addEventListener('click', () => {
-      const isOpen = hdrMenuPanel && !hdrMenuPanel.hidden && hdrMenuPanel.classList.contains('open');
-      if (isOpen) closeMenu(); else openMenu();
-    });
-    hdrMenuClose?.addEventListener('click', closeMenu);
-    hdrMenuScrim?.addEventListener('click', closeMenu);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-  hdrSignInGoogle?.addEventListener('click', () => { closeMenu(); startSignIn('google'); });
-  hdrSignInMicrosoft?.addEventListener('click', () => { closeMenu(); startSignIn('microsoft'); });
-    hdrSignOut?.addEventListener('click', () => { closeMenu(); auth.signOut(); });
+    // Unified mobile menu: rely solely on initMobileMenu implementation (body.menu-open toggle)
+    const _closeMobileMenu = () => { try { window.SD?.closeMobileMenu && window.SD.closeMobileMenu(); } catch {} };
+    hdrSignInGoogle?.addEventListener('click', () => { _closeMobileMenu(); startSignIn('google'); });
+    hdrSignInMicrosoft?.addEventListener('click', () => { _closeMobileMenu(); startSignIn('microsoft'); });
+    hdrSignOut?.addEventListener('click', () => { _closeMobileMenu(); auth.signOut(); });
 
   // Read tenant + roles strictly from token claims (domain only as last-resort fallback elsewhere)
     async function resolveTenantAndRoles(user, token) {
