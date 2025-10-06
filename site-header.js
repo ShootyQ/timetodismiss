@@ -737,6 +737,23 @@
         const isViewerExplicit = !!token?.claims?.viewer;
         const isViewer = isAdmin || isCaller || isSup || isViewerExplicit; // consolidated viewer capability
 
+        // NEW: Guard against hiding everything while claims are still loading.
+        // If the token has none of the known role claims yet, we treat this state as "pending"
+        // and keep previously visible viewer-level links (Classes / Preferences) so the mobile
+        // menu never appears empty. This was causing the perceived "broken" mobile menu where
+        // all links disappeared for a few seconds on first load.
+        const hasAnyClaim = isAdmin || isCaller || isSup || isViewerExplicit;
+        if (!hasAnyClaim) {
+          try { console.debug('[hdr] claims pending – leaving default viewer links visible'); } catch {}
+          // Make sure baseline viewer links remain visible
+          document.querySelectorAll('[data-requires="viewer"]').forEach(el => {
+            el.hidden = false;
+            el.setAttribute('aria-hidden','false');
+            el.style.display = '';
+          });
+          return; // Skip conceal/reveal logic until real claims land
+        }
+
         // Capability groupings
         const canCall  = isAdmin || isCaller; // master caller page
         const canView  = isViewer;            // classes + prefs
