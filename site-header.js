@@ -6,7 +6,7 @@
 
 (function () {
   // Global build/version id for cache-busting across all pages
-  const BUILD_ID = '2025-09-10-HDR4';
+  const BUILD_ID = '2025-10-06-MENUFIX-FINAL';
   // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
   const HDR_SAFE = (() => {
     try {
