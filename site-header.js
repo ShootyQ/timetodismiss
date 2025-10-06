@@ -423,7 +423,9 @@
       }
       function onKey(e){ if (e.key === 'Escape') close(); }
 
-      btn.addEventListener('click', open);
+      btn.addEventListener('click', () => {
+        if (document.body.classList.contains('menu-open')) close(); else open();
+      });
       closeBtn && closeBtn.addEventListener('click', close);
       scrim.addEventListener('click', close);
 
