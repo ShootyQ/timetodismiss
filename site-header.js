@@ -294,195 +294,71 @@
 
     // Inline mobile CSS to avoid stale external CSS blocking the new header and menu polish
     (function ensureMobileHeaderStyles(){
-      const id = 'sd-inline-mobile-menu';
+      // Simpler, no-motion mobile menu styles (replaces complex animated version)
+      const id = 'sd-inline-mobile-menu-simple';
       if (document.getElementById(id)) return;
-      const safe = (function(){ try { return localStorage.getItem('SD_MENU_SAFE') === '1'; } catch { return false; } })();
-      const css = `
-      @media (max-width: 820px){
-        /* Hide legacy header row; show compact toolbar */
-        .site-header .header-inner{ display:none !important; }
-        .site-header .hdr-mobile{ display:flex !important; position:sticky; top:0; background:#fff; z-index:1000; border-bottom:1px solid #eef2f7; padding:8px 4%; }
-        .hdr-mobile .icon-btn{ background:none; border:0; padding:6px 8px; font-size:22px; line-height:1; border-radius:10px; }
-        .hdr-mobile .icon-btn:active{ transform:translateY(1px); }
-
-        /* Scrim + panel (smooth + compact) */
-        .hdr-menu-scrim{ position:fixed; inset:0; background:rgba(15,23,42,.42); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:999; }
-        body.menu-open .hdr-menu-scrim{ opacity:1; pointer-events:auto; }
-
-        .hdr-menu-panel{ position:fixed; top:0; right:0; bottom:0; width:min(86vw, 320px); max-width:92vw; background:#fff; box-shadow:-12px 0 28px rgba(2,6,23,.14); transform:translateX(100%); transition:transform .24s cubic-bezier(.2,.8,.2,1); will-change:transform; z-index:1000; display:flex; flex-direction:column; }
-        body.menu-open .hdr-menu-panel{ transform:translateX(0); }
-        body.menu-open{ overflow:hidden; }
-
-        .hdr-menu-panel .menu-inner{ display:flex; flex-direction:column; height:100%; padding:max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); gap:10px; }
-        .hdr-menu-panel .menu-head{ display:flex; align-items:center; justify-content:space-between; padding:2px 2px 8px; border-bottom:1px solid #f1f5f9; }
-        .hdr-menu-panel .icon-btn{ background:none; border:0; font-size:22px; padding:6px; }
-
-        .hdr-menu-panel .menu-links{ display:flex !important; flex-direction:column; gap:2px; padding:10px 0; }
-        .hdr-menu-panel .menu-links a{ display:block !important; padding:8px 10px; border-radius:10px; font-weight:700; color:#0b132b; text-decoration:none; line-height:1.2; opacity:1 !important; visibility:visible !important; transform:none !important; }
-        .hdr-menu-panel .menu-links a:hover{ background:#f8fafc; }
-
-        .hdr-menu-panel .menu-auth{ margin-top:auto; display:flex; gap:8px; }
-        .hdr-menu-panel .btn{ padding:.5rem .7rem; border-radius:10px; }
-        /* Mobile account popover */
-        .hdr-account-pop{ position:fixed; top:54px; right:10px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 8px 28px -4px rgba(2,6,23,.25); padding:12px 14px; min-width:230px; z-index:1100; display:flex; flex-direction:column; gap:10px; animation:hdrPopIn .17s ease; }
-        .hdr-account-pop[hidden]{ display:none !important; }
-        .hdr-account-pop h4{ margin:0 0 4px; font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#64748b; }
-        .hdr-account-pop .acct-email{ font-size:.85rem; font-weight:600; word-break:break-all; line-height:1.15; }
-        .hdr-account-pop .acct-roles{ font-size:.6rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#475569; opacity:.9; }
-        .hdr-account-pop hr{ border:0; height:1px; background:#f1f5f9; margin:2px 0 4px; }
-        .hdr-account-pop button{ font-size:.78rem; }
-        @keyframes hdrPopIn{ 0%{ opacity:0; transform:translateY(-6px) scale(.97);} 100%{ opacity:1; transform:translateY(0) scale(1);} }
-
-        /* Layered Slide + Micro Motion enhancements */
-        ${HDR_SAFE ? '' : 'body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transition:filter .35s, transform .35s; }'}
-        ${HDR_SAFE ? '' : 'body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ filter:saturate(.82) brightness(.97); }'}
-        /* Panel refined motion */
-        .hdr-menu-panel{ will-change:transform; }
-        ${HDR_SAFE ? '' : 'body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }'}
-        ${HDR_SAFE ? '' : '@keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }'}
-        /* SIMPLIFIED: NO animations that could hide links */
-      .hdr-menu-panel .menu-links a{ position:relative; opacity:1 !important; transform:none !important; display:block !important; visibility:visible !important; }
-        /* Animation keyframes removed - links always visible */
-        /* Active / focus states */
-        .hdr-menu-panel .menu-links a:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; background:#eff6ff; }
-        .hdr-menu-panel .menu-links a:active{ background:#f1f5f9; }
-        /* Ripple effect */
-        .hdr-menu-panel .menu-links a{ overflow:hidden; }
-        ${HDR_SAFE ? '' : '.hdr-ripple{ position:absolute; border-radius:50%; background:rgba(59,130,246,.28); transform:scale(0); animation:hdrRipple .55s ease-out; pointer-events:none; mix-blend-mode:multiply; }'}
-        ${HDR_SAFE ? '' : '@keyframes hdrRipple { to { transform:scale(2.7); opacity:0; } }'}
-        /* Reduced motion accessibility */
-        @media (prefers-reduced-motion: reduce){
-          body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transform:none !important; filter:none !important; }
-          .hdr-menu-panel, .hdr-menu-panel .menu-links a{ animation:none !important; transition:none !important; opacity:1 !important; transform:none !important; }
-          .hdr-ripple{ display:none !important; }
-        }
-      }
-      `;
+      const css = `@media (max-width:820px){
+        .site-header .header-inner{display:none !important;}
+        .site-header .hdr-mobile{display:flex !important;position:sticky;top:0;background:#fff;z-index:1000;border-bottom:1px solid #e5e7eb;padding:8px 4%;}
+        .hdr-mobile .icon-btn{background:#fff;border:1px solid #e5e7eb;padding:.5rem .7rem;border-radius:10px;font-size:20px;}
+        .hdr-menu-scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:999;}
+        body.menu-open .hdr-menu-scrim{display:block;}
+        .hdr-menu-panel{position:fixed;top:0;right:0;bottom:0;width:82vw;max-width:320px;background:#fff;box-shadow:-6px 0 18px rgba(0,0,0,.18);transform:translateX(100%);transition:transform .18s ease;z-index:1000;display:flex;flex-direction:column;}
+        body.menu-open .hdr-menu-panel{transform:translateX(0);}
+        .hdr-menu-panel[hidden]{display:none !important;}
+        .hdr-menu-panel .menu-inner{display:flex;flex-direction:column;height:100%;}
+        .hdr-menu-panel .menu-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e5e7eb;}
+        .hdr-menu-panel .menu-links{display:flex !important;flex-direction:column;gap:8px;padding:14px;}
+        .hdr-menu-panel .menu-links a{display:block !important;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;font-weight:700;color:#0b132b;text-decoration:none;}
+        .hdr-menu-panel .menu-links a:active{background:#f3f4f6;}
+        .hdr-menu-panel .menu-links a[hidden],.hdr-menu-panel .menu-links a[aria-hidden="true"]{display:block !important;}
+        .hdr-menu-panel .menu-auth{margin-top:auto;padding:14px;display:flex;flex-direction:column;gap:8px;}
+        body.menu-open{overflow:hidden;}
+      }`;
       const style = document.createElement('style');
-      style.id = id;
-      style.textContent = css;
-      document.head.appendChild(style);
+      style.id = id; style.textContent = css; document.head.appendChild(style);
     })();
 
     // Menu open/close behavior (smooth, with accessibility niceties)
     (function initMobileMenu(){
+      // Ultra-simple mobile menu: toggle class, no animations, no ripples, minimal JS
       const btn = document.getElementById('hdrMenuBtn');
       const scrim = document.getElementById('hdrMenuScrim');
       const panel = document.getElementById('hdrMenuPanel');
       const closeBtn = document.getElementById('hdrMenuClose');
       if (!btn || !scrim || !panel) return;
-
-      // Determine safe-mode (persisted if a prior animation failure detected)
-      let SAFE_MODE = false;
-      try { SAFE_MODE = localStorage.getItem('SD_MENU_SAFE') === '1'; } catch {}
-      if (SAFE_MODE) panel.classList.add('safe-menu');
-
       let lastFocused = null;
-      const focusableSel = 'a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
-
+      const FOCUS_SEL = 'a,button,select,textarea,input,[tabindex]:not([tabindex="-1"])';
       function open(){
         lastFocused = document.activeElement;
         document.body.classList.add('menu-open');
         btn.setAttribute('aria-expanded','true');
-        scrim.hidden = false;
-        panel.hidden = false;
-        panel.classList.add('open');
-        // Force all links visible immediately
-        panel.querySelectorAll('.menu-links a').forEach(a => {
-          a.style.display = 'block';
-          a.style.opacity = '1';
-          a.style.visibility = 'visible';
-          a.style.transform = 'none';
-          a.removeAttribute('hidden');
-          a.setAttribute('aria-hidden', 'false');
-        });
-        // Diagnostic: log how many links are present
-        try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
-        // EMERGENCY FALLBACK: if zero visible links, force-show ALL links immediately
-        try {
-          const allLinks = panel.querySelectorAll('.menu-links a');
-          const visibleCount = [...allLinks].filter(a => !a.hidden && a.offsetParent !== null).length;
-          if (visibleCount === 0 && allLinks.length > 0) {
-            allLinks.forEach(a => { a.hidden = false; a.setAttribute('aria-hidden','false'); a.style.display=''; a.style.opacity='1'; a.style.transform='none'; });
-            console.warn('[hdr] EMERGENCY: Forced all links visible (claims not loaded yet)');
-          }
-        } catch {}
-        if (!HDR_SAFE){
-          // Fallback timer: check visibility; if failure, enable permanent safe mode
-          setTimeout(()=>{
-            const links = panel.querySelectorAll('.menu-links a');
-            let invisibleCount = 0;
-            links.forEach(a => {
-              const cs = getComputedStyle(a);
-              if (cs.opacity === '0') { a.classList.add('force-visible'); invisibleCount++; }
-            });
-            if (invisibleCount === links.length && links.length > 0 && !SAFE_MODE) {
-              SAFE_MODE = true;
-              panel.classList.add('safe-menu');
-              try { localStorage.setItem('SD_MENU_SAFE','1'); } catch {}
-              panel.classList.remove('stagger');
-              links.forEach(a => { a.classList.add('force-visible'); });
-              try { console.warn('[hdr] Mobile menu entering SAFE MODE fallback; disabling animations'); } catch {}
-            }
-          }, 320);
-          // Attach ripple handlers once
-          panel.querySelectorAll('.menu-links a').forEach(a => {
-            if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
-            a.addEventListener('click', (e) => {
-              try {
-                const rect = a.getBoundingClientRect();
-                const r = document.createElement('span');
-                r.className = 'hdr-ripple';
-                const size = Math.max(rect.width, rect.height);
-                const x = e.clientX - rect.left - size/2;
-                const y = e.clientY - rect.top - size/2;
-                r.style.width = r.style.height = size + 'px';
-                r.style.left = x + 'px';
-                r.style.top = y + 'px';
-                a.appendChild(r);
-                setTimeout(()=>{ r.remove(); }, 600);
-              } catch {}
-            });
-          });
-        }
-        // focus first item for quick keyboard access
-        const first = panel.querySelector(focusableSel);
-        if (first) setTimeout(() => first.focus(), 50);
+        scrim.hidden = false; panel.hidden = false;
+        // Ensure links visible (baseline safety)
+        panel.querySelectorAll('.menu-links a').forEach(a=>{ a.hidden=false; a.setAttribute('aria-hidden','false'); a.style.display='block'; });
+        const first = panel.querySelector(FOCUS_SEL); if (first) setTimeout(()=>first.focus(),50);
         document.addEventListener('keydown', onKey);
       }
       function close(){
         document.body.classList.remove('menu-open');
         btn.setAttribute('aria-expanded','false');
-        panel.classList.remove('open');
-        panel.classList.remove('stagger'); // reset so re-open can reapply if not safe
-        // let the slide-out finish before hiding for better a11y tree stability
-        setTimeout(() => { scrim.hidden = true; panel.hidden = true; }, 260);
+        scrim.hidden = true; panel.hidden = true;
         document.removeEventListener('keydown', onKey);
-        if (lastFocused && typeof lastFocused.focus === 'function') setTimeout(() => lastFocused.focus(), 0);
+        if (lastFocused && lastFocused.focus) setTimeout(()=>lastFocused.focus(),0);
       }
       function onKey(e){ if (e.key === 'Escape') close(); }
-
-      btn.addEventListener('click', () => { if (document.body.classList.contains('menu-open')) close(); else open(); });
-      closeBtn && closeBtn.addEventListener('click', close);
+      btn.addEventListener('click', ()=>{ document.body.classList.contains('menu-open') ? close() : open(); });
       scrim.addEventListener('click', close);
-
-      // Basic focus trap while open (keeps tabbing inside panel)
-      panel.addEventListener('keydown', (e) => {
+      closeBtn && closeBtn.addEventListener('click', close);
+      panel.addEventListener('keydown', (e)=>{
         if (e.key !== 'Tab') return;
-        const nodes = Array.from(panel.querySelectorAll(focusableSel)).filter(el => !el.hasAttribute('disabled') && el.offsetParent !== null);
-        if (nodes.length === 0) return;
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        const nodes = Array.from(panel.querySelectorAll(FOCUS_SEL)).filter(n=>!n.disabled && n.offsetParent!==null);
+        if (!nodes.length) return;
+        const first = nodes[0]; const last = nodes[nodes.length-1];
+        if (e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
       });
-
-      // Expose programmatic open/close so other handlers (sign-in buttons) can close the panel reliably
-      try {
-        window.SD = window.SD || {};
-        window.SD.openMobileMenu = open;
-        window.SD.closeMobileMenu = close;
-      } catch {}
+      try { window.SD = window.SD || {}; window.SD.openMobileMenu = open; window.SD.closeMobileMenu = close; } catch {}
     })();
 
     const header     = document.querySelector('header.site-header');
