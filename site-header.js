@@ -329,7 +329,9 @@
         @keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }
         /* Staggered nav items */
         .hdr-menu-panel .menu-links a{ position:relative; opacity:0; transform:translateX(14px); }
-        body.menu-open .hdr-menu-panel.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
+  body.menu-open .hdr-menu-panel.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
+  /* Fallback: after animation start ensure links become visible even if animations disabled mid-flight */
+  body.menu-open .hdr-menu-panel.open .menu-links a.force-visible{ opacity:1 !important; transform:none !important; }
         .hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }
         .hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }
         .hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }
@@ -377,6 +379,15 @@
         panel.classList.add('open');
         // Prepare stagger: force reflow so animation restarts when reopened
         void panel.offsetWidth; // reflow
+        // Diagnostic: log how many links are present
+        try { console.debug('[hdr] menu open; links=', panel.querySelectorAll('.menu-links a').length); } catch {}
+        // Fallback timer: if any link still invisible after 600ms, force visibility
+        setTimeout(()=>{
+          panel.querySelectorAll('.menu-links a').forEach(a=>{
+            const cs = getComputedStyle(a);
+            if (cs.opacity === '0') { a.classList.add('force-visible'); }
+          });
+        }, 600);
         // Attach ripple handlers once
         panel.querySelectorAll('.menu-links a').forEach(a => {
           if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
