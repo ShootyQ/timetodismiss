@@ -310,6 +310,45 @@
 
         .hdr-menu-panel .menu-auth{ margin-top:auto; display:flex; gap:8px; }
         .hdr-menu-panel .btn{ padding:.5rem .7rem; border-radius:10px; }
+        /* Mobile account popover */
+        .hdr-account-pop{ position:fixed; top:54px; right:10px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; box-shadow:0 8px 28px -4px rgba(2,6,23,.25); padding:12px 14px; min-width:230px; z-index:1100; display:flex; flex-direction:column; gap:10px; animation:hdrPopIn .17s ease; }
+        .hdr-account-pop[hidden]{ display:none !important; }
+        .hdr-account-pop h4{ margin:0 0 4px; font-size:.75rem; font-weight:800; text-transform:uppercase; letter-spacing:.6px; color:#64748b; }
+        .hdr-account-pop .acct-email{ font-size:.85rem; font-weight:600; word-break:break-all; line-height:1.15; }
+        .hdr-account-pop .acct-roles{ font-size:.6rem; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#475569; opacity:.9; }
+        .hdr-account-pop hr{ border:0; height:1px; background:#f1f5f9; margin:2px 0 4px; }
+        .hdr-account-pop button{ font-size:.78rem; }
+        @keyframes hdrPopIn{ 0%{ opacity:0; transform:translateY(-6px) scale(.97);} 100%{ opacity:1; transform:translateY(0) scale(1);} }
+
+        /* Layered Slide + Micro Motion enhancements */
+        body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transition:filter .35s, transform .35s; }
+        body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ filter:saturate(.82) brightness(.97); }
+        /* Panel refined motion */
+        .hdr-menu-panel{ will-change:transform; }
+        body.menu-open .hdr-menu-panel{ animation:hdrPanelIn .42s cubic-bezier(.18,.9,.25,1); }
+        @keyframes hdrPanelIn { 0%{ transform:translateX(104%) scale(.98); } 55%{ transform:translateX(-3%) scale(1); } 70%{ transform:translateX(1%);} 100%{ transform:translateX(0); } }
+        /* Staggered nav items */
+        .hdr-menu-panel .menu-links a{ position:relative; opacity:0; transform:translateX(14px); }
+        body.menu-open .hdr-menu-panel.open .menu-links a{ animation:hdrItemIn .55s forwards cubic-bezier(.18,.9,.25,1); }
+        .hdr-menu-panel .menu-links a:nth-child(1){ animation-delay:.06s; }
+        .hdr-menu-panel .menu-links a:nth-child(2){ animation-delay:.10s; }
+        .hdr-menu-panel .menu-links a:nth-child(3){ animation-delay:.14s; }
+        .hdr-menu-panel .menu-links a:nth-child(4){ animation-delay:.18s; }
+        .hdr-menu-panel .menu-links a:nth-child(5){ animation-delay:.22s; }
+        @keyframes hdrItemIn { 0%{ opacity:0; transform:translateX(14px); } 60%{ opacity:1; transform:translateX(-2px);} 100%{ opacity:1; transform:translateX(0);} }
+        /* Active / focus states */
+        .hdr-menu-panel .menu-links a:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; background:#eff6ff; }
+        .hdr-menu-panel .menu-links a:active{ background:#f1f5f9; }
+        /* Ripple effect */
+        .hdr-menu-panel .menu-links a{ overflow:hidden; }
+        .hdr-ripple{ position:absolute; border-radius:50%; background:rgba(59,130,246,.28); transform:scale(0); animation:hdrRipple .55s ease-out; pointer-events:none; mix-blend-mode:multiply; }
+        @keyframes hdrRipple { to { transform:scale(2.7); opacity:0; } }
+        /* Reduced motion accessibility */
+        @media (prefers-reduced-motion: reduce){
+          body.menu-open > *:not(.hdr-menu-panel):not(.hdr-menu-scrim):not(#hdrAccountPop){ transform:none !important; filter:none !important; }
+          .hdr-menu-panel, .hdr-menu-panel .menu-links a{ animation:none !important; transition:none !important; opacity:1 !important; transform:none !important; }
+          .hdr-ripple{ display:none !important; }
+        }
       }
       `;
       const style = document.createElement('style');
@@ -335,6 +374,28 @@
         btn.setAttribute('aria-expanded','true');
         scrim.hidden = false;
         panel.hidden = false;
+        panel.classList.add('open');
+        // Prepare stagger: force reflow so animation restarts when reopened
+        void panel.offsetWidth; // reflow
+        // Attach ripple handlers once
+        panel.querySelectorAll('.menu-links a').forEach(a => {
+          if (a.dataset.rippleReady) return; a.dataset.rippleReady = '1';
+          a.addEventListener('click', (e) => {
+            try {
+              const rect = a.getBoundingClientRect();
+              const r = document.createElement('span');
+              r.className = 'hdr-ripple';
+              const size = Math.max(rect.width, rect.height);
+              const x = e.clientX - rect.left - size/2;
+              const y = e.clientY - rect.top - size/2;
+              r.style.width = r.style.height = size + 'px';
+              r.style.left = x + 'px';
+              r.style.top = y + 'px';
+              a.appendChild(r);
+              setTimeout(()=>{ r.remove(); }, 600);
+            } catch {}
+          });
+        });
         // focus first item for quick keyboard access
         const first = panel.querySelector(focusableSel);
         if (first) setTimeout(() => first.focus(), 50);
@@ -343,6 +404,7 @@
       function close(){
         document.body.classList.remove('menu-open');
         btn.setAttribute('aria-expanded','false');
+        panel.classList.remove('open');
         // let the slide-out finish before hiding for better a11y tree stability
         setTimeout(() => { scrim.hidden = true; panel.hidden = true; }, 260);
         document.removeEventListener('keydown', onKey);
@@ -388,6 +450,67 @@
   const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
   const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
   const hdrSignOut   = header.querySelector('#hdrSignOut');
+  // Will lazily create a mobile account popover
+  let hdrAccountPop = null;
+  function buildHdrAccountPop(){
+    if (hdrAccountPop) return hdrAccountPop;
+    hdrAccountPop = document.createElement('div');
+    hdrAccountPop.id = 'hdrAccountPop';
+    hdrAccountPop.className = 'hdr-account-pop';
+    hdrAccountPop.hidden = true;
+    hdrAccountPop.innerHTML = `
+      <div class="acct-email" id="mAcctEmail">Not signed in</div>
+      <div class="acct-roles" id="mAcctRoles"></div>
+      <hr />
+      <div id="mAcctSignInBtns" style="display:flex; flex-direction:column; gap:6px;">
+        <button type="button" id="mSignInGoogle" class="btn btn-outline" style="width:100%;">Sign in with Google</button>
+        <button type="button" id="mSignInMicrosoft" class="btn btn-outline" style="width:100%;">Microsoft</button>
+      </div>
+      <div id="mAcctAuthedBtns" style="display:none; flex-direction:column; gap:6px;">
+        <button type="button" id="mSignOut" class="btn btn-danger" style="width:100%;">Sign out</button>
+      </div>`;
+    document.body.appendChild(hdrAccountPop);
+    // Wire events
+    const g = hdrAccountPop.querySelector('#mSignInGoogle');
+    const m = hdrAccountPop.querySelector('#mSignInMicrosoft');
+    const so= hdrAccountPop.querySelector('#mSignOut');
+    g?.addEventListener('click', (e) => { e.stopPropagation(); startSignIn('google'); closeHdrAccountPop(); });
+    m?.addEventListener('click', (e) => { e.stopPropagation(); startSignIn('microsoft'); closeHdrAccountPop(); });
+    so?.addEventListener('click', (e) => { e.stopPropagation(); auth.signOut(); closeHdrAccountPop(); });
+    return hdrAccountPop;
+  }
+  function refreshHdrAccountPop(user){
+    const pop = buildHdrAccountPop();
+    const emailEl = pop.querySelector('#mAcctEmail');
+    const rolesEl = pop.querySelector('#mAcctRoles');
+    const signInBox = pop.querySelector('#mAcctSignInBtns');
+    const authedBox = pop.querySelector('#mAcctAuthedBtns');
+    if (!user){
+      if (emailEl) emailEl.textContent = 'Not signed in';
+      if (rolesEl) rolesEl.textContent = '';
+      if (signInBox) signInBox.style.display = 'flex';
+      if (authedBox) authedBox.style.display = 'none';
+    } else {
+      if (emailEl) emailEl.textContent = user.email || '(no email)';
+      const rb = document.querySelector('#roleBadge');
+      if (rolesEl) rolesEl.textContent = (rb && rb.textContent) ? rb.textContent : '';
+      if (signInBox) signInBox.style.display = 'none';
+      if (authedBox) authedBox.style.display = 'flex';
+    }
+  }
+  function openHdrAccountPop(){
+    const pop = buildHdrAccountPop();
+    refreshHdrAccountPop(auth?.currentUser || null);
+    pop.hidden = false;
+    document.addEventListener('click', onHdrAccountDocClick, { capture:true });
+  }
+  function closeHdrAccountPop(){ if (hdrAccountPop) { hdrAccountPop.hidden = true; } document.removeEventListener('click', onHdrAccountDocClick, { capture:true }); }
+  function onHdrAccountDocClick(e){ if (!hdrAccountPop || hdrAccountPop.hidden) return; if (hdrAccountPop.contains(e.target) || hdrAuthBtn.contains(e.target)) return; closeHdrAccountPop(); }
+  hdrAuthBtn?.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (hdrAccountPop && !hdrAccountPop.hidden){ closeHdrAccountPop(); return; }
+    openHdrAccountPop();
+  });
   // School switcher elements
   const schoolBox   = header.querySelector('#schoolBox');
   const schoolNameEl= header.querySelector('#schoolName');
@@ -862,6 +985,7 @@
   if (hdrSignInGoogle)  hdrSignInGoogle.style.display  = 'none';
   if (hdrSignInMicrosoft)  hdrSignInMicrosoft.style.display  = 'none';
   if (hdrSignOut) hdrSignOut.style.display = '';
+  try { if (hdrAccountPop && !hdrAccountPop.hidden) refreshHdrAccountPop(user); } catch {}
 
   try {
         // Step B: ensure claims exist (may call CF and refresh token)
