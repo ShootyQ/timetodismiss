@@ -168,8 +168,6 @@
       </label>
       <div class="spacer"></div>
       <div class="small" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-        <a id="toClassic" class="btn btn-outline" href="/master.html" style="font-size:.7rem;">Classic</a>
-        <a id="toVoice" class="btn btn-outline" href="/voice.html" style="font-size:.7rem;">Voice</a>
         <a id="toHub" class="btn btn-outline" href="/callerhub.html" style="font-size:.7rem;">Hub</a>
         <button id="endSessionBtn" class="btn btn-danger" type="button" style="font-size:.7rem;">End Dismissal</button>
       </div>
@@ -215,8 +213,6 @@
   const scanAutoWrap = document.getElementById('scanAutoWrap');
   const scanHelp = document.getElementById('scanHelp');
   const tilesCount = document.getElementById('tilesCount');
-  const toClassic = document.getElementById('toClassic');
-  const toVoice = document.getElementById('toVoice');
   const toHub = document.getElementById('toHub');
   const endSessionBtn = document.getElementById('endSessionBtn');
   const tilesSessionBar = document.getElementById('tilesSessionBar');
@@ -281,8 +277,6 @@
   const urlParams = new URLSearchParams(location.search);
   const sessionId = urlParams.get('session');
   if (sessionId){
-    if (toClassic) toClassic.href = '/master.html?session=' + encodeURIComponent(sessionId);
-    if (toVoice) toVoice.href = '/voice.html?session=' + encodeURIComponent(sessionId);
     if (toHub) toHub.href = '/callerhub.html?session=' + encodeURIComponent(sessionId);
     if (tilesSessionBar) tilesSessionBar.style.display='block';
     (async ()=>{

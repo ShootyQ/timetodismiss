@@ -7,17 +7,14 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="/styles.css?v=2025-10-03-HUB1" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-09-HUB2" />
   <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
   <style>
     .hub-main{ padding:18px 0 40px; }
-    .modes-grid{ display:grid; gap:18px; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); margin:20px 0 30px; }
-    .mode-card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px 16px; cursor:pointer; display:flex; flex-direction:column; gap:10px; position:relative; }
-    .mode-card input{ position:absolute; inset:0; opacity:0; cursor:pointer; }
-    .mode-card h3{ margin:0; font-size:1rem; font-weight:800; }
-    .mode-card p{ margin:0; font-size:.8rem; line-height:1.3; color:#475569; }
-    .mode-card.selected{ outline:3px solid var(--accent,#2563eb); outline-offset:2px; border-color:var(--accent,#2563eb); background:#f1f8ff; }
-    .actions{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .start-card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 16px; display:flex; flex-direction:column; gap:12px; position:relative; }
+  .start-card h3{ margin:0; font-size:1rem; font-weight:800; }
+  .start-card p{ margin:0; font-size:.9rem; line-height:1.35; color:#475569; }
+  .actions{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     .muted{ color:#64748b; }
   .start-box{ display:flex; flex-direction:column; gap:14px; max-width:740px; margin:10px auto 0; align-items:center; text-align:center; }
   .start-box button{ font-size:1.15rem; font-weight:800; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 4px 18px -4px rgba(30,58,138,.25); transform:translateY(0); transition: background .18s ease, transform .18s ease, box-shadow .18s ease; }
@@ -36,30 +33,16 @@
     <p class="small muted" id="hubCtx">—</p>
 
     <section>
-      <p>Select a calling interface. After you choose, you can start a new calling session; we'll record when it began for analytics.</p>
-      <div class="modes-grid" id="modes">
-        <label class="mode-card" data-mode="classic">
-          <input type="radio" name="mode" value="classic" />
-          <h3>Classic List</h3>
-          <p>The original master roster view (master.html).</p>
-        </label>
-        <label class="mode-card" data-mode="tiles">
-          <input type="radio" name="mode" value="tiles" />
-          <h3>Tiles View</h3>
-          <p>Large tap targets; optimized for mobile calling (mastercaller.html).</p>
-        </label>
-        <label class="mode-card" data-mode="voice">
-          <input type="radio" name="mode" value="voice" />
-          <h3>Voice Assist</h3>
-          <p>Experimental voice command driven caller (voice.html).</p>
-        </label>
-      </div>
-      <div class="start-box">
-        <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
-        <div class="session-note" id="sessionNote">Choose a calling interface above, then start.</div>
-        <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
-          <input type="checkbox" id="resetOnStart" /> Reset all statuses to Waiting on start
-        </label>
+      <div class="start-card">
+        <h3>Start Calling</h3>
+        <p>We use the new Tiles view for calling. Start a session to begin timing, or join an active session.</p>
+        <div class="start-box">
+          <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
+          <div class="session-note" id="sessionNote">Press Start to go to Tiles.</div>
+          <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
+            <input type="checkbox" id="resetOnStart" /> Reset all statuses to Waiting on start
+          </label>
+        </div>
       </div>
     </section>
 
@@ -87,11 +70,10 @@
     document.addEventListener('sd:claims-ready', updateCtx);
     updateCtx();
 
-    const modesEl = document.getElementById('modes');
     const startBtn = document.getElementById('startBtn');
   const sessionNote = document.getElementById('sessionNote');
   const resetOnStart = document.getElementById('resetOnStart');
-  let selected = null;
+  const selected = 'tiles';
   let activeSession = null; // { id, ...data }
   let joinMode = false;     // true when we are in "join existing session" state
   const LS_LAST_MODE = 'HUB_LAST_MODE';
@@ -109,11 +91,7 @@
             // Restore start UI if no active session
             startBtn.textContent = 'Start Calling Now';
             startBtn.disabled = false;
-            if(!selected){
-              const last = localStorage.getItem(LS_LAST_MODE);
-              if(last){ selectModeCard(last); }
-            }
-            sessionNote.innerHTML = 'Choose a calling interface above, then start.';
+            sessionNote.innerHTML = 'Press Start to go to Tiles.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
             return;
           }
@@ -122,16 +100,11 @@
             activeSession = { id: d.id, ...d.data() };
             joinMode = true;
             const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
-            sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Select your view and join.';
+            sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Press Join.';
             startBtn.textContent = 'Join Active Session';
             startBtn.disabled = false;
             // Hide reset option when joining
             resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
-            // If a previous selection existed keep it; else restore last mode
-            if(!selected){
-              const last = localStorage.getItem(LS_LAST_MODE) || 'classic';
-              selectModeCard(last);
-            }
             if(prevId && prevId !== activeSession.id){
               console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
             }
@@ -139,44 +112,17 @@
       } catch(e){ console.warn('[hub] active session watcher failed', e); }
     })();
 
-    function selectModeCard(val){
-      const card = modesEl.querySelector('.mode-card[data-mode="'+val+'"]');
-      if(!card) return;
-      [...modesEl.querySelectorAll('.mode-card')].forEach(c => c.classList.toggle('selected', c===card));
-      selected = val;
-      localStorage.setItem(LS_LAST_MODE, val);
-      sessionNote.classList.remove('warn');
-      if(joinMode){
-        sessionNote.innerHTML = 'Active session since <strong>' + (activeSession?.startedAt?.toDate?.()?.toLocaleTimeString?.()||'') + '</strong>. Press Join.';
-      } else {
-        sessionNote.textContent = 'Ready. Starting will log a session start timestamp.';
-      }
-    }
-    modesEl.addEventListener('click', (e) => {
-      const card = e.target.closest('.mode-card');
-      if (!card) return;
-      selectModeCard(card.getAttribute('data-mode'));
-    });
-
     function navFor(mode, id){
-      if (mode === 'classic') return '/master.html?session='+encodeURIComponent(id);
-      if (mode === 'tiles') return '/mastercaller.html?session='+encodeURIComponent(id);
-      if (mode === 'voice') return '/voice.html?session='+encodeURIComponent(id);
-      return '/master.html?session='+encodeURIComponent(id);
+      return '/mastercaller.html?session='+encodeURIComponent(id);
     }
 
     async function startSession(){
-      if(!selected){
-        sessionNote.textContent = 'Please select an interface first.';
-        sessionNote.classList.add('warn');
-        startBtn.blur();
-        return;
-      }
+      // Only Tiles is supported now
       // JOIN FLOW
       if(joinMode && activeSession && activeSession.id){
         startBtn.disabled = true;
         startBtn.textContent = 'Joining…';
-        const nav = navFor(selected, activeSession.id);
+        const nav = navFor('tiles', activeSession.id);
         setTimeout(()=>{ location.href = nav; }, 30);
         return;
       }
@@ -185,7 +131,7 @@
       startBtn.textContent = 'Starting…';
       try {
         const docRef = await addDoc(colPath('callSessions'), {
-          mode: selected,
+          mode: 'tiles',
           startedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
             userId: (window.SD && window.SD.userId) || (window.SD && window.SD.uid) || null,
@@ -217,7 +163,7 @@
             sessionNote.textContent = 'Reset '+totalChanged+' students to Waiting. Redirecting…';
           } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
-        const nav = navFor(selected, id);
+        const nav = navFor('tiles', id);
         setTimeout(()=>{ location.href = nav; }, 50);
       } catch(e){
         console.error('[callHub] start session failed', e);

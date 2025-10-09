@@ -462,7 +462,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const tag = (ae && ae.tagName) ? ae.tagName.toUpperCase() : '';
       const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable));
       const path = location.pathname.replace(/\/+$/, '');
-      const isMasterPage = (path === '/master.html') && !!document.getElementById('openScanner');
+  const isMasterPage = ((path === '/master.html') || (path === '/mastercaller.html')) && (!!document.getElementById('openScanner') || !!document.getElementById('tiles'));
       if (!isTyping && isMasterPage) open();
     }
   });

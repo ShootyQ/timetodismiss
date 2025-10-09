@@ -51,7 +51,7 @@
     <header class="voice-head">
       <h1 id="voiceTitle" class="voice-head-title">Voice Caller</h1>
       <div class="voice-nav-btns" role="navigation" aria-label="Caller Views">
-        <a id="navClassic" class="btn btn-outline" href="/master.html">Classic</a>
+  <a id="navClassic" class="btn btn-outline" href="/mastercaller.html">Tiles</a>
         <a id="navTiles" class="btn btn-outline" href="/mastercaller.html">Tiles</a>
         <a id="navHub" class="btn btn-outline" href="/callerhub.html">Hub</a>
         <button id="endVoiceSession" class="btn btn-danger" type="button">End</button>
@@ -88,7 +88,7 @@
     const tilesEl        = document.getElementById('tiles');
     const tilesTitle     = document.getElementById('tilesTitle');
     const hintEl         = document.getElementById('hint');
-    const navClassic     = document.getElementById('navClassic');
+  const navClassic     = document.getElementById('navClassic');
     const navTiles       = document.getElementById('navTiles');
     const navHub         = document.getElementById('navHub');
     const endVoiceBtn    = document.getElementById('endVoiceSession');
@@ -102,7 +102,7 @@
     const vUrlParams = new URLSearchParams(location.search);
     const vSessionId = vUrlParams.get('session');
     if (vSessionId){
-      if (navClassic) navClassic.href = '/master.html?session=' + encodeURIComponent(vSessionId);
+  if (navClassic) navClassic.href = '/mastercaller.html?session=' + encodeURIComponent(vSessionId);
       if (navTiles) navTiles.href = '/mastercaller.html?session=' + encodeURIComponent(vSessionId);
       if (navHub) navHub.href = '/callerhub.html?session=' + encodeURIComponent(vSessionId);
       (async ()=>{
