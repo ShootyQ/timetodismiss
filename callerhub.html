@@ -63,6 +63,16 @@
   import { addDoc, serverTimestamp, getDocs, query, where, writeBatch, getFirestore, onSnapshot, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
     await init();
 
+    // Ensure tenant context (orgId/schoolId) before using colPath
+    async function waitForContext(maxMs=12000){
+      const start = Date.now();
+      while(Date.now()-start < maxMs){
+        if (window.SD?.orgId && window.SD?.schoolId) return true;
+        await new Promise(r=>setTimeout(r,120));
+      }
+      return false;
+    }
+
     // Context chip
     const hubCtx = document.getElementById('hubCtx');
     function updateCtx(){ const name = window.SD && (window.SD.schoolName || window.SD.schoolId); if (hubCtx) hubCtx.textContent = name || '—'; }
@@ -79,10 +89,13 @@
   const LS_LAST_MODE = 'HUB_LAST_MODE';
 
     // Realtime watcher for active session (endedAt == null)
-    (function watchActive(){
+    (async function watchActive(){
       try {
+        // Wait for org/school context since colPath depends on it
+        await waitForContext();
         const col = colPath('callSessions');
-        const qy = query(col, where('endedAt','==', null), orderBy('startedAt','desc'), limit(1));
+        // Get the most recent session and check if it's active (endedAt missing or null)
+        const qy = query(col, orderBy('startedAt','desc'), limit(1));
         onSnapshot(qy, (snap) => {
           const prevId = activeSession?.id || null;
           if (snap.empty){
@@ -97,7 +110,8 @@
           }
           // Use most recent (first doc)
             const d = snap.docs[0];
-            activeSession = { id: d.id, ...d.data() };
+            const data = d.data();
+            activeSession = { id: d.id, ...data };
             joinMode = true;
             const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
             sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Press Join.';
@@ -109,7 +123,8 @@
             try {
               const u = new URL(location.href);
               const stay = u.searchParams.get('stay');
-              if (stay !== '1' && activeSession && activeSession.id) {
+              const isActive = !('endedAt' in data) || data.endedAt == null;
+              if (stay !== '1' && isActive && activeSession && activeSession.id) {
                 startBtn.textContent = 'Joining…';
                 startBtn.disabled = true;
                 const nav = navFor('tiles', activeSession.id);
@@ -120,7 +135,24 @@
             if(prevId && prevId !== activeSession.id){
               console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
             }
-        }, (err)=> console.warn('[hub] active session snapshot error', err));
+        }, async (err)=> {
+          console.warn('[hub] active session snapshot error', err);
+          // Fallback: one-shot check; if active, redirect
+          try {
+            const fs = getFirestore();
+            const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid) return;
+            const { collection, getDocs, orderBy: ob, limit: lim, query: qy2 } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+            const snap2 = await getDocs(qy2(coll, ob('startedAt','desc'), lim(1)));
+            if(!snap2.empty){
+              const d2 = snap2.docs[0]; const data2 = d2.data();
+              const id = d2.id; const isActive = !('endedAt' in data2) || data2.endedAt == null;
+              if(!isActive) return;
+              const u = new URL(location.href); if(u.searchParams.get('stay')==='1') return;
+              location.replace('/mastercaller.html?session='+encodeURIComponent(id));
+            }
+          } catch(e2){ console.warn('[hub] active session fallback check failed', e2); }
+        });
       } catch(e){ console.warn('[hub] active session watcher failed', e); }
     })();
 

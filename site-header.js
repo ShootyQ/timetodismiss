@@ -408,17 +408,19 @@
     try {
       const oid = window.SD?.orgId; const sid = window.SD?.schoolId;
       if (!oid || !sid) { location.href = '/callerhub.html'; return; }
-      const db = firebase.firestore();
-      const q = db.collection('orgs').doc(oid).collection('schools').doc(sid)
-        .collection('callSessions')
-        .where('endedAt','==', null)
-        .orderBy('startedAt','desc')
-        .limit(1);
-      const snap = await q.get();
+      const { getFirestore, collection, query, orderBy, limit, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const fs = getFirestore();
+      const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+      const qy = query(coll, orderBy('startedAt','desc'), limit(1));
+      const snap = await getDocs(qy);
       if (!snap.empty) {
-        const id = snap.docs[0].id;
-        location.href = '/mastercaller.html?session=' + encodeURIComponent(id);
-        return;
+        const d = snap.docs[0]; const data = d.data();
+        const isActive = !('endedAt' in data) || data.endedAt == null;
+        if (isActive){
+          const id = d.id;
+          location.href = '/mastercaller.html?session=' + encodeURIComponent(id);
+          return;
+        }
       }
       location.href = '/callerhub.html';
     } catch {

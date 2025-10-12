@@ -305,24 +305,20 @@
     if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return;
     endSessionBtn.disabled = true; endSessionBtn.textContent='Ending…';
     try {
-      const { updateDoc, doc, serverTimestamp, setDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-      // Use app.js helpers indirectly; rely on global SD context
-      const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId;
-      if (!oid || !sid) throw new Error('Missing org/school context');
-      const path = ['orgs', oid, 'schools', sid, 'callSessions', sessionId];
-      const firestore = (await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js')).getFirestore?.() || null;
-      // Build ref via doc() overload using spread path
-      const ref = doc(firestore, ...path);
-      await updateDoc(ref, { endedAt: serverTimestamp() });
+      const { updateDoc, doc, serverTimestamp, setDoc, increment, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const fs = getFirestore();
+      const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if (!oid || !sid) throw new Error('Missing org/school context');
+      const sessRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
+      await updateDoc(sessRef, { endedAt: serverTimestamp() });
       try {
-        const signalRef = doc(firestore,'orgs',oid,'schools',sid,'signals','dismissal');
+        const signalRef = doc(fs,'orgs',oid,'schools',sid,'signals','dismissal');
         await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
       } catch(sigErr){ console.warn('[tiles] dismissal signal failed', sigErr); }
       tilesEnded=true;
       try { if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch {}
       if(tilesStartedAt && tilesSessionElapsed){ const ms = Date.now() - tilesStartedAt.getTime(); tilesSessionElapsed.textContent = tilesFmt(ms); }
       endSessionBtn.textContent='Dismissal Ended';
-    } catch(e){ console.warn('[tiles] end session failed', e); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
+    } catch(e){ console.warn('[tiles] end session failed', e); alert('Could not end dismissal here. Try Analytics → End Now.'); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
   }
   endSessionBtn?.addEventListener('click', endSession);
 
