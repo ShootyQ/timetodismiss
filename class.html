@@ -92,6 +92,10 @@
           <input id="buzzToggle" type="checkbox" />
           <span>Buzz on calls</span>
         </label>
+        <label class="switch small calledonly-switch in-sheet">
+          <input id="showCalledOnly" type="checkbox" />
+          <span>Only show called</span>
+        </label>
       </div>
       <button id="selectAllBtn" class="btn btn-secondary" type="button">All</button>
       <button id="clearSelBtn" class="btn btn-outline" type="button">Clear</button>
@@ -373,6 +377,30 @@
       if (buzzOn) tryBuzz([20, 40, 20]);
     });
 
+    // --- show only called preference ---
+    const CALLED_ONLY_KEY = 'TTD_ShowOnlyCalled';
+    const showCalledOnlyEl = document.getElementById('showCalledOnly');
+    let showCalledOnly = false;
+    try {
+      const savedCO = localStorage.getItem(CALLED_ONLY_KEY);
+      showCalledOnly = savedCO === '1';
+      if (showCalledOnlyEl) showCalledOnlyEl.checked = showCalledOnly;
+    } catch {}
+    function applyCalledOnlyVisibility(){
+      try {
+        document.querySelectorAll('.student-list.waiting-list').forEach(ul => {
+          ul.style.display = showCalledOnly ? 'none' : '';
+        });
+      } catch {}
+    }
+    applyCalledOnlyVisibility();
+    showCalledOnlyEl?.addEventListener('change', () => {
+      showCalledOnly = !!showCalledOnlyEl.checked;
+      try { localStorage.setItem(CALLED_ONLY_KEY, showCalledOnly ? '1' : '0'); } catch {}
+      applyCalledOnlyVisibility();
+      try { document.dispatchEvent(new CustomEvent('sd:class-filter-changed')); } catch {}
+    });
+
     // --- toast banner ---
     function showToast(text) {
       if (!toastHost) return;
@@ -448,7 +476,7 @@
           if (li) {
             const sec = li.closest('section');
             const waitList = sec?.querySelector('.waiting-list');
-            if (waitList) {
+            if (waitList && !(typeof showCalledOnly !== 'undefined' && showCalledOnly)) {
               const nameHtml = li.querySelector('.name')?.outerHTML || '';
               const tagHtml  = li.querySelector('.car-tag')?.outerHTML || '';
               const newLi = document.createElement('li');
@@ -580,6 +608,7 @@
       calledUl.className = 'student-list called-shelf';
       const waitUl = document.createElement('ul');
       waitUl.className = 'student-list waiting-list';
+  try { if (typeof showCalledOnly !== 'undefined' && showCalledOnly) waitUl.style.display = 'none'; } catch{}
 
       board.appendChild(calledUl);
       board.appendChild(waitUl);
@@ -810,33 +839,39 @@
             }).join('');
           }
 
-          // Render waiting/picked list (compact)
-          waitUl.innerHTML = rest.map(s => {
-            const statusClass =
-              s.status === 'picked_up' ? 'picked picked_up' : (s.status === 'en_route' ? 'waiting en_route' : (s.status === 'absent' ? 'waiting absent' : 'waiting'));
-            const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
-            const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
-            return `
-              <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
-                <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
-                ${tag}
-                <span class="status">${statusLabel}</span>
-              </li>`;
-          }).join('');
-
-          // Append absents at bottom with distinct color and label
-          if (absents.length) {
-            absents.sort(byName);
-            const html = absents.map(s => {
+          // Render waiting/picked list (compact) unless in called-only mode
+          if (typeof showCalledOnly !== 'undefined' && showCalledOnly) {
+            waitUl.innerHTML = '';
+            waitUl.style.display = 'none';
+          } else {
+            waitUl.style.display = '';
+            waitUl.innerHTML = rest.map(s => {
+              const statusClass =
+                s.status === 'picked_up' ? 'picked picked_up' : (s.status === 'en_route' ? 'waiting en_route' : (s.status === 'absent' ? 'waiting absent' : 'waiting'));
               const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+              const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
               return `
-                <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
-                  <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/"/g,'&quot;')}\">${s.displayName || s.name}</span>
+                <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
+                  <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}">${s.displayName || s.name}</span>
                   ${tag}
-                  <span class=\"status\">Absent</span>
+                  <span class="status">${statusLabel}</span>
                 </li>`;
             }).join('');
-            waitUl.insertAdjacentHTML('beforeend', html);
+
+            // Append absents at bottom with distinct color and label
+            if (absents.length) {
+              absents.sort(byName);
+              const html = absents.map(s => {
+                const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+                return `
+                  <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
+                    <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}\">${s.displayName || s.name}</span>
+                    ${tag}
+                    <span class=\"status\">Absent</span>
+                  </li>`;
+              }).join('');
+              waitUl.insertAdjacentHTML('beforeend', html);
+            }
           }
 
   // Toast + ding + optional buzz for transitions to called, and clear any pending timers when leaving 'called'
@@ -1045,7 +1080,7 @@
           if (cb.checked){
             const lab = cb.closest('label');
             const text = (lab ? lab.textContent : cb.getAttribute('aria-label') || '')?.trim();
-            if (text && !/buzz/i.test(text)) labels.push(text);
+            if (text && !/buzz/i.test(text) && !/Only show called/i.test(text)) labels.push(text);
           }
         });
         if (summary) summary.textContent = labels.length ? labels.join(', ') : 'No classes selected';
