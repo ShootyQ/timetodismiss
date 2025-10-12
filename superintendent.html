@@ -22,6 +22,9 @@
 		.row-between{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 		.list{ list-style:none; padding:0; margin:0; display:grid; gap:10px; }
 		.school-item{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; }
+		.admin-list{ list-style:none; padding:6px 0 0; margin:6px 0 0; display:grid; gap:6px; }
+		.admin-pill{ display:flex; align-items:center; justify-content:space-between; gap:8px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:6px 8px; }
+		.admin-pill small{ color: var(--muted); }
 	</style>
 	<script>
 		// Lightweight toast helper (text-only)
@@ -56,7 +59,33 @@
 				const li = document.createElement('li');
 				li.className = 'school-item';
 				const count = (window.__ADMIN_COUNTS__ && typeof window.__ADMIN_COUNTS__[s.id] === 'number') ? window.__ADMIN_COUNTS__[s.id] : (Array.isArray(s.admins) ? s.admins.length : 0);
-				li.innerHTML = `<div class="row-between"><strong>${escapeHtml(s.name || s.id)}</strong><span class="muted small">Admins: ${count}</span></div>`;
+				const admins = (window.__ADMIN_LIST__ && Array.isArray(window.__ADMIN_LIST__[s.id])) ? window.__ADMIN_LIST__[s.id] : [];
+				const aid = `admins-${s.id}`;
+				li.innerHTML = `
+				  <div class="row-between">
+				    <strong>${escapeHtml(s.name || s.id)}</strong>
+				    <span class="muted small">Admins: <span data-admin-count for="${s.id}">${count}</span></span>
+				  </div>
+				  <ul id="${aid}" class="admin-list"></ul>
+				`;
+				// Render current admin rows
+				const ulAdmins = li.querySelector('#'+aid);
+				if (admins.length === 0){
+					const empty = document.createElement('li');
+					empty.className = 'muted small';
+					empty.textContent = 'No admins yet';
+					ulAdmins.appendChild(empty);
+				} else {
+					admins.forEach(a => {
+						const row = document.createElement('li');
+						row.className = 'admin-pill';
+						const name = a.displayName ? `${a.displayName}` : '';
+						const email = a.email || '';
+						row.innerHTML = `<div><strong>${escapeHtml(name || email || a.uid || '')}</strong>${email && name ? ` <small>${escapeHtml(email)}</small>` : ''}</div>` +
+						  `<div><button class="btn btn-outline small" data-action="remove-admin" data-school-id="${s.id}" data-uid="${a.uid || a.id}">Remove</button></div>`;
+						ulAdmins.appendChild(row);
+					});
+				}
 				ul.appendChild(li);
 			});
 			if(sel){
@@ -72,6 +101,8 @@
 			const { db, fx, orgId } = ctx;
 			const addBtn = document.getElementById('addSchoolBtn');
 			const inviteForm = document.getElementById('inviteForm');
+			// make orgId available for admin actions
+			window.__ORG_ID__ = orgId;
 
 			// State for quota reconciliation
 			const state = { allowed: 0, usedFromOrg: 0, schoolsCount: 0 };
@@ -95,7 +126,9 @@
 					// Update quota based on live count
 					state.schoolsCount = list.length;
 					renderQuota({ used: state.schoolsCount || state.usedFromOrg, allowed: state.allowed });
-					// Start/refresh admin count listeners per school
+					// cache list for re-render on admin updates
+					window.__SCHOOLS_CACHE__ = list;
+					// Start/refresh admin listeners per school
 					ensureAdminCounts(db, orgId, list.map(s => s.id));
 					renderSchools(list);
 				});
@@ -170,42 +203,78 @@
 		document.addEventListener('DOMContentLoaded', requireSuperintendent);
 	</script>
 	<script>
-		// Maintain live admin counts per school (roles array-contains 'admin')
+		// Maintain live admin counts per school (supports roles array OR roles.admin map)
 		(function(){
-			let unsubMap = new Map(); // schoolId -> unsubscribe
+			// schoolId -> combined unsubscribe
+			let unsubMap = new Map();
 			window.__ADMIN_COUNTS__ = window.__ADMIN_COUNTS__ || {};
+			window.__ADMIN_LIST__ = window.__ADMIN_LIST__ || {};
+			function buildUnsub(unsubs){ return () => { for (const u of unsubs) { try { u(); } catch {} } } }
 			window.ensureAdminCounts = function(db, orgId, schoolIds){
 				// Unsubscribe removed schools
 				for (const [sid, unsub] of Array.from(unsubMap.entries())){
-					if (!schoolIds.includes(sid)) { try { unsub(); } catch {}; unsubMap.delete(sid); delete window.__ADMIN_COUNTS__[sid]; }
+					if (!schoolIds.includes(sid)) { try { unsub(); } catch {}; unsubMap.delete(sid); delete window.__ADMIN_COUNTS__[sid]; delete window.__ADMIN_LIST__[sid]; }
 				}
 				// Subscribe new schools
 				for (const sid of schoolIds){
 					if (unsubMap.has(sid)) continue;
 					try{
-						const q = db.collection('orgs').doc(orgId).collection('schools').doc(sid)
-							.collection('members').where('roles', 'array-contains', 'admin');
-						const unsub = q.onSnapshot((qs) => {
-							window.__ADMIN_COUNTS__[sid] = qs.size || 0;
-							// Re-render schools list count if present
-							try { const list = document.getElementById('schoolsList'); if (list) { /* trigger minimal refresh by dispatching event */ document.dispatchEvent(new CustomEvent('ttd:admin-counts-updated')); } } catch {}
-						});
-						unsubMap.set(sid, unsub);
-					}catch(e){ console.warn('admin count listen failed for', sid, e); }
+						const base = db.collection('orgs').doc(orgId).collection('schools').doc(sid).collection('members');
+						const listeners = [];
+						// Maintain per-source arrays so removals are reflected
+						const store = (window.__ADMIN_LIST_SOURCES__ = window.__ADMIN_LIST_SOURCES__ || {});
+						store[sid] = store[sid] || { array: [], map: [] };
+						const recalc = () => {
+							const arr = [...(store[sid].array || []), ...(store[sid].map || [])];
+							const uniq = new Map();
+							arr.forEach(x => { const key = x.uid || x.id; if (!key) return; if (!uniq.has(key)) uniq.set(key, x); });
+							window.__ADMIN_LIST__[sid] = Array.from(uniq.values());
+							window.__ADMIN_COUNTS__[sid] = window.__ADMIN_LIST__[sid].length;
+							document.dispatchEvent(new CustomEvent('ttd:admins-updated'));
+						};
+						// roles array format
+						listeners.push(base.where('roles', 'array-contains', 'admin').onSnapshot((qs)=>{
+							store[sid].array = qs.docs.map(d=>({ id:d.id, uid:(d.data()||{}).uid||d.id, email:(d.data()||{}).email||'', displayName:(d.data()||{}).displayName||'' }));
+							recalc();
+						}));
+						// roles map format
+						listeners.push(base.where('roles.admin', '==', true).onSnapshot((qs)=>{
+							store[sid].map = qs.docs.map(d=>({ id:d.id, uid:(d.data()||{}).uid||d.id, email:(d.data()||{}).email||'', displayName:(d.data()||{}).displayName||'' }));
+							recalc();
+						}));
+						unsubMap.set(sid, buildUnsub(listeners));
+					}catch(e){ console.warn('admin listen failed for', sid, e); }
 				}
 			};
-			// Re-render on counts update with current DOM state (cheap refresh via reading current items)
-			document.addEventListener('ttd:admin-counts-updated', () => {
-				try{
-					const ul = document.getElementById('schoolsList');
-					if (!ul) return;
-					ul.querySelectorAll('li.school-item').forEach(li => {
-						const title = li.querySelector('strong');
-						if (!title) return;
-						const name = title.textContent.trim();
-						// Find schoolId from sibling text (not reliable). Better to rebuild via renderSchools on main listener.
-					});
-				} catch {}
+			// Re-render schools list whenever admins change
+			document.addEventListener('ttd:admins-updated', () => {
+				try { if (window.__SCHOOLS_CACHE__) renderSchools(window.__SCHOOLS_CACHE__); } catch {}
+			});
+		})();
+	</script>
+	<script>
+		// Admin actions (remove admin)
+		(function(){
+			document.addEventListener('DOMContentLoaded', () => {
+				const ul = document.getElementById('schoolsList');
+				if (!ul) return;
+				ul.addEventListener('click', async (e) => {
+					const btn = e.target.closest('button[data-action="remove-admin"]');
+					if (!btn) return;
+					const schoolId = btn.getAttribute('data-school-id');
+					const uid = btn.getAttribute('data-uid');
+					if (!schoolId || !uid) return;
+					if (!confirm('Remove this admin from the school?')) return;
+					try{
+						const fx = (window.SD && window.SD.functions) ? window.SD.functions : firebase.app().functions('us-central1');
+						const setRoles = fx.httpsCallable('setSchoolMemberRoles');
+						await setRoles({ orgId: window.__ORG_ID__, schoolId, user: { uid }, roles: { admin:false, caller:false, viewer:false } });
+						setToast('Admin removed.');
+					}catch(err){
+						console.error(err);
+						setToast('Failed to remove admin: ' + (err?.message || err), true);
+					}
+				});
 			});
 		})();
 	</script>
