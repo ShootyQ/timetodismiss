@@ -627,19 +627,26 @@
 
     function queueAdds(clearRows=false){
       const rows = Array.from(memberRowsEl?.querySelectorAll('.member-row') || []);
-      pendingAdds.length = 0;
+      // Build a list from current visible rows
+      const fresh = [];
       for (const n of rows){
         const email = String(n.querySelector('.member-email')?.value || '').trim().toLowerCase();
         const role = String(n.querySelector('.member-role')?.value || 'admin').trim().toLowerCase();
         if (!email || !emailRe.test(email)) continue;
-        pendingAdds.push({ email, role: (role==='admin'||role==='caller'||role==='viewer')?role:'admin' });
+        fresh.push({ email, role: (role==='admin'||role==='caller'||role==='viewer')?role:'admin' });
       }
-      if (clearRows) memberRowsEl.innerHTML = '';
-      markDirty('__adds__', {role:'viewer'}, '__pending__'); // triggers count update only
-      dirtyChanges.delete('__adds__'); // ensure not treated as actual role change
-      const count = dirtyChanges.size + pendingAdds.length;
-      saveBtn.disabled = count===0;
-      dirtyStatusEl.textContent = count ? `${count} change${count===1?'':'s'} not saved` : '';
+      if (fresh.length){
+        // Merge with existing pending adds (de-dupe by email; prefer latest role)
+        const byEmail = new Map(pendingAdds.map(x => [x.email, x]));
+        fresh.forEach(x => byEmail.set(x.email, x));
+        pendingAdds.length = 0;
+        byEmail.forEach(v => pendingAdds.push(v));
+      }
+      if (clearRows && memberRowsEl) memberRowsEl.innerHTML = '';
+      // Trigger dirty indicator without persisting a fake role change
+      markDirty('__adds__', {role:'viewer'}, '__pending__');
+      dirtyChanges.delete('__adds__');
+      updateDirtyStatus();
     }
 
     function showStatus(text) {
