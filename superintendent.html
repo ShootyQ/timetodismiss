@@ -43,6 +43,17 @@
 		.admin-pill:hover{ background:#f3f4f6; border-color:#d1d5db; }
 		.admin-pill small{ color: var(--muted); }
 
+		/* School details disclosure */
+		details.school-details{ margin-top:6px; }
+		details.school-details > summary{ list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px dashed #e5e7eb; border-radius:10px; color:#334155; background:linear-gradient(180deg,#f8fafc,#ffffff); }
+		details.school-details[open] > summary{ border-style:solid; box-shadow:inset 0 0 0 1px #e5e7eb; }
+		.school-manage{ padding:10px 8px 4px; }
+		.inline-invite{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:2px 0 6px; }
+		.inline-invite input, .inline-invite select{ background:#fff; border:1px solid #d1d5db; border-radius:10px; padding:.5rem .6rem; }
+		.inline-invite button{ white-space:nowrap; }
+		.danger-zone{ display:flex; gap:8px; align-items:center; margin-top:10px; }
+		.btn-danger{ border-color:#ef4444; color:#991b1b; }
+
 		/* Forms */
 		.field{ display:flex; flex-direction:column; gap:6px; }
 		.field input, .field select{ background:#fff; border:1px solid #d1d5db; color:#0b132b; border-radius:12px; padding:.55rem .7rem; }
@@ -73,7 +84,6 @@
 		// Renders schools with live admin counts from state
 		function renderSchools(list){
 			const ul = document.getElementById('schoolsList');
-			const sel = document.getElementById('schoolSel');
 			if(!ul) return;
 			ul.innerHTML = '';
 			(list || []).forEach(s => {
@@ -82,12 +92,27 @@
 				const count = (window.__ADMIN_COUNTS__ && typeof window.__ADMIN_COUNTS__[s.id] === 'number') ? window.__ADMIN_COUNTS__[s.id] : (Array.isArray(s.admins) ? s.admins.length : 0);
 				const admins = (window.__ADMIN_LIST__ && Array.isArray(window.__ADMIN_LIST__[s.id])) ? window.__ADMIN_LIST__[s.id] : [];
 				const aid = `admins-${s.id}`;
+				li.setAttribute('data-school-id', s.id);
 				li.innerHTML = `
 				  <div class="row-between">
 				    <strong>${escapeHtml(s.name || s.id)}</strong>
 				    <span class="muted small">Admins: <span data-admin-count for="${s.id}">${count}</span></span>
 				  </div>
-				  <ul id="${aid}" class="admin-list"></ul>
+				  <details class="school-details">
+				    <summary>Manage</summary>
+				    <div class="school-manage">
+				      <div class="inline-invite" data-school-id="${s.id}">
+				        <input type="email" placeholder="name@school.org" data-invite-email aria-label="Admin email" />
+				        <select data-invite-role aria-label="Role"><option value="admin">Admin</option></select>
+				        <button class="btn btn-primary small" data-action="invite-admin" data-school-id="${s.id}">Add Admin</button>
+				      </div>
+				      <ul id="${aid}" class="admin-list"></ul>
+				      <div class="danger-zone">
+				        <button class="btn btn-outline btn-danger small" data-action="delete-school" data-school-id="${s.id}">Remove School</button>
+				        <button class="btn btn-outline btn-danger small" data-action="confirm-delete-school" data-school-id="${s.id}" hidden>Confirm Delete</button>
+				      </div>
+				    </div>
+				  </details>
 				`;
 				// Render current admin rows
 				const ulAdmins = li.querySelector('#'+aid);
@@ -109,19 +134,11 @@
 				}
 				ul.appendChild(li);
 			});
-			if(sel){
-				sel.innerHTML = '';
-				(list || []).forEach(s => {
-					const opt = document.createElement('option');
-					opt.value = s.id; opt.textContent = s.name || s.id; sel.appendChild(opt);
-				});
-			}
 		}
 
 		function initPortal(ctx){
 			const { db, fx, orgId } = ctx;
 			const addBtn = document.getElementById('addSchoolBtn');
-			const inviteForm = document.getElementById('inviteForm');
 			// make orgId available for admin actions
 			window.__ORG_ID__ = orgId;
 
@@ -169,22 +186,37 @@
 				}
 			});
 
-			inviteForm?.addEventListener('submit', async (e) => {
-				e.preventDefault();
-				const email = document.getElementById('inviteEmail')?.value?.trim();
-				const schoolId = document.getElementById('schoolSel')?.value;
-				const role = document.getElementById('roleSel')?.value || 'admin';
-				if(!email || !schoolId){ setToast('Email and school are required.', true); return; }
+			// Inline actions within the Schools list
+			document.getElementById('schoolsList')?.addEventListener('click', async (e) => {
+				const btn = e.target.closest('button'); if (!btn) return;
+				const action = btn.getAttribute('data-action'); if (!action) return;
+				const schoolId = btn.getAttribute('data-school-id');
 				try{
-					const inviteUser = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('inviteUser');
-					await inviteUser({ email, orgId, schoolId, role });
-					setToast('Invitation sent.');
-					e.target.reset();
-				}catch(err){
-					const msg = err?.message || '';
-					const code = err?.code || '';
-					setToast(`Failed to invite user${code?` [${code}]`:''}${msg?`: ${msg}`:''}`, true);
-				}
+					if (action === 'invite-admin'){
+						const wrap = btn.closest('.inline-invite');
+						const email = wrap?.querySelector('[data-invite-email]')?.value?.trim();
+						const role = wrap?.querySelector('[data-invite-role]')?.value || 'admin';
+						if(!email){ setToast('Enter an email.', true); return; }
+						const inviteUser = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('inviteUser');
+						await inviteUser({ email, orgId, schoolId, role });
+						setToast('Invitation sent.');
+						wrap.querySelector('[data-invite-email]').value='';
+						return;
+					}
+					if (action === 'delete-school'){
+						const confirmBtn = btn.parentElement?.querySelector('[data-action="confirm-delete-school"]');
+						if (confirmBtn){ confirmBtn.hidden = false; btn.hidden = true; }
+						return;
+					}
+					if (action === 'confirm-delete-school'){
+						btn.textContent = 'Deleting…'; btn.disabled = true;
+						const fxApp = (fx ? fx : firebase.app().functions('us-central1'));
+						const del = fxApp.httpsCallable('deleteSchool');
+						await del({ schoolId });
+						setToast('School deleted.');
+						return;
+					}
+				}catch(err){ console.error(err); setToast(err?.message || 'Action failed', true); }
 			});
 		}
 
@@ -299,49 +331,7 @@
 			});
 		})();
 	</script>
-	<script>
-		// Delete School UI & handler
-		(function(){
-			document.addEventListener('DOMContentLoaded', () => {
-				const listCard = document.querySelector('#schoolsList')?.closest('.card');
-				if (!listCard) return;
-				const wrap = document.createElement('div');
-				wrap.className = 'mt-12';
-				wrap.innerHTML = `
-				  <div class="card" style="border:1px solid #fee2e2;background:#fff7f7;">
-				    <h4 class="card-title" style="color:#991b1b;">Delete School</h4>
-				    <p class="small muted">This permanently deletes the selected school and its data. This action cannot be undone.</p>
-				    <div class="field" style="max-width:420px;">
-				      <label for="delSchoolSel">School</label>
-				      <select id="delSchoolSel"></select>
-				    </div>
-				    <div class="mt-8">
-				      <button id="deleteSchoolBtn" class="btn btn-outline" type="button" style="border-color:#ef4444;color:#991b1b;">Delete School</button>
-				    </div>
-				  </div>`;
-				listCard.parentElement.appendChild(wrap);
-				// Keep delete select in sync with main school select
-				const srcSel = document.getElementById('schoolSel');
-				const dstSel = document.getElementById('delSchoolSel');
-				function syncOptions(){ if (!srcSel || !dstSel) return; dstSel.innerHTML = srcSel.innerHTML; }
-				const obs = new MutationObserver(syncOptions);
-				if (srcSel) obs.observe(srcSel, { childList: true });
-				syncOptions();
-				// Wire delete
-				document.getElementById('deleteSchoolBtn')?.addEventListener('click', async () => {
-					const schoolId = dstSel?.value || '';
-					if (!schoolId) { alert('Select a school to delete.'); return; }
-					if (!confirm(`Delete school ${schoolId}? This cannot be undone.`)) return;
-					try{
-						const fx = (window.SD && window.SD.functions) ? window.SD.functions : firebase.app().functions('us-central1');
-						const del = fx.httpsCallable('deleteSchool');
-						await del({ schoolId }); // orgId resolved in backend from token or SD.orgId
-						alert('School deleted. It may take a moment to fully disappear.');
-					}catch(e){ console.error(e); alert('Delete failed: ' + (e?.message || e)); }
-				});
-			});
-		})();
-	</script>
+    <!-- Integrated delete school lives within each School's details; removed old global delete card. -->
 </head>
 <body class="sd-body">
 	<main class="container sup-main">
@@ -382,34 +372,10 @@
 						<span id="toast" class="muted small" aria-live="polite"></span>
 					</div>
 					<ul id="schoolsList" class="list" aria-live="polite"></ul>
+								<p class="muted small" style="margin-top:8px;">Note: Invites and delete actions call Cloud Functions when deployed.</p>
 				</article>
 			</section>
 
-						<section class="mt-12" aria-labelledby="invite-h">
-				<article class="card">
-					<h3 id="invite-h" class="card-title">Invite Admin</h3>
-					<form id="inviteForm">
-						<div class="field">
-							<label for="inviteEmail">Email</label>
-							<input id="inviteEmail" type="email" placeholder="name@school.org" required autocomplete="email" />
-						</div>
-						<div class="field">
-							<label for="schoolSel">School</label>
-							<select id="schoolSel" required></select>
-						</div>
-						<div class="field">
-							<label for="roleSel">Role</label>
-							<select id="roleSel">
-								<option value="admin">Admin</option>
-							</select>
-						</div>
-									<div class="mt-8">
-							<button class="btn btn-primary" type="submit">Send Invite</button>
-						</div>
-					</form>
-								<p class="muted small mt-8">Note: This page is a stub. Actions will call Cloud Functions once deployed.</p>
-				</article>
-			</section>
 		</div>
 	</main>
 </body>
