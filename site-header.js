@@ -128,8 +128,7 @@
                 <span id="schoolName" class="sr-only"></span>
               </div>
               <div id="signInBtns" class="signin-btns">
-                <button id="signInGoogle" class="btn btn-outline" type="button">Sign in</button>
-                <button id="signInMicrosoft" class="btn btn-outline" type="button">Microsoft</button>
+                <button id="openSignIn" class="btn btn-outline" type="button">Sign in</button>
               </div>
               <div id="userChip" class="user-chip" style="display:none;">
                 <button id="userAvatarBtn" class="avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Account">
@@ -188,6 +187,70 @@
     } catch {}
     try { console.log('[TTD] site-header loaded, BUILD', BUILD_ID); } catch {}
     document.body.prepend(header);
+
+    // Build a simple, professional sign-in modal (desktop)
+    (function ensureSignInModal(){
+      if (document.getElementById('sd-inline-signin-modal')) return; // CSS injected?
+      // CSS
+      const css = `
+      .sd-scrim{ position:fixed; inset:0; background:rgba(2,6,23,.45); z-index:1400; }
+      .sd-modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:1401; }
+      .sd-modal[hidden], .sd-scrim[hidden]{ display:none !important; }
+      .sd-modal-card{ width:min(520px,92vw); background:#fff; border:1px solid #e5e7eb; border-radius:16px; box-shadow:0 20px 40px rgba(2,6,23,.28); padding:16px; }
+      .sd-modal-card h3{ margin:4px 0 10px; font-size:1.2rem; font-weight:800; }
+      .sd-modal-card p.muted{ margin:0 0 12px; color:#64748b; }
+      .sd-modal-close{ position:absolute; right:10px; top:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:.35rem .55rem; cursor:pointer; }
+      .provider-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+      @media (min-width:560px){ .provider-grid{ grid-template-columns:1fr 1fr; } }
+      .provider-btn{ display:flex; align-items:center; gap:10px; padding:.8rem .9rem; border:1px solid #e5e7eb; border-radius:12px; background:#fff; font-weight:800; cursor:pointer; }
+      .provider-btn:hover{ background:#f8fafc; }
+      .provider-btn .ic{ width:18px; height:18px; display:inline-block; }
+      .provider-btn.google .ic-google svg{ display:block; width:18px; height:18px; }
+      .provider-btn.microsoft .ic-microsoft{ position:relative; width:18px; height:18px; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; }
+      .provider-btn.microsoft .ic-microsoft span{ display:block; width:8px; height:8px; }
+      .ic-ms-red{ background:#f35325; } .ic-ms-green{ background:#81bc06; } .ic-ms-blue{ background:#05a6f0; } .ic-ms-yellow{ background:#ffba08; }
+      `;
+      const style = document.createElement('style');
+      style.id = 'sd-inline-signin-modal';
+      style.textContent = css;
+      document.head.appendChild(style);
+
+      // HTML
+      const scrim = document.createElement('div');
+      scrim.id = 'signInScrim'; scrim.className = 'sd-scrim'; scrim.hidden = true;
+      const modal = document.createElement('div');
+      modal.id = 'signInModal'; modal.className = 'sd-modal'; modal.hidden = true; modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','signinTitle');
+      modal.innerHTML = `
+        <div class="sd-modal-card">
+          <button type="button" class="sd-modal-close" id="signInClose" aria-label="Close">✕</button>
+          <h3 id="signinTitle">Sign in</h3>
+          <p class="muted">Choose a sign-in option:</p>
+          <div class="provider-grid">
+            <button id="provGoogle" class="provider-btn google" type="button" aria-label="Continue with Google">
+              <span class="ic ic-google" aria-hidden="true">
+                <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#EA4335" d="M9 7.3v3.4h4.8c-.2 1.1-1.4 3.2-4.8 3.2-2.9 0-5.3-2.4-5.3-5.3S6.1 3.3 9 3.3c1.6 0 2.7.7 3.3 1.3l2.3-2.3C13.3.9 11.3 0 9 0 4 0 0 4 0 9s4 9 9 9c5.2 0 8.6-3.7 8.6-8.8 0-.6-.1-1-.2-1.4H9z"/>
+                  <path fill="#34A853" d="M.5 4.6l3.5 2.6C5 5 6.9 3.9 9 3.9c1.6 0 2.7.6 3.3 1.3l2.3-2.3C13.3.9 11.3 0 9 0 5.4 0 2.3 2 0.5 4.6z" opacity="0"/>
+                  <path fill="#FBBC05" d="M9 18c2.4 0 4.4-.8 5.8-2.2l-2.7-2.2c-.7.5-1.7.8-3.1.8-2.4 0-4.4-1.6-5.1-3.8H.5v2.4C1.9 16 5.1 18 9 18z"/>
+                  <path fill="#4285F4" d="M17.6 9.2c0-.6-.1-1-.2-1.4H9v3.4h4.8c-.2 1.1-1.4 3.2-4.8 3.2-2.4 0-4.5-1.6-5.1-3.8H.5v2.4C1.9 16 5.1 18 9 18c5.2 0 8.6-3.7 8.6-8.8z"/>
+                </svg>
+              </span>
+              <span>Continue with Google</span>
+            </button>
+            <button id="provMicrosoft" class="provider-btn microsoft" type="button" aria-label="Continue with Microsoft">
+              <span class="ic ic-microsoft" aria-hidden="true">
+                <span class="ic-ms-red"></span>
+                <span class="ic-ms-green"></span>
+                <span class="ic-ms-blue"></span>
+                <span class="ic-ms-yellow"></span>
+              </span>
+              <span>Continue with Microsoft</span>
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(scrim);
+      document.body.appendChild(modal);
+    })();
 
     // By default, show viewer-level links so menu is never empty; hide only admin/superintendent
     try {
@@ -374,8 +437,7 @@
 
     const header     = document.querySelector('header.site-header');
     const signInBox  = header.querySelector('#signInBtns');
-    const signInGoogleBtn = header.querySelector('#signInGoogle');
-    const signInMsBtn = header.querySelector('#signInMicrosoft');
+  const openSignInBtn = header.querySelector('#openSignIn');
     const signOutBtn = header.querySelector('#signOutBtn');
   const signOutBtn2 = header.querySelector('#signOutBtn2');
     const userChip   = header.querySelector('#userChip');
@@ -398,8 +460,8 @@
   const hdrMenuPanel = header.querySelector('#hdrMenuPanel');
   const hdrMenuClose = header.querySelector('#hdrMenuClose');
   const hdrMenuScrim = header.querySelector('#hdrMenuScrim');
-  const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
-  const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
+    const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
+    const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
   const hdrSignOut   = header.querySelector('#hdrSignOut');
   // Smart Caller nav: if an active session exists, jump straight to Tiles instead of Hub
   async function goToCallerSmart(e){
@@ -745,9 +807,19 @@
     window.SD = window.SD || {};
     window.SD.startSignIn = startSignIn;
 
-    // Desktop sign-in buttons
-  signInGoogleBtn?.addEventListener('click', () => startSignIn('google'));
-  signInMsBtn?.addEventListener('click', () => startSignIn('microsoft'));
+    // Desktop sign-in modal handlers
+    const signInScrim   = document.getElementById('signInScrim');
+    const signInModal   = document.getElementById('signInModal');
+    const signInClose   = document.getElementById('signInClose');
+    const provGoogleBtn = document.getElementById('provGoogle');
+    const provMsBtn     = document.getElementById('provMicrosoft');
+    function openSignInModal(){ if (signInScrim) signInScrim.hidden = false; if (signInModal) signInModal.hidden = false; }
+    function closeSignInModal(){ if (signInScrim) signInScrim.hidden = true; if (signInModal) signInModal.hidden = true; }
+    openSignInBtn?.addEventListener('click', openSignInModal);
+    signInClose?.addEventListener('click', closeSignInModal);
+    signInScrim?.addEventListener('click', closeSignInModal);
+    provGoogleBtn?.addEventListener('click', () => { startSignIn('google'); closeSignInModal(); });
+    provMsBtn?.addEventListener('click',     () => { startSignIn('microsoft'); closeSignInModal(); });
     signOutBtn.addEventListener('click', () => auth.signOut());
   signOutBtn2?.addEventListener('click', () => auth.signOut());
     document.querySelectorAll('[data-login]').forEach(el => {
