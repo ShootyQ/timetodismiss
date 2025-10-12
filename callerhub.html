@@ -95,46 +95,50 @@
         await waitForContext();
         const col = colPath('callSessions');
         // Get the most recent session and check if it's active (endedAt missing or null)
-        const qy = query(col, orderBy('startedAt','desc'), limit(1));
+        const qy = query(col, orderBy('startedAt','desc'), limit(8));
         onSnapshot(qy, (snap) => {
           const prevId = activeSession?.id || null;
-          if (snap.empty){
-            activeSession = null;
-            joinMode = false;
-            // Restore start UI if no active session
+          // Find the first truly active session among the latest few
+          let actDoc = null; let actData = null;
+          snap.forEach(d => {
+            if (actDoc) return;
+            const data = d.data();
+            const isActive = !('endedAt' in data) || data.endedAt == null;
+            if (isActive) { actDoc = d; actData = data; }
+          });
+          if (!actDoc){
+            // No active session: reset to start state
+            activeSession = null; joinMode = false;
             startBtn.textContent = 'Start Calling Now';
             startBtn.disabled = false;
             sessionNote.innerHTML = 'Press Start to begin.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
             return;
           }
-          // Use most recent (first doc)
-            const d = snap.docs[0];
-            const data = d.data();
-            activeSession = { id: d.id, ...data };
-            joinMode = true;
-            const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
-            sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Press Join.';
-            startBtn.textContent = 'Join Active Session';
-            startBtn.disabled = false;
-            // Hide reset option when joining
-            resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
-            // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
-            try {
-              const u = new URL(location.href);
-              const stay = u.searchParams.get('stay');
-              const isActive = !('endedAt' in data) || data.endedAt == null;
-              if (stay !== '1' && isActive && activeSession && activeSession.id) {
-                startBtn.textContent = 'Joining…';
-                startBtn.disabled = true;
-                const nav = navFor('tiles', activeSession.id);
-                setTimeout(() => { location.replace(nav); }, 60);
-                return;
-              }
-            } catch {}
-            if(prevId && prevId !== activeSession.id){
-              console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
+          // Use first active document
+          activeSession = { id: actDoc.id, ...actData };
+          joinMode = true;
+          const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
+          sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Press Join.';
+          startBtn.textContent = 'Join Active Session';
+          startBtn.disabled = false;
+          // Hide reset option when joining
+          resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
+          // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
+          try {
+            const u = new URL(location.href);
+            const stay = u.searchParams.get('stay');
+            if (stay !== '1' && activeSession && activeSession.id) {
+              startBtn.textContent = 'Joining…';
+              startBtn.disabled = true;
+              const nav = navFor('tiles', activeSession.id);
+              setTimeout(() => { location.replace(nav); }, 60);
+              return;
             }
+          } catch {}
+          if(prevId && prevId !== activeSession.id){
+            console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
+          }
         }, async (err)=> {
           console.warn('[hub] active session snapshot error', err);
           // Fallback: one-shot check; if active, redirect
@@ -143,14 +147,12 @@
             const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid) return;
             const { collection, getDocs, orderBy: ob, limit: lim, query: qy2 } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
             const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
-            const snap2 = await getDocs(qy2(coll, ob('startedAt','desc'), lim(1)));
-            if(!snap2.empty){
-              const d2 = snap2.docs[0]; const data2 = d2.data();
-              const id = d2.id; const isActive = !('endedAt' in data2) || data2.endedAt == null;
-              if(!isActive) return;
-              const u = new URL(location.href); if(u.searchParams.get('stay')==='1') return;
-              location.replace('/mastercaller.html?session='+encodeURIComponent(id));
-            }
+            const snap2 = await getDocs(qy2(coll, ob('startedAt','desc'), lim(8)));
+            let activeId = null;
+            snap2.forEach(d => { if (activeId) return; const data = d.data(); const isActive = !('endedAt' in data) || data.endedAt == null; if (isActive) activeId = d.id; });
+            if(!activeId) return;
+            const u = new URL(location.href); if(u.searchParams.get('stay')==='1') return;
+            location.replace('/mastercaller.html?session='+encodeURIComponent(activeId));
           } catch(e2){ console.warn('[hub] active session fallback check failed', e2); }
         });
       } catch(e){ console.warn('[hub] active session watcher failed', e); }

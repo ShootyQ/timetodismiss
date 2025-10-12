@@ -411,17 +411,11 @@
       const { getFirestore, collection, query, orderBy, limit, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
       const fs = getFirestore();
       const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
-      const qy = query(coll, orderBy('startedAt','desc'), limit(1));
+      const qy = query(coll, orderBy('startedAt','desc'), limit(8));
       const snap = await getDocs(qy);
-      if (!snap.empty) {
-        const d = snap.docs[0]; const data = d.data();
-        const isActive = !('endedAt' in data) || data.endedAt == null;
-        if (isActive){
-          const id = d.id;
-          location.href = '/mastercaller.html?session=' + encodeURIComponent(id);
-          return;
-        }
-      }
+      let activeId = null;
+      snap.forEach(d => { if (activeId) return; const data = d.data(); const isActive = !('endedAt' in data) || data.endedAt == null; if (isActive) activeId = d.id; });
+      if (activeId){ location.href = '/mastercaller.html?session=' + encodeURIComponent(activeId); return; }
       location.href = '/callerhub.html';
     } catch {
       location.href = '/callerhub.html';
