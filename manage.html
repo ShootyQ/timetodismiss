@@ -93,8 +93,8 @@
     <section class="toolbar" aria-label="Roster tools">
       <label class="sr-only" for="entitySel">Entity</label>
       <select id="entitySel" aria-label="Select entity">
-        <option value="students">Students</option>
         <option value="classes">Classes</option>
+        <option value="students">Students</option>
         <option value="families">Ride Share</option>
       </select>
       <label class="sr-only" for="search">Search</label>
@@ -361,9 +361,9 @@
         }
       } else if (e === 'classes'){
         formFields.innerHTML = `
-          <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /></div>
-          <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /></div>
-          <div class="field"><label for="classOrder">Order</label><input id="classOrder" type="number" inputmode="numeric" placeholder="e.g., 10" /></div>
+          <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /><div class="small">System key used for recognition and referenced by each student's class assignment. Not shown to teachers.</div></div>
+          <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /><div class="small">Display name teachers see on pages and pickers.</div></div>
+          <div class="field"><label for="classOrder">Order</label><input id="classOrder" type="number" inputmode="numeric" placeholder="e.g., 10" /><div class="small">Optional: lower numbers sort first across pages. If blank or tied, classes fall back to alphabetical by name.</div></div>
         `;
         const keyEl = document.getElementById('classKey');
         keyEl?.focus();
@@ -373,12 +373,12 @@
           titleEl.textContent = 'Edit Class';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
-          document.getElementById('hint').textContent = 'Update the class name and submit.';
+          document.getElementById('hint').textContent = 'Update class details. ID is the system key, Name is shown to teachers, and Order controls sorting.';
         } else {
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
-          document.getElementById('hint').textContent = 'Creates or updates a class with the given ID and name.';
+          document.getElementById('hint').textContent = 'Creates or updates a class. ID is the system key; Name is displayed to teachers; Order controls list position.';
         }
       } else {
         formFields.innerHTML = `
@@ -747,7 +747,7 @@
             <div class="modal-actions">
               <button type="submit" class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-ghost" data-class-close>Cancel</button>
-              <span class="small">Update class info then Save.</span>
+              <span class="small">Update class details. ID is the system key; Name is shown to teachers; Order controls sorting.</span>
             </div>
           </form>
         </div>`;
@@ -769,9 +769,9 @@
         if (!snap.exists()) { setToast('Class not found', true); return; }
         const d = snap.data() || {};
         classEditFields.innerHTML = `
-          <div class="field"><label for="edit_classKey">Class ID</label><input id="edit_classKey" value="${escapeHtml(id)}" disabled /></div>
-          <div class="field"><label for="edit_className">Name</label><input id="edit_className" value="${escapeHtml(d.name || d.title || '')}" /></div>
-          <div class="field"><label for="edit_classOrder">Order</label><input id="edit_classOrder" type="number" inputmode="numeric" value="${d.order === undefined || d.order === null ? '' : escapeHtml(d.order)}" placeholder="e.g., 10" /></div>
+          <div class="field"><label for="edit_classKey">Class ID</label><input id="edit_classKey" value="${escapeHtml(id)}" disabled /><div class="small">System key used for recognition and referenced by each student's class assignment.</div></div>
+          <div class="field"><label for="edit_className">Name</label><input id="edit_className" value="${escapeHtml(d.name || d.title || '')}" /><div class="small">Display name teachers see on pages and pickers.</div></div>
+          <div class="field"><label for="edit_classOrder">Order</label><input id="edit_classOrder" type="number" inputmode="numeric" value="${d.order === undefined || d.order === null ? '' : escapeHtml(d.order)}" placeholder="e.g., 10" /><div class="small">Optional: lower numbers sort first across pages. If blank or tied, classes fall back to alphabetical by name.</div></div>
         `;
         showClassModal();
         classEditFields.querySelector('#edit_className')?.focus();
