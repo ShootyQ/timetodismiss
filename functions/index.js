@@ -344,6 +344,46 @@ async function computeClaims(uid, email) {
     return { ok: true };
   });
 
+  // Reset all students in a school to 'waiting' (admin or caller for that school)
+  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const uid = req.auth.uid;
+    const { orgId, schoolId } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+
+    // Allow owner/superintendent/admin via canManageSchool; also allow active school callers
+    let allowed = await canManageSchool(claims, orgId, schoolId, uid);
+    if (!allowed) {
+      try {
+        const memSnap = await db.doc(`orgs/${orgId}/schools/${schoolId}/members/${uid}`).get();
+        const data = memSnap.data() || {};
+        const flags = flagsFrom(data);
+        allowed = (data.status || 'active') === 'active' && (flags.admin || flags.caller);
+      } catch(_) { allowed = false; }
+    }
+    if (!allowed) throw new HttpsError('permission-denied', 'Caller or Admin for this school required.');
+
+    const col = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students');
+    const snap = await col.get();
+    let changed = 0, scanned = 0;
+    let batch = db.batch();
+    let ops = 0;
+    const FLUSH = async () => { if (ops > 0) { await batch.commit(); batch = db.batch(); ops = 0; } };
+
+    for (const d of snap.docs) {
+      scanned++;
+      const st = (d.get('status') || '').toString();
+      if (st !== 'waiting') {
+        batch.update(d.ref, { status: 'waiting', updatedAt: ts() });
+        changed++; ops++;
+        if (ops >= 450) await FLUSH();
+      }
+    }
+    await FLUSH();
+    return { ok: true, scanned, changed };
+  });
+
   // ───────────────── Auto end stale call sessions (backend safety net) ─────────────────
   // Why: client pages enforce auto-end with a timer, but if no caller keeps a page open,
   // sessions can remain active for hours. This scheduled job ends sessions that exceed

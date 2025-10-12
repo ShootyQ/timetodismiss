@@ -87,6 +87,7 @@
   let activeSession = null; // { id, ...data }
   let joinMode = false;     // true when we are in "join existing session" state
   const LS_LAST_MODE = 'HUB_LAST_MODE';
+  let blockAutoRedirect = false; // guard: prevent watcher redirect while resetting
 
     // Realtime watcher for active session (endedAt == null)
     (async function watchActive(){
@@ -128,7 +129,7 @@
           try {
             const u = new URL(location.href);
             const stay = u.searchParams.get('stay');
-            if (stay !== '1' && activeSession && activeSession.id) {
+            if (stay !== '1' && activeSession && activeSession.id && !blockAutoRedirect) {
               startBtn.textContent = 'Joining…';
               startBtn.disabled = true;
               const nav = navFor('tiles', activeSession.id);
@@ -172,7 +173,8 @@
         setTimeout(()=>{ location.href = nav; }, 30);
         return;
       }
-      // START NEW SESSION FLOW
+  // START NEW SESSION FLOW
+  blockAutoRedirect = true; // block watcher redirect until after reset completes
       startBtn.disabled = true;
       startBtn.textContent = 'Starting…';
       try {
@@ -192,31 +194,16 @@
         if (resetOnStart?.checked){
           sessionNote.textContent = 'Resetting all students to Waiting…';
           try {
-            const fs = getFirestore();
-            const snap = await getDocs(colPath('students'));
-            const docs = snap.docs;
-            let totalChanged = 0;
-            let batch = writeBatch(fs);
-            let opsInBatch = 0;
-
-            async function flush(){ if(opsInBatch>0){ await batch.commit(); batch = writeBatch(fs); opsInBatch = 0; } }
-
-            for (const d of docs){
-              try{
-                const data = d.data() || {};
-                if (data.status !== 'waiting'){
-                  batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
-                  totalChanged++; opsInBatch++;
-                  if (opsInBatch >= 450){
-                    // Await commit so writes finish before navigating away
-                    await flush();
-                  }
-                }
-              }catch{}
-            }
-            await flush();
-            sessionNote.textContent = (totalChanged>0 ? ('Reset '+totalChanged+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
-          } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
+            // Prefer server-side callable to avoid navigation/race issues and handle large batches safely
+            const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
+            const fns = getFunctions();
+            const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+            if (!orgId || !schoolId) throw new Error('Missing context for reset');
+            const resetFn = httpsCallable(fns, 'resetAllToWaiting');
+            const res = await resetFn({ orgId, schoolId });
+            const { changed = 0 } = res?.data || {};
+            sessionNote.textContent = (changed>0 ? ('Reset '+changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
+          } catch(e){ console.warn('[hub] server reset failed, falling back to client batch', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
         const nav = navFor('tiles', id);
         setTimeout(()=>{ location.href = nav; }, 50);
@@ -225,6 +212,7 @@
         startBtn.disabled = false;
         startBtn.textContent = 'Start Calling Now';
         sessionNote.textContent = 'Failed to start session.';
+        blockAutoRedirect = false;
       }
     }
     startBtn.addEventListener('click', startSession);
