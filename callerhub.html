@@ -26,6 +26,7 @@
     .hero-cta .btn{ font-size:1.15rem; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 6px 22px -8px rgba(37,99,235,.45); }
     .hero-cta .btn:not([disabled]){ cursor:pointer; }
     .session-note{ font-size:.85rem; color:#64748b; }
+    .badge-rec{ background:#eef2ff; color:#1d4ed8; border:1px solid #dbe3ff; border-radius:999px; padding:2px 8px; font-size:.72rem; font-weight:700; margin-left:8px; }
   </style>
 </head>
 <body class="sd-body">
@@ -42,9 +43,14 @@
         <p class="hero-sub">Begin a new session or join the active one. Everyone’s pages will update live.</p>
         <div class="hero-cta">
           <button id="startBtn" class="btn btn-primary" type="button">Start Dismissal Now</button>
-          <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
-            <input type="checkbox" id="resetOnStart" checked /> Reset all statuses to Waiting on start
+          <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none; flex-wrap:wrap; justify-content:center;">
+            <input type="checkbox" id="resetOnStart" checked />
+            <span>Reset all statuses to Waiting on start</span>
+            <span class="badge-rec">Recommended</span>
           </label>
+          <div id="resetReason" class="small muted" style="max-width:660px; text-align:center;">
+            Recommended to ensure a clean slate: clears any lingering statuses from earlier sessions so everyone starts in Waiting and analytics stay accurate.
+          </div>
           <div class="session-note" id="sessionNote">Press Start to begin.</div>
         </div>
       </div>
@@ -92,6 +98,7 @@
     const startBtn = document.getElementById('startBtn');
   const sessionNote = document.getElementById('sessionNote');
   const resetOnStart = document.getElementById('resetOnStart');
+  const resetReason = document.getElementById('resetReason');
   const selected = 'tiles';
   let activeSession = null; // { id, ...data }
   let joinMode = false;     // true when we are in "join existing session" state
@@ -123,6 +130,7 @@
             startBtn.disabled = false;
             sessionNote.innerHTML = 'Press Start to begin.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
+            resetReason?.removeAttribute('hidden');
             return;
           }
           // Use first active document
@@ -134,6 +142,7 @@
           startBtn.disabled = false;
           // Hide reset option when joining
           resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
+          resetReason?.setAttribute('hidden','hidden');
           // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
           try {
             const u = new URL(location.href);
