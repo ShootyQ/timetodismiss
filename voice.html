@@ -97,7 +97,7 @@
     const voiceAutoEndEl = document.getElementById('voiceSessionAutoEnd');
     const voiceModeEl    = document.getElementById('voiceSessionMode');
 
-    let voiceStartedAt=null; let voiceEnded=false; let voiceTimer=null; let autoEndMinutes=30;
+  let voiceStartedAt=null; let voiceEnded=false; let voiceTimer=null; let autoEndMinutes=30; let voiceEnding=false;
 
     const vUrlParams = new URLSearchParams(location.search);
     const vSessionId = vUrlParams.get('session');
@@ -125,10 +125,12 @@
       })();
     }
 
-    async function endVoiceSession(){
+    async function endVoiceSession(opts){
+      const skipConfirm = !!(opts && opts.skipConfirm);
       if (!vSessionId){ endVoiceBtn.disabled=true; endVoiceBtn.textContent='No Session'; return; }
-      if(voiceEnded) return;
-      if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return;
+      if(voiceEnded || voiceEnding) return;
+      if(!skipConfirm){ if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return; }
+      voiceEnding = true;
       endVoiceBtn.disabled=true; endVoiceBtn.textContent='Ending…';
       try {
         const { updateDoc, doc, serverTimestamp, getFirestore, setDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
@@ -144,14 +146,15 @@
         try { if(voiceTimer){ clearInterval(voiceTimer); voiceTimer=null; } } catch {}
         if(voiceStartedAt && voiceElapsedEl){ const ms = Date.now() - voiceStartedAt.getTime(); voiceElapsedEl.textContent = vFmt(ms); }
         endVoiceBtn.textContent='Dismissal Ended';
-      } catch(e){ console.warn('[voice] end session failed', e); endVoiceBtn.textContent='End Dismissal'; endVoiceBtn.disabled=false; }
+      } catch(e){ console.warn('[voice] end session failed', e); if(!skipConfirm) alert('Could not end dismissal here. Try Analytics → End Now.'); endVoiceBtn.textContent='End Dismissal'; endVoiceBtn.disabled=false; }
+      finally { voiceEnding = false; }
     }
     endVoiceBtn?.addEventListener('click', endVoiceSession);
 
     function vFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
   async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
-    function startVoiceTimer(){ if(!voiceStartedAt) return; function tick(){ const now=new Date(); const elapsed=now-voiceStartedAt; if(voiceElapsedEl) voiceElapsedEl.textContent=vFmt(elapsed); const limit=autoEndMinutes*60000; if(!voiceEnded){ const remain=limit-elapsed; if(remain<=0){ autoEndVoice(); } else if(voiceAutoEndEl){ voiceAutoEndEl.textContent=' • Auto end in '+vFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); voiceTimer=setInterval(tick,1000); }
-    async function autoEndVoice(){ if(voiceEnded) return; try{ await endVoiceSession(); }catch{} }
+  function startVoiceTimer(){ if(!voiceStartedAt) return; function tick(){ const now=new Date(); const elapsed=now-voiceStartedAt; if(voiceElapsedEl) voiceElapsedEl.textContent=vFmt(elapsed); const limit=autoEndMinutes*60000; if(!voiceEnded){ const remain=limit-elapsed; if(remain<=0){ autoEndVoice(); } else if(voiceAutoEndEl){ voiceAutoEndEl.textContent=' • Auto end in '+vFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); voiceTimer=setInterval(tick,1000); }
+  async function autoEndVoice(){ if(voiceEnded || voiceEnding) return; try{ await endVoiceSession({ skipConfirm:true }); }catch{} }
 
     let recog = null; let listening=false; let lastHeard = ''; let lastShownStudent=null; let rearmTimer=null;
 
