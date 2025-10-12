@@ -45,9 +45,9 @@
         <div class="field">
           <label for="entity">Import type</label>
           <select id="entity">
-            <option value="students">Students</option>
             <option value="classes">Classes</option>
-            <option value="families">Car Families</option>
+            <option value="students">Students</option>
+            <option value="families">Ride Share</option>
           </select>
         </div>
 
@@ -122,11 +122,11 @@
 `firstName,lastName,preferredName,carTag,studentId,laneId,busId,classId
 Gary,Nobelson,Little Gar,N4,12345,L1,BUS001,5
 John,Lee,,T3,12346,L2,BUS002,3B`,
-      classes:
-`id,name
-K,Kindergarten
-1,First Grade
-2,Second Grade`,
+  classes:
+`id,name,order
+K,Kindergarten,1
+1,First Grade,2
+2,Second Grade,3`,
   families:
 `id,name,tags
 smith,Smith Family,K4 A2 T3
@@ -134,13 +134,13 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
     };
     const hints = {
   students: 'Columns: firstName, lastName, preferredName, carTag, studentId, laneId, busId, classId. Required: firstName, classId, carTag. Optional fields will be created empty if not provided. Legacy "name" field supported for compatibility.',
-      classes: 'Columns: id (class id), name/title (display name).',
-      families: 'Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
+  classes: 'Columns: id (class id), name/title (display name), order (optional numeric sort).',
+  families: 'Ride Share: Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
     };
     const headersView = {
   students: ['#','First Name','Last Name','Preferred','Class','Car Tag','Student ID','Lane','Bus'],
       classes: ['#','Class ID','Name','Order'],
-      families: ['#','Family ID','Name','Tags']
+  families: ['#','Ride Share ID','Name','Tags']
     };
 
     function resetPlaceholders(){

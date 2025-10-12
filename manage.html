@@ -95,7 +95,7 @@
       <select id="entitySel" aria-label="Select entity">
         <option value="students">Students</option>
         <option value="classes">Classes</option>
-        <option value="families">Car Families</option>
+        <option value="families">Ride Share</option>
       </select>
       <label class="sr-only" for="search">Search</label>
       <input id="search" placeholder="Search…" inputmode="search" autocomplete="off" />
@@ -205,7 +205,7 @@
     const headersMap = {
       students: ['Preferred / Name','ID','Class','Tag','Bus','Lane','Updated',''],
       classes:  ['Order','Class ID','Name',''],
-      families: ['Family ID','Name','Tags','']
+      families: ['Ride Share ID','Name','Tags','']
     };
 
     function renderHead(){
@@ -382,8 +382,8 @@
         }
       } else {
         formFields.innerHTML = `
-          <div class="field"><label for="famId">Family ID</label><input id="famId" placeholder="e.g., smith" /></div>
-          <div class="field"><label for="famName">Name</label><input id="famName" placeholder="e.g., Smith Family" /></div>
+          <div class="field"><label for="famId">Ride Share ID</label><input id="famId" placeholder="e.g., smith" /></div>
+          <div class="field"><label for="famName">Ride Share Name</label><input id="famName" placeholder="e.g., Smith Ride Share" /></div>
           <div class="field"><label for="famTags">Tags</label><input id="famTags" placeholder="e.g., K4 A2 T3" aria-describedby="tagsHelp" /></div>
           <div id="tagsHelp" class="small">Separate tags by space or comma. Tags will be uppercased.</div>
           <div class="field fam-picker" style="margin-top:6px;">
@@ -398,15 +398,15 @@
         idEl?.focus();
         if (editingId) {
           try { idEl.setAttribute('disabled','disabled'); } catch {}
-          titleEl.textContent = 'Edit Family';
+          titleEl.textContent = 'Edit Ride Share';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
-          document.getElementById('hint').textContent = 'Update the family and submit.';
+          document.getElementById('hint').textContent = 'Update the ride share and submit.';
         } else {
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
-          document.getElementById('hint').textContent = 'Creates or updates a car family with one or more tags.';
+          document.getElementById('hint').textContent = 'Creates or updates a ride share group with one or more tags.';
         }
         initFamilyStudentPicker();
       }
@@ -801,13 +801,13 @@
       wrap.innerHTML = `
         <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="familyEditTitle">
           <button class="modal-close" type="button" aria-label="Close" data-family-close>&times;</button>
-          <h2 id="familyEditTitle">Edit Family</h2>
+          <h2 id="familyEditTitle">Edit Ride Share</h2>
           <form id="familyEditForm" novalidate>
             <div class="edit-grid" id="familyEditFields"></div>
             <div class="modal-actions">
               <button type="submit" class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-ghost" data-family-close>Cancel</button>
-              <span class="small">Update the family then Save.</span>
+              <span class="small">Update the ride share then Save.</span>
             </div>
           </form>
         </div>`;
@@ -826,11 +826,11 @@
       activeEditFamilyId = id;
       try {
         const snap = await getDoc(docPath('carGroups', id));
-        if (!snap.exists()) { setToast('Family not found', true); return; }
+        if (!snap.exists()) { setToast('Ride share not found', true); return; }
         const d = snap.data() || {};
         familyEditFields.innerHTML = `
-          <div class="field"><label for="edit_famId">Family ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
-          <div class="field"><label for="edit_famName">Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
+          <div class="field"><label for="edit_famId">Ride Share ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
+          <div class="field"><label for="edit_famName">Ride Share Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
           <div class="field" style="grid-column:1 / -1"><label for="edit_famTags">Tags</label><input id="edit_famTags" value="${escapeHtml((d.tags||[]).join(' '))}" placeholder="e.g., K4 A2 T3" /></div>
           <div class="field fam-picker" style="grid-column:1 / -1; margin-top:4px;">
             <label for="edit_famStudentSearch">Add Student Tags</label>
@@ -853,7 +853,7 @@
         const tags = (document.getElementById('edit_famTags')?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
         const payload = { name: name || activeEditFamilyId, tags, updatedAt: serverTimestamp() };
         await setDoc(docPath('carGroups', activeEditFamilyId), payload, { merge:true });
-        setToast('Family updated.');
+        setToast('Ride share updated.');
         closeFamilyModal();
       } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
     });
@@ -1022,17 +1022,17 @@
           const id   = (idEl?.value||'').trim();
           const name = (nmEl?.value||'').trim();
           const tags = (tgEl?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
-          if (!id) return setToast('Family ID is required.', true);
+          if (!id) return setToast('Ride share ID is required.', true);
           const payload = { id, name: name || id, tags, updatedAt: serverTimestamp() };
           if (editingId){
             await setDoc(docPath('carGroups', editingId), payload, { merge: true });
-            setToast('Family updated.');
+            setToast('Ride share updated.');
             try { idEl?.removeAttribute('disabled'); } catch {}
             exitEditMode();
           } else {
             payload.createdAt = serverTimestamp();
             await setDoc(docPath('carGroups', id), payload, { merge: true });
-            setToast('Family saved.');
+            setToast('Ride share saved.');
             form.reset();
           }
         }
