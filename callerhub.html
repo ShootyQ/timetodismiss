@@ -163,12 +163,59 @@
       return '/mastercaller.html?session='+encodeURIComponent(id);
     }
 
+    async function runResetIfChecked(){
+      if (!resetOnStart?.checked) return { changed: 0 };
+      blockAutoRedirect = true;
+      sessionNote.textContent = 'Resetting all students to Waiting…';
+      try {
+        // Ensure we have org/school context before resolving paths
+        try { await waitForContext(); } catch {}
+        // Try backend callable first
+        const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
+        const fns = getFunctions();
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        if (!orgId || !schoolId) throw new Error('Missing context for reset');
+        const resetFn = httpsCallable(fns, 'resetAllToWaiting');
+        const res = await resetFn({ orgId, schoolId });
+        const changed = Number(res?.data?.changed || 0);
+        return { changed };
+      } catch (e) {
+        console.warn('[hub] server reset unavailable, using client fallback', e);
+        // Client fallback
+        try {
+          const fs = getFirestore();
+          const snap = await getDocs(colPath('students'));
+          const docs = snap.docs;
+          let changed = 0; let batch = writeBatch(fs); let ops = 0;
+          async function flush(){ if(ops>0){ await batch.commit(); batch = writeBatch(fs); ops = 0; } }
+          for (const d of docs){
+            const data = d.data() || {};
+            if (data.status !== 'waiting'){
+              batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
+              changed++; ops++;
+              if (ops >= 450) await flush();
+            }
+          }
+          await flush();
+          return { changed };
+        } catch(e2){ console.warn('[hub] client fallback reset failed', e2); return { changed: 0, error: e2 }; }
+      } finally {
+        // Note: don't clear blockAutoRedirect here to avoid watcher racing; we'll navigate immediately after
+      }
+    }
+
     async function startSession(){
       // Only Tiles is supported now
       // JOIN FLOW
       if(joinMode && activeSession && activeSession.id){
         startBtn.disabled = true;
         startBtn.textContent = 'Joining…';
+        try{
+          const res = await runResetIfChecked();
+          if (resetOnStart?.checked){
+            sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
+          }
+        }catch{}
         const nav = navFor('tiles', activeSession.id);
         setTimeout(()=>{ location.href = nav; }, 30);
         return;
@@ -192,44 +239,8 @@
         });
         const id = docRef.id;
         if (resetOnStart?.checked){
-          sessionNote.textContent = 'Resetting all students to Waiting…';
-          try {
-            // Prefer server-side callable to avoid navigation/race issues and handle large batches safely
-            const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
-            const fns = getFunctions();
-            const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
-            if (!orgId || !schoolId) throw new Error('Missing context for reset');
-            const resetFn = httpsCallable(fns, 'resetAllToWaiting');
-            const res = await resetFn({ orgId, schoolId });
-            const { changed = 0 } = res?.data || {};
-            sessionNote.textContent = (changed>0 ? ('Reset '+changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
-          } catch(e){
-            console.warn('[hub] server reset failed, using client-side batch fallback', e);
-            try {
-              const fs = getFirestore();
-              const snap = await getDocs(colPath('students'));
-              const docs = snap.docs;
-              let totalChanged = 0;
-              let batch = writeBatch(fs);
-              let opsInBatch = 0;
-              async function flush(){ if(opsInBatch>0){ await batch.commit(); batch = writeBatch(fs); opsInBatch = 0; } }
-              for (const d of docs){
-                try{
-                  const data = d.data() || {};
-                  if (data.status !== 'waiting'){
-                    batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
-                    totalChanged++; opsInBatch++;
-                    if (opsInBatch >= 450){ await flush(); }
-                  }
-                }catch{}
-              }
-              await flush();
-              sessionNote.textContent = (totalChanged>0 ? ('Reset '+totalChanged+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
-            } catch (e2){
-              console.warn('[hub] client-side reset fallback failed', e2);
-              sessionNote.textContent = 'Reset failed (continuing)';
-            }
-          }
+          const res = await runResetIfChecked();
+          sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
         }
         const nav = navFor('tiles', id);
         setTimeout(()=>{ location.href = nav; }, 50);
