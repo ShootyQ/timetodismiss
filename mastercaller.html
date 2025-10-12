@@ -166,6 +166,7 @@
       <label class="small" id="scanAutoWrap" style="display:none; align-items:center; gap:4px;">
         <input type="checkbox" id="scanAutoCall" /> Auto Call
       </label>
+      <button id="openScanner" class="btn btn-outline" type="button" style="font-size:.7rem;">Camera</button>
       <div class="spacer"></div>
       <div class="small" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
         <a id="toHub" class="btn btn-outline" href="/callerhub.html" style="font-size:.7rem;">Hub</a>
@@ -177,7 +178,7 @@
           <span id="tilesSessionMode">Session</span> • <span id="tilesSessionElapsed">00:00</span><span id="tilesSessionAutoEnd"></span>
         </div>
 
-    <div class="small muted" id="scanHelp" style="margin:0 3% 6px; display:none;">Scanner enabled: scan car tag or student ID. Prefix RS:TAG for ride share. Press Enter ends scan.</div>
+  <div class="small muted" id="scanHelp" style="margin:0 3% 6px; display:none;">Bluetooth scanner: scan car tag or student ID (Enter ends scan). Camera: use the Camera button. Prefix RS:TAG for ride share.</div>
 
     <div class="tiles-container">
       <ul id="tiles" class="tiles-grid" aria-live="polite"></ul>
@@ -192,6 +193,8 @@
   </section>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <!-- Camera scanner overlay host -->
+  <div id="qrSheet" hidden></div>
 
   <script type="module">
   import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare } from '/app.js?v=23';
@@ -221,6 +224,14 @@
   const tilesSessionAutoEnd = document.getElementById('tilesSessionAutoEnd');
   let tilesStartedAt = null; let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null;
   let current = null;
+
+  // Highlight helper for scanned/updated students
+  function highlightStudentTile(studentId){
+    try{
+      const el = tiles?.querySelector(`.tile-btn[data-id="${studentId}"]`);
+      if(el){ el.classList.add('scan-hit'); setTimeout(()=>{ try{ el.classList.remove('scan-hit'); }catch{} }, 1300); }
+    }catch{}
+  }
 
     function showToast(msg){ if(!toast) return; toast.textContent = msg||''; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1500); }
     function openSheet(){ sheet?.classList.add('open'); scrim?.classList.add('open'); sheet?.setAttribute('aria-hidden','false'); scrim?.setAttribute('aria-hidden','false'); }
@@ -464,6 +475,30 @@
         if(sid && !studentIdIndex.has(sid)) studentIdIndex.set(sid, s);
       }
     }
+
+    // Camera scanner event wiring (from /scanner.js)
+    document.addEventListener('scan:car-tag', async (e) => {
+      const tag = (e && e.detail && e.detail.tag) ? String(e.detail.tag).toUpperCase().trim() : '';
+      if (!tag) return;
+      try{
+        await setStatusForTag(tag, 'called');
+        const norm = normScanKey(tag);
+        (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
+        showToast('Family called');
+      } catch(err){ console.warn('[tiles] camera tag scan failed', err); }
+    });
+
+    document.addEventListener('scan:student-id', async (e) => {
+      const idRaw = (e && e.detail && e.detail.id) ? String(e.detail.id).trim() : '';
+      if (!idRaw) return;
+      const norm = normScanKey(idRaw);
+      const stu = studentIdIndex.get(norm) || null;
+      if (stu && stu.id){
+        try { await setStudentStatus(stu.id, 'called'); highlightStudentTile(stu.id); showToast('Called'); } catch(err){ console.warn('[tiles] camera student scan failed', err); }
+      } else {
+        showToast('No match');
+      }
+    });
 
     async function populateClasses(){
       try{
@@ -744,5 +779,6 @@
       } catch(err){ console.error('[tiles] ride share scan failed', err); }
     });
   </script>
+  <script src="/scanner.js"></script>
 </body>
 </html>
