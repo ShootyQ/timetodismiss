@@ -13,7 +13,10 @@
   <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
   <style>
     .hiw-main{ padding:18px 0 28px; }
-    .lead{ color:var(--muted); max-width:68ch; }
+    /* Centered, heading-like intro */
+    .hiw-main .page-title{ text-align:center; margin-bottom:4px; }
+    .lead{ color:var(--muted); max-width:68ch; margin:6px auto 0; text-align:center; font-size:1.15rem; line-height:1.4; font-weight:600; }
+    @media (min-width: 900px){ .lead{ font-size:1.22rem; } }
     .grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px,1fr)); gap:14px; }
     .mt-2{ margin-top:.5rem; }
     .mt-8{ margin-top:8px; }
@@ -38,17 +41,17 @@
         <article class="card pad">
           <h3>1) Add your school</h3>
           <p class="small">Add your school and basic details. You can import rosters via CSV.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — School & classes</div></div>
+          <img class="mt-8" src="/Pictures/setup1.png" alt="Setup — add your school" style="border-radius:12px; width:100%; height:auto;" />
         </article>
         <article class="card pad">
           <h3>2) Add your school info</h3>
           <p class="small">Add classes, students, and ride shares. Group siblings or shared rides under a single ride share name; each group can have multiple tags.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Classes, students, and ride shares</div></div>
+          <img class="mt-8" src="/Pictures/setup2.png" alt="Setup — classes, students, and ride shares" style="border-radius:12px; width:100%; height:auto;" />
         </article>
         <article class="card pad">
           <h3>3) Print QR codes</h3>
           <p class="small">Generate QR codes (with human-readable tags) sized for common label sheets.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Printable QR tags</div></div>
+          <img class="mt-8" src="/Pictures/setup3.png" alt="Setup — printable QR tags" style="border-radius:12px; width:100%; height:auto;" />
         </article>
       </div>
     </section>
@@ -59,17 +62,17 @@
         <article class="card pad">
           <h3>Start a Dismissal</h3>
           <p class="small">Kick off a dismissal session in one click. The master page keeps the flow organized and updates every classroom live.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Start dismissal</div></div>
+          <img class="mt-8" src="/Pictures/calling1.png" alt="Start a dismissal" style="border-radius:12px; width:100%; height:auto;" />
         </article>
         <article class="card pad">
           <h3>Call Students — Page or Scan</h3>
           <p class="small">Find and call students from the page with search and class filters, or scan a QR tag using a Bluetooth barcode scanner or your device camera — fast, simple, and no extra setup.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Page call or QR scan</div></div>
+          <img class="mt-8" src="/Pictures/calling2.png" alt="Call students from the page or scan QR" style="border-radius:12px; width:100%; height:auto;" />
         </article>
         <article class="card pad">
           <h3>Ride Shares & Family Calls</h3>
-          <p class="small">Group siblings and carpools under a ride share name, then call the whole group at once — perfect for families and after‑school programs.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Ride shares & family call</div></div>
+          <p class="small">Group siblings and carpools under a ride share name, then call the whole group at once — mobile‑friendly for on‑the‑go calling.</p>
+          <img class="mt-8" src="/Pictures/calling3.png" alt="Ride shares and family calling (mobile friendly)" style="border-radius:12px; width:100%; height:auto;" />
         </article>
       </div>
     </section>
@@ -80,7 +83,7 @@
         <article class="card pad">
           <h3>Live Class View</h3>
           <p class="small">The class page shows a clean, projector-friendly list of students. As calls come in, students are highlighted so they can line up calmly.</p>
-          <div class="img-ph mt-8"><div class="ph-inner">Image placeholder — Class display</div></div>
+          <img class="mt-8" src="/Pictures/classroom1.png" alt="Live class display" style="border-radius:12px; width:100%; height:auto;" />
         </article>
         <article class="card pad">
           <h3>Device-Friendly</h3>
