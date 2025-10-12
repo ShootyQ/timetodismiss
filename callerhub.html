@@ -176,6 +176,8 @@
       startBtn.disabled = true;
       startBtn.textContent = 'Starting…';
       try {
+        // Ensure org/school context so colPath works for the reset
+        try { await waitForContext(); } catch {}
         const docRef = await addDoc(colPath('callSessions'), {
           mode: 'tiles',
           startedAt: serverTimestamp(),
@@ -188,25 +190,22 @@
         });
         const id = docRef.id;
         if (resetOnStart?.checked){
-          sessionNote.textContent = 'Resetting statuses to Waiting…';
+          sessionNote.textContent = 'Resetting all students to Waiting…';
           try {
             const fs = getFirestore();
-            const statuses = ['called','en_route','picked_up','absent'];
-            let totalChanged = 0;
-            for (const st of statuses){
+            // One pass across all students: set any non-waiting (or missing) to 'waiting'
+            const snap = await getDocs(colPath('students'));
+            let batch = writeBatch(fs);
+            let count = 0; let totalChanged = 0;
+            snap.forEach(d => {
               try {
-                const qy = query(colPath('students'), where('status','==', st));
-                const snap = await getDocs(qy);
-                if (snap.empty) continue;
-                let batch = writeBatch(fs); let count=0;
-                for (const d of snap.docs){
-                  batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() });
-                  count++; totalChanged++; if (count % 450 === 0){ await batch.commit(); batch = writeBatch(fs); }
-                }
-                if (count % 450 !== 0) await batch.commit();
-              } catch(inner){ console.warn('[hub] reset loop failed for', st, inner); }
-            }
-            sessionNote.textContent = 'Reset '+totalChanged+' students to Waiting. Redirecting…';
+                const data = d.data() || {};
+                const st = data.status;
+                if (st !== 'waiting') { batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() }); totalChanged++; count++; if (count % 450 === 0){ batch.commit(); batch = writeBatch(fs); } }
+              } catch {}
+            });
+            if (count % 450 !== 0) await batch.commit();
+            sessionNote.textContent = (totalChanged>0 ? ('Reset '+totalChanged+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
           } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
         const nav = navFor('tiles', id);
