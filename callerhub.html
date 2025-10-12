@@ -11,17 +11,21 @@
   <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
   <style>
     .hub-main{ padding:18px 0 40px; }
-  .start-card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:18px 16px; display:flex; flex-direction:column; gap:12px; position:relative; }
-  .start-card h3{ margin:0; font-size:1rem; font-weight:800; }
-  .start-card p{ margin:0; font-size:.9rem; line-height:1.35; color:#475569; }
-  .actions{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     .muted{ color:#64748b; }
-  .start-box{ display:flex; flex-direction:column; gap:14px; max-width:740px; margin:10px auto 0; align-items:center; text-align:center; }
-  .start-box button{ font-size:1.15rem; font-weight:800; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 4px 18px -4px rgba(30,58,138,.25); transform:translateY(0); transition: background .18s ease, transform .18s ease, box-shadow .18s ease; }
-  .start-box button:active{ transform:translateY(2px); box-shadow:0 2px 10px -2px rgba(30,58,138,.25); }
-  .start-box button:not([disabled]){ cursor:pointer; }
-  .session-note{ font-size:.8rem; color:#64748b; }
-  .start-box .warn{ color:#b45309; font-weight:600; }
+
+    /* Hero-style start section */
+    .hub-hero{
+      background: linear-gradient(180deg, #f8fafc, #ffffff);
+      border:1px solid #e5e7eb; border-radius:16px;
+      padding:20px 18px; margin:6px 0 18px; text-align:center;
+    }
+    .hub-headline{ margin:2px 0 8px; font-size:clamp(1.25rem, 2.6vw, 1.8rem); font-weight:900; letter-spacing:.2px; }
+    .hub-headline .school{ color:#1d4ed8; text-shadow:0 1px 0 rgba(255,255,255,.6); }
+    .hero-sub{ margin:0 0 12px; color:#64748b; font-size:.95rem; }
+    .hero-cta{ display:flex; flex-direction:column; gap:10px; align-items:center; }
+    .hero-cta .btn{ font-size:1.15rem; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 6px 22px -8px rgba(37,99,235,.45); }
+    .hero-cta .btn:not([disabled]){ cursor:pointer; }
+    .session-note{ font-size:.85rem; color:#64748b; }
   </style>
 </head>
 <body class="sd-body">
@@ -33,21 +37,21 @@
     <p class="small muted" id="hubCtx">—</p>
 
     <section>
-      <div class="start-card">
-  <h3>Start Calling</h3>
-  <p>Start a session to begin timing, or join an active session.</p>
-        <div class="start-box">
-          <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
-          <div class="session-note" id="sessionNote">Press Start to begin.</div>
+      <div class="hub-hero">
+        <h2 class="hub-headline">Start <span id="hubSchoolName" class="school">Your School</span> Dismissal</h2>
+        <p class="hero-sub">Begin a new session or join the active one. Everyone’s pages will update live.</p>
+        <div class="hero-cta">
+          <button id="startBtn" class="btn btn-primary" type="button">Start Dismissal Now</button>
           <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
             <input type="checkbox" id="resetOnStart" checked /> Reset all statuses to Waiting on start
           </label>
+          <div class="session-note" id="sessionNote">Press Start to begin.</div>
         </div>
       </div>
     </section>
 
     <section style="margin-top:34px; max-width:760px;">
-      <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Coming Analytics</h2>
+  <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Coming Analytics</h2>
       <ul class="small" style="margin:0 0 4px 18px; padding:0; line-height:1.35;">
         <li>Session start/end durations</li>
         <li>Timestamps for each status change (called → en_route / picked_up)</li>
@@ -75,7 +79,12 @@
 
     // Context chip
     const hubCtx = document.getElementById('hubCtx');
-    function updateCtx(){ const name = window.SD && (window.SD.schoolName || window.SD.schoolId); if (hubCtx) hubCtx.textContent = name || '—'; }
+    function updateCtx(){
+      const name = window.SD && (window.SD.schoolName || window.SD.schoolId);
+      if (hubCtx) hubCtx.textContent = name || '—';
+      const heroNameEl = document.getElementById('hubSchoolName');
+      if (heroNameEl) heroNameEl.textContent = name || 'Your School';
+    }
     document.addEventListener('sd:school-changed', updateCtx);
     document.addEventListener('sd:claims-ready', updateCtx);
     updateCtx();
@@ -110,7 +119,7 @@
           if (!actDoc){
             // No active session: reset to start state
             activeSession = null; joinMode = false;
-            startBtn.textContent = 'Start Calling Now';
+            startBtn.textContent = 'Start Dismissal Now';
             startBtn.disabled = false;
             sessionNote.innerHTML = 'Press Start to begin.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
@@ -247,7 +256,7 @@
       } catch(e){
         console.error('[callHub] start session failed', e);
         startBtn.disabled = false;
-        startBtn.textContent = 'Start Calling Now';
+  startBtn.textContent = 'Start Dismissal Now';
         sessionNote.textContent = 'Failed to start session.';
         blockAutoRedirect = false;
       }
