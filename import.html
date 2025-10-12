@@ -27,6 +27,8 @@
     .scroll{ max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; }
     .titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .title-actions{ display:flex; align-items:center; gap:8px; }
+    /* local helper for template download buttons */
+    .template-links{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
   </style>
 </head>
 <body class="sd-body">
@@ -71,12 +73,12 @@
           <input type="file" id="file" accept=".csv,text/csv" aria-label="Upload CSV file" />
           <div class="small muted" id="hint"></div>
           <div class="small" style="margin-top:6px">
-            Need a starting point? Download Excel templates and then Save As CSV when ready:
-            <ul style="margin:.3rem 0 0 .9rem; padding:0; list-style:disc;">
-              <li><a href="/excel%20files/students.xlsx" download="students-template.xlsx" aria-label="Download Students Excel template">Students template (Excel)</a></li>
-              <li><a href="/excel%20files/classes.xlsx" download="classes-template.xlsx" aria-label="Download Classes Excel template">Classes template (Excel)</a></li>
-              <li><a href="/excel%20files/rideshares.xlsx" download="ride-share-template.xlsx" aria-label="Download Ride Share Excel template">Ride Share template (Excel)</a></li>
-            </ul>
+            Need a starting point? Download an Excel template, fill it out, then Save As CSV:
+            <div class="template-links" role="group" aria-label="Download templates">
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/students.xlsx" download="students-template.xlsx" title="Download Students Excel template" aria-label="Download Students Excel template">Students template</a>
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/classes.xlsx" download="classes-template.xlsx" title="Download Classes Excel template" aria-label="Download Classes Excel template">Classes template</a>
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/rideshares.xlsx" download="ride-share-template.xlsx" title="Download Ride Share Excel template" aria-label="Download Ride Share Excel template">Ride Share template</a>
+            </div>
           </div>
         </div>
 
