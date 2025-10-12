@@ -193,18 +193,28 @@
           sessionNote.textContent = 'Resetting all students to Waiting…';
           try {
             const fs = getFirestore();
-            // One pass across all students: set any non-waiting (or missing) to 'waiting'
             const snap = await getDocs(colPath('students'));
+            const docs = snap.docs;
+            let totalChanged = 0;
             let batch = writeBatch(fs);
-            let count = 0; let totalChanged = 0;
-            snap.forEach(d => {
-              try {
+            let opsInBatch = 0;
+
+            async function flush(){ if(opsInBatch>0){ await batch.commit(); batch = writeBatch(fs); opsInBatch = 0; } }
+
+            for (const d of docs){
+              try{
                 const data = d.data() || {};
-                const st = data.status;
-                if (st !== 'waiting') { batch.update(d.ref, { status:'waiting', updatedAt: serverTimestamp() }); totalChanged++; count++; if (count % 450 === 0){ batch.commit(); batch = writeBatch(fs); } }
-              } catch {}
-            });
-            if (count % 450 !== 0) await batch.commit();
+                if (data.status !== 'waiting'){
+                  batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
+                  totalChanged++; opsInBatch++;
+                  if (opsInBatch >= 450){
+                    // Await commit so writes finish before navigating away
+                    await flush();
+                  }
+                }
+              }catch{}
+            }
+            await flush();
             sessionNote.textContent = (totalChanged>0 ? ('Reset '+totalChanged+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
           } catch(e){ console.warn('[hub] bulk reset failed', e); sessionNote.textContent='Reset failed (continuing)'; }
         }
