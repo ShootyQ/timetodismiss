@@ -109,7 +109,7 @@
               <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
                 <img src="/classicon.png" alt="Classes" width="26" height="26" decoding="async" style="display:block;" />
               </a>
-              <a href="/mastercaller.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
+              <a href="/callerhub.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
               <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
@@ -166,7 +166,7 @@
           </div>
           <nav class="menu-links">
             <a href="/class.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Classes</a>
-            <a href="/mastercaller.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
+            <a href="/callerhub.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
             <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
             <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
             <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
@@ -383,6 +383,13 @@
     const userEmail  = header.querySelector('#userEmail');
     const roleBadge  = header.querySelector('#roleBadge');
     const adminLinks = [...header.querySelectorAll('[data-requires="admin"]')];
+    // Wire Master Caller icon/menu to smart navigation
+    try {
+      const callerIcon = header.querySelector('a.nav-icon[href="/callerhub.html"]');
+      const callerMenuLink = header.querySelector('.menu-links a[href="/callerhub.html"]');
+      callerIcon && callerIcon.addEventListener('click', goToCallerSmart);
+      callerMenuLink && callerMenuLink.addEventListener('click', goToCallerSmart);
+    } catch {}
   // Mobile header elements
   const hdrMenuBtn   = header.querySelector('#hdrMenuBtn');
   const hdrAuthBtn   = header.querySelector('#hdrAuthBtn');
@@ -394,6 +401,30 @@
   const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
   const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
   const hdrSignOut   = header.querySelector('#hdrSignOut');
+  // Smart Caller nav: if an active session exists, jump straight to Tiles instead of Hub
+  async function goToCallerSmart(e){
+    try { e && e.preventDefault && e.preventDefault(); } catch {}
+    try { window.SD?.closeMobileMenu && window.SD.closeMobileMenu(); } catch {}
+    try {
+      const oid = window.SD?.orgId; const sid = window.SD?.schoolId;
+      if (!oid || !sid) { location.href = '/callerhub.html'; return; }
+      const db = firebase.firestore();
+      const q = db.collection('orgs').doc(oid).collection('schools').doc(sid)
+        .collection('callSessions')
+        .where('endedAt','==', null)
+        .orderBy('startedAt','desc')
+        .limit(1);
+      const snap = await q.get();
+      if (!snap.empty) {
+        const id = snap.docs[0].id;
+        location.href = '/mastercaller.html?session=' + encodeURIComponent(id);
+        return;
+      }
+      location.href = '/callerhub.html';
+    } catch {
+      location.href = '/callerhub.html';
+    }
+  }
   // Will lazily create a mobile account popover
   let hdrAccountPop = null;
   function buildHdrAccountPop(){

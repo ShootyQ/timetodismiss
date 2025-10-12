@@ -34,13 +34,13 @@
 
     <section>
       <div class="start-card">
-        <h3>Start Calling</h3>
-        <p>We use the new Tiles view for calling. Start a session to begin timing, or join an active session.</p>
+  <h3>Start Calling</h3>
+  <p>Start a session to begin timing, or join an active session.</p>
         <div class="start-box">
           <button id="startBtn" class="btn btn-primary" type="button">Start Calling Now</button>
-          <div class="session-note" id="sessionNote">Press Start to go to Tiles.</div>
+          <div class="session-note" id="sessionNote">Press Start to begin.</div>
           <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none;">
-            <input type="checkbox" id="resetOnStart" /> Reset all statuses to Waiting on start
+            <input type="checkbox" id="resetOnStart" checked /> Reset all statuses to Waiting on start
           </label>
         </div>
       </div>
@@ -91,7 +91,7 @@
             // Restore start UI if no active session
             startBtn.textContent = 'Start Calling Now';
             startBtn.disabled = false;
-            sessionNote.innerHTML = 'Press Start to go to Tiles.';
+            sessionNote.innerHTML = 'Press Start to begin.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
             return;
           }
@@ -105,6 +105,18 @@
             startBtn.disabled = false;
             // Hide reset option when joining
             resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
+            // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
+            try {
+              const u = new URL(location.href);
+              const stay = u.searchParams.get('stay');
+              if (stay !== '1' && activeSession && activeSession.id) {
+                startBtn.textContent = 'Joining…';
+                startBtn.disabled = true;
+                const nav = navFor('tiles', activeSession.id);
+                setTimeout(() => { location.replace(nav); }, 60);
+                return;
+              }
+            } catch {}
             if(prevId && prevId !== activeSession.id){
               console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
             }
