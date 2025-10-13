@@ -48,6 +48,7 @@
             <span>Reset all statuses to Waiting on start</span>
             <span class="badge-rec">Recommended</span>
           </label>
+          <button id="resetNowBtn" class="btn btn-outline btn-danger" type="button" aria-label="Reset all students to Waiting">Reset All to Waiting</button>
           <div id="resetReason" class="small muted" style="max-width:660px; text-align:center;">
             Recommended to ensure a clean slate: clears any lingering statuses from earlier sessions so everyone starts in Waiting and analytics stay accurate.
           </div>
@@ -98,6 +99,7 @@
     const startBtn = document.getElementById('startBtn');
   const sessionNote = document.getElementById('sessionNote');
   const resetOnStart = document.getElementById('resetOnStart');
+  const resetNowBtn = document.getElementById('resetNowBtn');
   const resetReason = document.getElementById('resetReason');
   const selected = 'tiles';
   let activeSession = null; // { id, ...data }
@@ -224,6 +226,42 @@
       }
     }
 
+    async function runResetAll(){
+      blockAutoRedirect = true;
+      sessionNote.textContent = 'Resetting all students to Waiting…';
+      try {
+        try { await waitForContext(); } catch {}
+        // Try backend callable first
+        const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
+        const fns = getFunctions();
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        if (!orgId || !schoolId) throw new Error('Missing context for reset');
+        const resetFn = httpsCallable(fns, 'resetAllToWaiting');
+        const res = await resetFn({ orgId, schoolId });
+        const changed = Number(res?.data?.changed || 0);
+        return { changed };
+      } catch (e) {
+        console.warn('[hub] server reset unavailable, using client fallback (manual)', e);
+        try {
+          const fs = getFirestore();
+          const snap = await getDocs(colPath('students'));
+          const docs = snap.docs;
+          let changed = 0; let batch = writeBatch(fs); let ops = 0;
+          async function flush(){ if(ops>0){ await batch.commit(); batch = writeBatch(fs); ops = 0; } }
+          for (const d of docs){
+            const data = d.data() || {};
+            if (data.status !== 'waiting'){
+              batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
+              changed++; ops++;
+              if (ops >= 450) await flush();
+            }
+          }
+          await flush();
+          return { changed };
+        } catch(e2){ console.warn('[hub] client fallback reset failed (manual)', e2); return { changed: 0, error: e2 }; }
+      }
+    }
+
     async function startSession(){
       // Only Tiles is supported now
       // JOIN FLOW
@@ -274,6 +312,15 @@
       }
     }
     startBtn.addEventListener('click', startSession);
+    // Manual reset button
+    resetNowBtn?.addEventListener('click', async () => {
+      const ok = confirm('Reset ALL students to Waiting now?');
+      if (!ok) return;
+      try{
+        const res = await runResetAll();
+        sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting.') : 'All students already set to Waiting.');
+      }catch(e){ console.warn('[hub] manual reset failed', e); alert('Could not reset right now.'); }
+    });
 
     onAuthChanged((user) => { if (!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } } });
   </script>

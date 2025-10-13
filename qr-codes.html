@@ -218,6 +218,7 @@
     const showNames = document.getElementById('showNames');
     const layoutSel = document.getElementById('layout');
     const modeStudents = document.getElementById('modeStudents');
+  const includeRideShares = document.getElementById('includeRideShares');
     const btnAll = document.getElementById('selectAll');
     const btnClr = document.getElementById('clearSel');
     const btnPrint = document.getElementById('print');
@@ -288,7 +289,7 @@
       if (useStudents){
         return students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)));
       }
-      const includeRS = !!includeRideShares.checked;
+      const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
       if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
       return base.filter(x => {
@@ -413,7 +414,7 @@
 
     function getAllItems(){
       if (modeStudents.checked) return students;
-      const includeRS = !!includeRideShares.checked;
+      const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
       if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
       return base;
@@ -602,7 +603,7 @@
     q.addEventListener('input', renderList);
     tight.addEventListener('change', () => setTight(tight.checked));
   showNames.addEventListener('change', renderList);
-  includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
+  if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -720,7 +721,7 @@
           layout: layoutSel.value,
           modeStudents: !!modeStudents.checked,
           q: q.value || '',
-          includeRideShares: !!includeRideShares.checked
+          includeRideShares: !!(includeRideShares && includeRideShares.checked)
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -737,7 +738,7 @@
         if (o.layout) layoutSel.value = o.layout;
         if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
         if (typeof o.q === 'string') q.value = o.q;
-        if (typeof o.includeRideShares === 'boolean') includeRideShares.checked = o.includeRideShares;
+        if (typeof o.includeRideShares === 'boolean' && includeRideShares) includeRideShares.checked = o.includeRideShares;
       }catch{}
     }
 
