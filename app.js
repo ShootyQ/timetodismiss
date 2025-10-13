@@ -9,6 +9,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
 
 let app, db, auth;
+let ACTIVE_SESSION_ID = null; // optional: set by caller UI; used for analytics event tagging
 
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
@@ -36,6 +37,14 @@ export async function init() {
   }
   db   = getFirestore(app);
   auth = getAuth(app);
+}
+
+// Optional: set the current active session id so events can be tagged for session analytics
+export function setActiveSession(sessionId){
+  try {
+    const id = (sessionId || '').toString().trim();
+    ACTIVE_SESSION_ID = id || null;
+  } catch { ACTIVE_SESSION_ID = null; }
 }
 
 /* Tenant readiness waiter (event-driven + timeout) */
@@ -263,7 +272,23 @@ export async function setStudentStatus(studentId, status) {
   try {
     // Event logging: orgs/{org}/schools/{school}/students/{id}/events
     const evtCol = collection(studentRef, 'events');
-    await addDoc(evtCol, { status, at: serverTimestamp() });
+    // Tag with tenant, student context, and optional session id for collectionGroup analytics
+    const ctx = { orgId: globalThis.SD?.orgId || null, schoolId: globalThis.SD?.schoolId || null };
+    let classId = null; let studentName = '';
+    try {
+      const sSnap = await getDoc(studentRef);
+      if (sSnap.exists()) { const sd = sSnap.data()||{}; classId = sd.classId || null; studentName = sd.name || ''; }
+    } catch {}
+    await addDoc(evtCol, {
+      status,
+      at: serverTimestamp(),
+      sessionId: ACTIVE_SESSION_ID || null,
+      orgId: ctx.orgId,
+      schoolId: ctx.schoolId,
+      studentId,
+      classId: classId || null,
+      studentName: studentName || ''
+    });
   } catch(e){ console.warn('[analytics] event log failed', e); }
   try {
     // Update per-day per-student stats (day key in UTC) at orgs/{org}/schools/{school}/studentStats/{YYYY-MM-DD}:{studentId}

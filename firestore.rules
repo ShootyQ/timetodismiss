@@ -131,12 +131,31 @@ service cloud.firestore {
           // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
           allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId));
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
+
+          // Per-student events subcollection used for analytics (collectionGroup queries)
+          match /events/{eventId} {
+            // Anyone at least viewer within the school can append minimal event docs (status transition logging)
+            allow create: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastViewer() &&
+                          request.resource.data.keys().hasOnly(['status','at','sessionId','orgId','schoolId','studentId','classId','studentName']) &&
+                          (request.resource.data.status is string) && ('at' in request.resource.data);
+            allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+            allow update, delete: if false; // append-only
+          }
         }
 
         // SETTINGS
         match /settings/{docId} {
           allow get: if isAuthed() && inSchool(orgId, schoolId);
           allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastAdmin();
+        }
+
+        // Student daily stats (per-day aggregation docs written client-side today)
+        match /studentStats/{statId} {
+          allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+          // Allow writes from caller/admin/viewer to update analytics timestamps and denormalized fields
+          allow create, update: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastViewer() &&
+                                 request.resource.data.keys().hasOnly(['firstStatus','lastStatus','updatedAt','calledAt','enRouteAt','pickedUpAt','classId','studentName']);
+          allow delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastAdmin();
         }
 
         // Catch-all subcollections

@@ -39,28 +39,25 @@
       </div>
     </section>
 
-    <section style="margin-top:34px; max-width:760px;">
-      <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Daily Student Metrics</h2>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-        <label class="small" style="font-weight:600;">Date <input id="statsDate" type="date" /></label>
-        <button id="reloadStats" class="btn btn-secondary btn-sm" type="button">Load</button>
-        <div id="statsSummary" class="small muted">Pick a date</div>
-      </div>
-      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:400px;">
-        <table aria-label="Daily student stats" id="statsTable">
+    <section style="margin-top:34px; max-width:900px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Session Metrics</h2>
+      <div class="small muted" id="sessHint">Select a session above to load per-student metrics for that session.</div>
+      <div id="sessionMeta" class="small" style="margin:8px 0 10px;">—</div>
+      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:520px;">
+        <table aria-label="Session student metrics" id="sessionStatsTable">
           <thead><tr>
             <th>Student</th><th>Class</th>
             <th>Called→EnRoute</th><th>EnRoute→Pickup</th><th>Called→Pickup</th>
           </tr></thead>
-          <tbody id="statsBody"></tbody>
+          <tbody id="sessionStatsBody"></tbody>
         </table>
       </div>
     </section>
   </main>
 
   <script type="module">
-  import { init, colPath, getStudentStatsForDay, computeStudentDurations, summarizeDayStats, getClasses } from '/app.js?v=23';
-  import { getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp, onSnapshot, getFirestore, collection } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { init, colPath, computeStudentDurations, summarizeDayStats, getClasses } from '/app.js?v=23';
+  import { getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp, onSnapshot, getFirestore, collection, where, collectionGroup } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
     await init();
 
     const ctxSchool = document.getElementById('ctxSchool');
@@ -76,7 +73,7 @@
     function dur(start, end){ if(!start) return '—'; const s=start.toDate? start.toDate(): start; const e=end? (end.toDate? end.toDate(): end): new Date(); let ms=e-s; if(ms<0) ms=0; const secs=Math.floor(ms/1000); const m=Math.floor(secs/60); const rs=secs%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'): rm)+':'+String(rs).padStart(2,'0'); }
 
     function sessionDay(ts){ try { const d = ts?.toDate? ts.toDate(): (ts||new Date()); return d.toISOString().slice(0,10); } catch { return '—'; } }
-    let sessionActiveForStatsDate = false; // whether there's an active session for the currently selected stats date
+  let selectedSessionId = null;
     function renderRows(rows){
       sessionsMeta.textContent = rows.length + ' sessions';
       sessBody.innerHTML = rows.map(r => {
@@ -91,12 +88,14 @@
           <td class="actions">${ended? `<button data-del="${r.id}" class="btn btn-outline" style="font-size:.65rem; padding:.25rem .45rem;">Delete</button>` : `<button data-end="${r.id}" class="btn btn-danger" style="font-size:.65rem; padding:.25rem .45rem;">End Now</button>`}</td>
         </tr>`;
       }).join('');
-      // Determine if any active session matches the currently chosen stats date
-      const chosen = document.getElementById('statsDate')?.value;
-      if(chosen){
-        sessionActiveForStatsDate = rows.some(r => !r.endedAt && sessionDay(r.startedAt) === chosen);
-        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
-      }
+      // Auto-select active session or most recent ended one on first load
+      try {
+        if (!selectedSessionId) {
+          const active = rows.find(r => !r.endedAt)?.id || null;
+          selectedSessionId = active || (rows[0]?.id || null);
+          if (selectedSessionId) loadSessionMetrics(selectedSessionId, rows.find(r=>r.id===selectedSessionId)||null);
+        }
+      } catch {}
     }
 
     async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(window.SD?.orgId && window.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
@@ -156,84 +155,80 @@
     });
     attachSessions();
 
-    /* ---------------- Daily Student Stats ---------------- */
-    const statsDate = document.getElementById('statsDate');
-    const reloadStats = document.getElementById('reloadStats');
-    const statsBody = document.getElementById('statsBody');
-    const statsSummary = document.getElementById('statsSummary');
-    let classMap = {};
+  /* ---------------- Session Student Stats ---------------- */
+  const sessionStatsBody = document.getElementById('sessionStatsBody');
+  const sessionMeta = document.getElementById('sessionMeta');
+  let classMap = {};
     try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
 
     function fmtMs(ms){ if(ms==null) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
-    function ensureDateDefault(){ if(!statsDate.value){ const today=new Date(); statsDate.value = today.toISOString().slice(0,10); } }
-    ensureDateDefault();
-
-    let liveTickIv = null;
-    function finalizeIncompleteDurations(){
-      // For each stats row, if the necessary end timestamp is missing AND there is no active session for that date, mark N/A
-      const rows = Array.from(statsBody.querySelectorAll('tr[data-stat]'));
-      rows.forEach(tr => {
-        const called = tr.getAttribute('data-called');
-        const enroute = tr.getAttribute('data-enroute');
-        const pickup = tr.getAttribute('data-pickup');
-        const cteEl = tr.querySelector('[data-cte]');
-        const etpEl = tr.querySelector('[data-etp]');
-        const ctpEl = tr.querySelector('[data-ctp]');
-        // Called→EnRoute only valid if both exist
-        if(called && !enroute){ cteEl.textContent='N/A'; }
-        // Intervals requiring pickup
-        if(!pickup){
-          etpEl.textContent = 'N/A';
-          ctpEl.textContent = 'N/A';
-        }
-      });
-      if(liveTickIv){ clearInterval(liveTickIv); liveTickIv=null; }
-    }
-    async function loadDay(){
-      const day = statsDate.value; if(!day){ statsSummary.textContent='Pick a date'; return; }
-      statsSummary.textContent='Loading…'; statsBody.innerHTML='';
+    // Build session metrics by querying collectionGroup('events') filtered on sessionId
+    async function loadSessionMetrics(sessionId, sessionDoc){
+      if(!sessionId){ sessionMeta.textContent = 'Pick a session.'; sessionStatsBody.innerHTML=''; return; }
+      selectedSessionId = sessionId;
       try {
-        const rows = await getStudentStatsForDay(day);
+        const fs = getFirestore();
+        // Query all student events for this session across all students
+        const qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
+        const snap = await getDocs(qy);
+        const perStudent = new Map(); // id -> { studentName, classId, events: [{status, at}] }
+        snap.docs.forEach(d => {
+          const ev = d.data() || {};
+          const sid = ev.studentId || null; if(!sid) return;
+          if (!perStudent.has(sid)) perStudent.set(sid, { studentName: ev.studentName||'', classId: ev.classId||'', events: [] });
+          perStudent.get(sid).events.push({ status: ev.status, at: ev.at });
+        });
+        // Derive first times for each status within this session
+        const rows = [];
+        perStudent.forEach((val, sid) => {
+          // sort by at timestamp
+          val.events.sort((a,b)=>{
+            try { return a.at.toDate() - b.at.toDate(); } catch { return 0; }
+          });
+          let calledAt=null, enRouteAt=null, pickedUpAt=null;
+          val.events.forEach(e => {
+            if(e.status==='called' && !calledAt) calledAt = e.at;
+            if((e.status==='en_route'||e.status==='enroute') && !enRouteAt) enRouteAt = e.at;
+            if(e.status==='picked_up' && !pickedUpAt) pickedUpAt = e.at;
+          });
+          rows.push({ id: sid, studentName: val.studentName, classId: val.classId, calledAt, enRouteAt, pickedUpAt });
+        });
+        // Render table
         rows.sort((a,b)=> (a.studentName||'').localeCompare(b.studentName||''));
         const tr = [];
-        const durations = rows.map(r=>({ r, d: computeStudentDurations(r) }));
-        durations.forEach(({r,d})=>{
-          const baseId = r.id.replace(/[^A-Za-z0-9:_-]/g,'');
-          const calledMs = r.calledAt?.toDate?.()?.getTime() || '';
-          const enrouteMs = r.enRouteAt?.toDate?.()?.getTime() || '';
-          const pickupMs = r.pickedUpAt?.toDate?.()?.getTime() || '';
-          tr.push(`<tr data-stat="${baseId}" data-called="${calledMs}" data-enroute="${enrouteMs}" data-pickup="${pickupMs}"><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td data-cte>${fmtMs(d.calledToEnRoute)}</td><td data-etp>${fmtMs(d.enRouteToPickup)}</td><td data-ctp>${fmtMs(d.calledToPickup)}</td></tr>`);
+        function toMs(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
+        function fmtMs(ms){ if(!ms) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
+        let totalCTE=0, nCTE=0, totalETP=0, nETP=0, totalCTP=0, nCTP=0;
+        rows.forEach(r => {
+          const c = toMs(r.calledAt), e = toMs(r.enRouteAt), p = toMs(r.pickedUpAt);
+          const cte = (c && e) ? (e - c) : 0;
+          const etp = (e && p) ? (p - e) : 0;
+          const ctp = (c && p) ? (p - c) : 0;
+          if(cte){ totalCTE+=cte; nCTE++; }
+          if(etp){ totalETP+=etp; nETP++; }
+          if(ctp){ totalCTP+=ctp; nCTP++; }
+          tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${cte? fmtMs(cte):'—'}</td><td>${etp? fmtMs(etp):'—'}</td><td>${ctp? fmtMs(ctp):'—'}</td></tr>`);
         });
-        statsBody.innerHTML = tr.join('');
-        const agg = summarizeDayStats(rows);
-        statsSummary.textContent = `${rows.length} students • Avg C→E ${fmtMs(agg.avgCalledToEnRoute)} • Avg E→P ${fmtMs(agg.avgEnRouteToPickup)} • Avg C→P ${fmtMs(agg.avgCalledToPickup)}`;
-
-        // Live tick for in-progress rows (where a later timestamp is missing)
-        if(liveTickIv) { clearInterval(liveTickIv); liveTickIv=null; }
-        function liveTick(){
-          if(!sessionActiveForStatsDate){ return; }
-          const now = Date.now();
-          // Iterate DOM rows for up-to-date state
-          statsBody.querySelectorAll('tr[data-stat]').forEach(rowEl => {
-            const called = parseInt(rowEl.getAttribute('data-called')) || 0;
-            const enroute = parseInt(rowEl.getAttribute('data-enroute')) || 0;
-            const pickup = parseInt(rowEl.getAttribute('data-pickup')) || 0;
-            const cteEl = rowEl.querySelector('[data-cte]');
-            const etpEl = rowEl.querySelector('[data-etp]');
-            const ctpEl = rowEl.querySelector('[data-ctp]');
-            if(called && !enroute){ const ms = now - called; cteEl.textContent = fmtMs(ms); ctpEl.textContent = pickup? fmtMs(pickup-called): fmtMs(ms); }
-            if(enroute && !pickup){ const ms = now - enroute; etpEl.textContent = fmtMs(ms); if(called) ctpEl.textContent = fmtMs(now - called); }
-          });
-        }
-        liveTick();
-        liveTickIv = setInterval(liveTick, 1000);
-        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
-      } catch(e){ statsSummary.textContent='Failed to load stats'; console.warn('[analytics] loadDay failed', e); }
+        sessionStatsBody.innerHTML = tr.join('');
+  const avg = (t,n) => n? fmtMs(Math.round(t/n)) : '—';
+  const started = (sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate) ? sessionDoc.startedAt.toDate() : null;
+  const ended = (sessionDoc && sessionDoc.endedAt && sessionDoc.endedAt.toDate) ? sessionDoc.endedAt.toDate() : null;
+        sessionMeta.textContent = `${rows.length} students • Avg C→E ${avg(totalCTE,nCTE)} • Avg E→P ${avg(totalETP,nETP)} • Avg C→P ${avg(totalCTP,nCTP)}${started? ' • Started '+started.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}${ended? ' • Ended '+ended.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}`;
+      } catch(e){
+        sessionMeta.textContent = 'Failed to load session metrics';
+        sessionStatsBody.innerHTML = '';
+        console.warn('[analytics] loadSessionMetrics failed', e);
+      }
     }
-    reloadStats?.addEventListener('click', loadDay);
-    statsDate?.addEventListener('change', loadDay);
-    // Auto-load today
-    loadDay();
+
+    // Click a session row to load metrics for that session
+    sessBody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr[data-id]'); if(!tr) return;
+      const id = tr.getAttribute('data-id'); if(!id) return;
+      const data = { id, startedAt: null, endedAt: null };
+      try { data.startedAt = tr.children[1]?.textContent; } catch {}
+      loadSessionMetrics(id, null);
+    });
   </script>
 </body>
 </html>
