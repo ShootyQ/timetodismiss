@@ -58,26 +58,28 @@
    * This is the master function that runs the page's security check.
    * It relies on site-header.js to set window.SD.claims when the user is ready.
    */
-  function authGuard() {
-    const claims = window.SD?.claims;
+  function authGuard(incomingClaims) {
+    const claims = incomingClaims || window.SD?.claims || {};
     const user = firebase.auth().currentUser;
+    const isOwner = !!(claims.owner || claims.role === 'owner' || (Array.isArray(claims.roles) && claims.roles.includes('owner')));
 
-    if (user && claims?.role === 'owner') {
+    if (!user) return; // header will handle redirect/login prompts
+
+    if (isOwner) {
       init();
-    } else if (user) {
-      const msg = document.getElementById('hint') || document.createElement('p');
-      msg.id = msg.id || 'ownerGateMsg';
+    } else {
+      const msg = document.getElementById('ownerGateMsg') || document.getElementById('hint') || document.createElement('p');
+      msg.id = 'ownerGateMsg';
       msg.className = 'small muted';
-      msg.textContent = 'Owners only. You are signed in but do not have the Owner role.';
+      msg.textContent = 'Access denied: account is not marked as Owner.';
       (document.querySelector('main')||document.body).prepend(msg);
     }
-    // If there's no user, we do nothing. site-header.js will handle redirecting them to the login page.
   }
 
   // --- Event Listeners ---
 
   // Listen for the 'sd:claims-ready' signal from site-header.js
-  document.addEventListener('sd:claims-ready', authGuard);
+  document.addEventListener('sd:claims-ready', (e) => authGuard((e && e.detail && e.detail.claims) || e.detail || window.SD?.claims));
 
   // Also check when the page loads, in case the signal has already been sent
   document.addEventListener('DOMContentLoaded', () => {
@@ -86,7 +88,7 @@
         clearInterval(readyCheck);
         // If claims are already available when the page loads, run the check immediately.
         if (window.SD?.claims) {
-          authGuard();
+          authGuard(window.SD.claims);
         }
       }
     }, 50);

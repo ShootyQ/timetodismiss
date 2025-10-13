@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Call Hub</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-09-HUB2" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .hub-main{ padding:18px 0 40px; }
+    .muted{ color:#64748b; }
+
+    /* Hero-style start section */
+    .hub-hero{
+      background: linear-gradient(180deg, #f8fafc, #ffffff);
+      border:1px solid #e5e7eb; border-radius:16px;
+      padding:20px 18px; margin:6px 0 18px; text-align:center;
+    }
+    .hub-headline{ margin:2px 0 8px; font-size:clamp(1.25rem, 2.6vw, 1.8rem); font-weight:900; letter-spacing:.2px; }
+    .hub-headline .school{ color:#1d4ed8; text-shadow:0 1px 0 rgba(255,255,255,.6); }
+    .hero-sub{ margin:0 0 12px; color:#64748b; font-size:.95rem; }
+    .hero-cta{ display:flex; flex-direction:column; gap:10px; align-items:center; }
+    .hero-cta .btn{ font-size:1.15rem; padding:1rem 2.25rem; border-radius:18px; box-shadow:0 6px 22px -8px rgba(37,99,235,.45); }
+    .hero-cta .btn:not([disabled]){ cursor:pointer; }
+    .session-note{ font-size:.85rem; color:#64748b; }
+    .badge-rec{ background:#eef2ff; color:#1d4ed8; border:1px solid #dbe3ff; border-radius:999px; padding:2px 8px; font-size:.72rem; font-weight:700; margin-left:8px; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container hub-main">
+    <header class="titlebar" style="margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:12px;">
+      <h1 class="page-title" style="margin:0;">Call Hub</h1>
+      <a href="/index.html" class="btn btn-outline">Home</a>
+    </header>
+    <p class="small muted" id="hubCtx">—</p>
+
+    <section>
+      <div class="hub-hero">
+        <h2 class="hub-headline">Start <span id="hubSchoolName" class="school">Your School</span> Dismissal</h2>
+        <p class="hero-sub">Begin a new session or join the active one. Everyone’s pages will update live.</p>
+        <div class="hero-cta">
+          <button id="startBtn" class="btn btn-primary" type="button">Start Dismissal Now</button>
+          <label class="small" style="display:flex; gap:6px; align-items:center; cursor:pointer; user-select:none; flex-wrap:wrap; justify-content:center;">
+            <input type="checkbox" id="resetOnStart" checked />
+            <span>Reset all statuses to Waiting on start</span>
+            <span class="badge-rec">Recommended</span>
+          </label>
+          <div id="resetReason" class="small muted" style="max-width:660px; text-align:center;">
+            Recommended to ensure a clean slate: clears any lingering statuses from earlier sessions so everyone starts in Waiting and analytics stay accurate.
+          </div>
+          <div class="session-note" id="sessionNote">Press Start to begin.</div>
+        </div>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:760px;">
+  <h2 class="page-title" style="font-size:1rem; margin:0 0 8px;">Coming Analytics</h2>
+      <ul class="small" style="margin:0 0 4px 18px; padding:0; line-height:1.35;">
+        <li>Session start/end durations</li>
+        <li>Timestamps for each status change (called → en_route / picked_up)</li>
+        <li>Average pickup time per student</li>
+        <li>Performance-based sorting (fastest/slowest pickups)</li>
+      </ul>
+      <p class="small muted" style="margin:4px 0 0;">These will appear once we begin recording sessions.</p>
+    </section>
+  </main>
+
+  <script type="module">
+  import { init, onAuthChanged, colPath } from '/app.js?v=23';
+  import { addDoc, serverTimestamp, getDocs, query, where, writeBatch, getFirestore, onSnapshot, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+    await init();
+
+    // Ensure tenant context (orgId/schoolId) before using colPath
+    async function waitForContext(maxMs=12000){
+      const start = Date.now();
+      while(Date.now()-start < maxMs){
+        if (window.SD?.orgId && window.SD?.schoolId) return true;
+        await new Promise(r=>setTimeout(r,120));
+      }
+      return false;
+    }
+
+    // Context chip
+    const hubCtx = document.getElementById('hubCtx');
+    function updateCtx(){
+      const name = window.SD && (window.SD.schoolName || window.SD.schoolId);
+      if (hubCtx) hubCtx.textContent = name || '—';
+      const heroNameEl = document.getElementById('hubSchoolName');
+      if (heroNameEl) heroNameEl.textContent = name || 'Your School';
+    }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+    updateCtx();
+
+    const startBtn = document.getElementById('startBtn');
+  const sessionNote = document.getElementById('sessionNote');
+  const resetOnStart = document.getElementById('resetOnStart');
+  const resetReason = document.getElementById('resetReason');
+  const selected = 'tiles';
+  let activeSession = null; // { id, ...data }
+  let joinMode = false;     // true when we are in "join existing session" state
+  const LS_LAST_MODE = 'HUB_LAST_MODE';
+  let blockAutoRedirect = false; // guard: prevent watcher redirect while resetting
+
+    // Realtime watcher for active session (endedAt == null)
+    (async function watchActive(){
+      try {
+        // Wait for org/school context since colPath depends on it
+        await waitForContext();
+        const col = colPath('callSessions');
+        // Get the most recent session and check if it's active (endedAt missing or null)
+        const qy = query(col, orderBy('startedAt','desc'), limit(8));
+        onSnapshot(qy, (snap) => {
+          const prevId = activeSession?.id || null;
+          // Find the first truly active session among the latest few
+          let actDoc = null; let actData = null;
+          snap.forEach(d => {
+            if (actDoc) return;
+            const data = d.data();
+            const isActive = !('endedAt' in data) || data.endedAt == null;
+            if (isActive) { actDoc = d; actData = data; }
+          });
+          if (!actDoc){
+            // No active session: reset to start state
+            activeSession = null; joinMode = false;
+            startBtn.textContent = 'Start Dismissal Now';
+            startBtn.disabled = false;
+            sessionNote.innerHTML = 'Press Start to begin.';
+            resetOnStart?.closest('label')?.removeAttribute('hidden');
+            resetReason?.removeAttribute('hidden');
+            return;
+          }
+          // Use first active document
+          activeSession = { id: actDoc.id, ...actData };
+          joinMode = true;
+          const startedAtStr = activeSession.startedAt?.toDate?.()?.toLocaleTimeString?.() || '';
+          sessionNote.innerHTML = 'Active session since <strong>' + startedAtStr + '</strong>. Press Join.';
+          startBtn.textContent = 'Join Active Session';
+          startBtn.disabled = false;
+          // Hide reset option when joining
+          resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
+          resetReason?.setAttribute('hidden','hidden');
+          // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
+          try {
+            const u = new URL(location.href);
+            const stay = u.searchParams.get('stay');
+            if (stay !== '1' && activeSession && activeSession.id && !blockAutoRedirect) {
+              startBtn.textContent = 'Joining…';
+              startBtn.disabled = true;
+              const nav = navFor('tiles', activeSession.id);
+              setTimeout(() => { location.replace(nav); }, 60);
+              return;
+            }
+          } catch {}
+          if(prevId && prevId !== activeSession.id){
+            console.warn('[hub] Multiple active sessions detected; joining newest', { previous: prevId, current: activeSession.id });
+          }
+        }, async (err)=> {
+          console.warn('[hub] active session snapshot error', err);
+          // Fallback: one-shot check; if active, redirect
+          try {
+            const fs = getFirestore();
+            const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid) return;
+            const { collection, getDocs, orderBy: ob, limit: lim, query: qy2 } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+            const snap2 = await getDocs(qy2(coll, ob('startedAt','desc'), lim(8)));
+            let activeId = null;
+            snap2.forEach(d => { if (activeId) return; const data = d.data(); const isActive = !('endedAt' in data) || data.endedAt == null; if (isActive) activeId = d.id; });
+            if(!activeId) return;
+            const u = new URL(location.href); if(u.searchParams.get('stay')==='1') return;
+            location.replace('/mastercaller.html?session='+encodeURIComponent(activeId));
+          } catch(e2){ console.warn('[hub] active session fallback check failed', e2); }
+        });
+      } catch(e){ console.warn('[hub] active session watcher failed', e); }
+    })();
+
+    function navFor(mode, id){
+      return '/mastercaller.html?session='+encodeURIComponent(id);
+    }
+
+    async function runResetIfChecked(){
+      if (!resetOnStart?.checked) return { changed: 0 };
+      blockAutoRedirect = true;
+      sessionNote.textContent = 'Resetting all students to Waiting…';
+      try {
+        // Ensure we have org/school context before resolving paths
+        try { await waitForContext(); } catch {}
+        // Try backend callable first
+        const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
+        const fns = getFunctions();
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        if (!orgId || !schoolId) throw new Error('Missing context for reset');
+        const resetFn = httpsCallable(fns, 'resetAllToWaiting');
+        const res = await resetFn({ orgId, schoolId });
+        const changed = Number(res?.data?.changed || 0);
+        return { changed };
+      } catch (e) {
+        console.warn('[hub] server reset unavailable, using client fallback', e);
+        // Client fallback
+        try {
+          const fs = getFirestore();
+          const snap = await getDocs(colPath('students'));
+          const docs = snap.docs;
+          let changed = 0; let batch = writeBatch(fs); let ops = 0;
+          async function flush(){ if(ops>0){ await batch.commit(); batch = writeBatch(fs); ops = 0; } }
+          for (const d of docs){
+            const data = d.data() || {};
+            if (data.status !== 'waiting'){
+              batch.update(d.ref, { status: 'waiting', updatedAt: serverTimestamp() });
+              changed++; ops++;
+              if (ops >= 450) await flush();
+            }
+          }
+          await flush();
+          return { changed };
+        } catch(e2){ console.warn('[hub] client fallback reset failed', e2); return { changed: 0, error: e2 }; }
+      } finally {
+        // Note: don't clear blockAutoRedirect here to avoid watcher racing; we'll navigate immediately after
+      }
+    }
+
+    async function startSession(){
+      // Only Tiles is supported now
+      // JOIN FLOW
+      if(joinMode && activeSession && activeSession.id){
+        startBtn.disabled = true;
+        startBtn.textContent = 'Joining…';
+        try{
+          const res = await runResetIfChecked();
+          if (resetOnStart?.checked){
+            sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
+          }
+        }catch{}
+        const nav = navFor('tiles', activeSession.id);
+        setTimeout(()=>{ location.href = nav; }, 30);
+        return;
+      }
+  // START NEW SESSION FLOW
+  blockAutoRedirect = true; // block watcher redirect until after reset completes
+      startBtn.disabled = true;
+      startBtn.textContent = 'Starting…';
+      try {
+        // Ensure org/school context so colPath works for the reset
+        try { await waitForContext(); } catch {}
+        const docRef = await addDoc(colPath('callSessions'), {
+          mode: 'tiles',
+          startedAt: serverTimestamp(),
+            createdAt: serverTimestamp(),
+            userId: (window.SD && window.SD.userId) || (window.SD && window.SD.uid) || null,
+            schoolId: (window.SD && window.SD.schoolId) || null,
+            orgId: (window.SD && window.SD.orgId) || null,
+            endedAt: null,
+            statsReady: false
+        });
+        const id = docRef.id;
+        if (resetOnStart?.checked){
+          const res = await runResetIfChecked();
+          sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
+        }
+        const nav = navFor('tiles', id);
+        setTimeout(()=>{ location.href = nav; }, 50);
+      } catch(e){
+        console.error('[callHub] start session failed', e);
+        startBtn.disabled = false;
+  startBtn.textContent = 'Start Dismissal Now';
+        sessionNote.textContent = 'Failed to start session.';
+        blockAutoRedirect = false;
+      }
+    }
+    startBtn.addEventListener('click', startSession);
+
+    onAuthChanged((user) => { if (!user){ try { location.replace('/index.html#login'); } catch { location.href = '/index.html#login'; } } });
+  </script>
+</body>
+</html>

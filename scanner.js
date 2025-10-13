@@ -91,6 +91,10 @@
     const ev = new CustomEvent('scan:student-id', { detail: { id }, bubbles: true });
     document.dispatchEvent(ev);
   }
+  function emitRideShare(rs){
+    const ev = new CustomEvent('scan:ride-share', { detail: { rs }, bubbles: true });
+    document.dispatchEvent(ev);
+  }
 
   function parsePayload(txt){
     const t = String(txt || '').trim();
@@ -105,10 +109,12 @@
         const v = decodeURIComponent(p.slice(i+1)).trim();
         if (k) kv[k] = v;
       }
-      const stud = kv.student || kv.sid || kv.stud;
-      if (stud) return { student: stud };
-      const car = kv.car || kv.tag || kv.plate || kv.ticket;
-      if (car) return { car };
+  const stud = kv.student || kv.sid || kv.stud;
+  if (stud) return { student: stud };
+  const rs = kv.rs || kv.rideshare || kv['rideShare'];
+  if (rs) return { rideShare: rs };
+  const car = kv.car || kv.tag || kv.plate || kv.ticket;
+  if (car) return { car };
     }
     // Bare string → car tag
     return { car: t };
@@ -229,8 +235,9 @@
     const parsed = parsePayload(text);
     if (!parsed) return;
     beep();
-    if (parsed.student){ emitStudent(String(parsed.student).trim()); status('Student scanned'); }
-    else if (parsed.car){ const t = norm(parsed.car); emitTag(t); status(`Tag: ${t}`); }
+  if (parsed.student){ emitStudent(String(parsed.student).trim()); status('Student scanned'); }
+  else if (parsed.rideShare){ emitRideShare(String(parsed.rideShare).trim()); status('Ride Share'); }
+  else if (parsed.car){ const t = norm(parsed.car); emitTag(t); status(`Tag: ${t}`); }
     // Begin short cooldown (2.2s) to prevent duplicate bursts
     cooldownUntil = performance.now() + 2200;
   }
@@ -347,6 +354,10 @@ function emitStudent(id){
   const ev = new CustomEvent('scan:student-id', { detail: { id }, bubbles: true });
   document.dispatchEvent(ev);
 }
+function emitRideShare(rs){
+  const ev = new CustomEvent('scan:ride-share', { detail: { rs }, bubbles: true });
+  document.dispatchEvent(ev);
+}
 
 async function scanOnce() {
   // 1) Native QR detection
@@ -376,9 +387,13 @@ function scanLoop() {
     if (performance.now() < coolUntil) { return scanLoop(); }
     const txt = await scanOnce();
     if (txt && !dedupe(txt)) {
-      const { car, plate, student } = parsePayload(txt);
+      const { car, plate, student, rideShare } = parsePayload(txt);
       const tag = car || plate || '';
-      if (tag) {
+      if (rideShare){
+        try { beep(); } catch {}
+        status('Ride Share: ' + rideShare);
+        emitRideShare(rideShare);
+      } else if (tag) {
         try { beep(); } catch {}
         status('Scanned: ' + tag);
         emitTag(tag);
@@ -396,7 +411,7 @@ function scanLoop() {
 
 function parsePayload(txt){
   // Accept:
-  // 1) key=value strings like "car=MCA-ROWE" or "plate=ABC123" or "student=abc123"
+  // 1) key=value strings like "car=MCA-ROWE" or "plate=ABC123" or "student=abc123" or "rs=POOL42"
   // 2) bare strings like "MCA-ROWE" (treated as car tag)
   const t = String(txt).trim();
   const kv = Object.fromEntries(
@@ -404,7 +419,7 @@ function parsePayload(txt){
      .map(p => p.split('=').map(s => decodeURIComponent(s.trim())))
      .filter(a => a.length === 2 && a[0])
   );
-  if (kv.car || kv.plate || kv.student) return { car: norm(kv.car), plate: norm(kv.plate), student: (kv.student||'').trim() };
+  if (kv.car || kv.plate || kv.student || kv.rs || kv.rideshare || kv['rideShare']) return { car: norm(kv.car), plate: norm(kv.plate), student: (kv.student||'').trim(), rideShare: (kv.rs||kv.rideshare||kv['rideShare']||'').trim() };
   return { car: norm(t) };
 }
 
@@ -447,7 +462,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const tag = (ae && ae.tagName) ? ae.tagName.toUpperCase() : '';
       const isTyping = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (ae && ae.isContentEditable));
       const path = location.pathname.replace(/\/+$/, '');
-      const isMasterPage = (path === '/master.html') && !!document.getElementById('openScanner');
+  const isMasterPage = ((path === '/master.html') || (path === '/mastercaller.html')) && (!!document.getElementById('openScanner') || !!document.getElementById('tiles'));
       if (!isTyping && isMasterPage) open();
     }
   });

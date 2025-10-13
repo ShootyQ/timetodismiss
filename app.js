@@ -258,10 +258,84 @@ export function onStudents(classIdOrNull, cb) {
 // Single-student status update.
 export async function setStudentStatus(studentId, status) {
   await waitForTenant();
-  await updateDoc(docPath('students', studentId), {
-    status,
-    updatedAt: serverTimestamp()
+  const studentRef = docPath('students', studentId);
+  await updateDoc(studentRef, { status, updatedAt: serverTimestamp() });
+  try {
+    // Event logging: orgs/{org}/schools/{school}/students/{id}/events
+    const evtCol = collection(studentRef, 'events');
+    await addDoc(evtCol, { status, at: serverTimestamp() });
+  } catch(e){ console.warn('[analytics] event log failed', e); }
+  try {
+    // Update per-day per-student stats (day key in UTC) at orgs/{org}/schools/{school}/studentStats/{YYYY-MM-DD}:{studentId}
+    const now = new Date();
+    const day = now.toISOString().slice(0,10); // YYYY-MM-DD
+    const statsId = day + ':' + studentId;
+    const statsRef = docPath('studentStats', statsId);
+    const snap = await getDoc(statsRef);
+    const data = snap.exists() ? (snap.data()||{}) : { firstStatus: status };
+    // Record first times for each milestone if not already set
+    // We'll store server-side markers and let UI compute durations on read
+    const update = { lastStatus: status, updatedAt: serverTimestamp() };
+    if (!data.calledAt && status === 'called') update.calledAt = serverTimestamp();
+    if (!data.enRouteAt && (status === 'en_route' || status === 'enroute')) update.enRouteAt = serverTimestamp();
+    if (!data.pickedUpAt && status === 'picked_up') update.pickedUpAt = serverTimestamp();
+    // Also persist classId for lookup (fetch once from student doc when needed)
+    try {
+      if (!data.classId) {
+        const sSnap = await getDoc(studentRef);
+        if (sSnap.exists()) { const sd = sSnap.data()||{}; if(sd.classId) update.classId = sd.classId; if(sd.name) update.studentName = sd.name; }
+      }
+    } catch {}
+    await setDoc(statsRef, update, { merge:true });
+  } catch(e){ console.warn('[analytics] stats update failed', e); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Student Daily Stats Retrieval                                       */
+/* ------------------------------------------------------------------ */
+
+// Fetch all studentStats docs for a given date (YYYY-MM-DD).
+export async function getStudentStatsForDay(day){
+  await waitForTenant();
+  if(!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(day)) throw new Error('Day must be YYYY-MM-DD');
+  const statsCol = colPath('studentStats');
+  // We stored docs as {day}:{studentId}; use a client filter until an index/alternate schema is added.
+  const snap = await getDocs(statsCol);
+  const rows = [];
+  snap.docs.forEach(d=>{ if(d.id.startsWith(day+':')) rows.push({ id:d.id, ...d.data() }); });
+  return rows;
+}
+
+// Compute durations (ms) from stats doc server timestamps (serverTimestamp fields become Timestamp objects when read).
+export function computeStudentDurations(stat){
+  const out = { calledToEnRoute:null, enRouteToPickup:null, calledToPickup:null };
+  try {
+    const c = stat.calledAt?.toDate?.();
+    const e = stat.enRouteAt?.toDate?.();
+    const p = stat.pickedUpAt?.toDate?.();
+    if(c && e) out.calledToEnRoute = e - c;
+    if(e && p) out.enRouteToPickup = p - e;
+    if(c && p) out.calledToPickup = p - c;
+  } catch {}
+  return out;
+}
+
+export function summarizeDayStats(stats){
+  const agg = { count:0, calledToEnRoute:0, enRouteToPickup:0, calledToPickup:0, samples:{ calledToEnRoute:0, enRouteToPickup:0, calledToPickup:0 } };
+  stats.forEach(s=>{
+    const d = computeStudentDurations(s);
+    agg.count++;
+    if(typeof d.calledToEnRoute==='number'){ agg.calledToEnRoute += d.calledToEnRoute; agg.samples.calledToEnRoute++; }
+    if(typeof d.enRouteToPickup==='number'){ agg.enRouteToPickup += d.enRouteToPickup; agg.samples.enRouteToPickup++; }
+    if(typeof d.calledToPickup==='number'){ agg.calledToPickup += d.calledToPickup; agg.samples.calledToPickup++; }
   });
+  function avg(total,samples){ return samples? Math.round(total/samples): null; }
+  return {
+    total: agg.count,
+    avgCalledToEnRoute: avg(agg.calledToEnRoute, agg.samples.calledToEnRoute),
+    avgEnRouteToPickup: avg(agg.enRouteToPickup, agg.samples.enRouteToPickup),
+    avgCalledToPickup: avg(agg.calledToPickup, agg.samples.calledToPickup)
+  };
 }
 
 /* ------------------------------------------------------------------ */
@@ -270,6 +344,15 @@ export async function setStudentStatus(studentId, status) {
 
 function normTag(s){
   return (s || '').toString().toUpperCase().trim();
+}
+// Compressed normalization used by scanner.js (removes internal whitespace & non A-Z0-9-/ except dash)
+function tightTag(s){
+  return (s || '')
+    .toString()
+    .toUpperCase()
+    .replace(/\s+/g,'')
+    .replace(/[^A-Z0-9\-]/g,'')
+    .trim();
 }
 
 // Live map of tag -> name (legacy cars + multi-tag groups). Groups take precedence.
@@ -328,11 +411,28 @@ export function onCarGroups(cb){
 export async function getGroupByTag(tag){
   await waitForTenant();
   const t = normTag(tag);
-  const qy = query(colPath('carGroups'), where('tags', 'array-contains', t));
-  const snap = await getDocs(qy);
-  if (snap.empty) return null;
-  const d = snap.docs[0];
-  return { id: d.id, ...d.data() };
+  let snap;
+  try {
+    const qy = query(colPath('carGroups'), where('tags', 'array-contains', t));
+    snap = await getDocs(qy);
+    if (!snap.empty){
+      const d = snap.docs[0];
+      return { id: d.id, ...d.data() };
+    }
+  } catch(e){ /* fall through to tight */ }
+  // Retry with tight/whitespace-stripped variant if different (scanner emits this form)
+  const tight = tightTag(tag);
+  if (tight && tight !== t){
+    try {
+      const qy2 = query(colPath('carGroups'), where('tags', 'array-contains', tight));
+      const snap2 = await getDocs(qy2);
+      if (!snap2.empty){
+        const d2 = snap2.docs[0];
+        return { id: d2.id, ...d2.data() };
+      }
+    } catch(e2){ /* ignore */ }
+  }
+  return null;
 }
 
 // Utility: chunk an array (for Firestore 'in' queries limit of 10)
@@ -346,18 +446,21 @@ export async function setStatusForGroup(groupId, status){
   const d = await getDoc(docPath('carGroups', groupId));
   if (!d.exists()) return;
   const tags = (d.data().tags || []).map(normTag).filter(Boolean);
-  if (tags.length === 0) return;
+  if (tags.length === 0) return 0;
 
   // Firestore 'in' supports up to 10 items
   const batches = chunk(tags, 10);
+  let total = 0;
   for (const batchTags of batches){
     const qy = query(colPath('students'), where('carTag', 'in', batchTags));
     const snap = await getDocs(qy);
     if (snap.empty) continue;
     const wb = writeBatch(db);
-    snap.forEach(d => wb.update(d.ref, { status, updatedAt: serverTimestamp() }));
+    snap.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
     await wb.commit();
   }
+  try { console.debug('[setStatusForGroup] applied', { groupId, status, total }); } catch {}
+  return total;
 }
 
 // Set status for all students that share a given carTag (now resolves group)
@@ -365,16 +468,41 @@ export async function setStatusForTag(tag, status) {
   await waitForTenant();
   const grp = await getGroupByTag(tag);
   if (grp && Array.isArray(grp.tags) && grp.tags.length){
-    return setStatusForGroup(grp.id, status);
+    try { console.debug('[setStatusForTag] resolved group', { tag, groupId: grp.id, tags: grp.tags }); } catch {}
+    return await setStatusForGroup(grp.id, status);
   }
-  // Fallback to single-tag behavior
-  const t = normTag(tag);
-  const qy = query(colPath('students'), where('carTag', '==', t));
-  const snap = await getDocs(qy);
-  if (snap.empty) return;
-  const batch = writeBatch(db);
-  snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
-  await batch.commit();
+  // Fallback to single-tag behavior (attempt original & tight variants)
+  const original = normTag(tag);
+  const compressed = tightTag(tag);
+  try { console.debug('[setStatusForTag] fallback single tag path', { original, compressed, status }); } catch {}
+  // Try original first
+  let snap;
+  try {
+    const qy = query(colPath('students'), where('carTag', '==', original));
+    snap = await getDocs(qy);
+    if (!snap.empty){
+      const batch = writeBatch(db);
+      snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
+      await batch.commit();
+      try { console.debug('[setStatusForTag] updated original tag students', { tag: original, count: snap.size }); } catch {}
+      return snap.size;
+    }
+  } catch(e){ /* ignore & retry compressed */ }
+  if (compressed && compressed !== original){
+    try {
+      const qy2 = query(colPath('students'), where('carTag', '==', compressed));
+      const snap2 = await getDocs(qy2);
+      if (!snap2.empty){
+        const batch2 = writeBatch(db);
+        snap2.forEach(d => batch2.update(d.ref, { status, updatedAt: serverTimestamp() }));
+        await batch2.commit();
+        try { console.debug('[setStatusForTag] updated compressed tag students', { tag: compressed, count: snap2.size }); } catch {}
+        return snap2.size;
+      }
+    } catch(e2){ /* final fallback: no-op */ }
+  }
+  try { console.debug('[setStatusForTag] no matches', { tag: original }); } catch {}
+  return 0;
 }
 
 // Strict: update status only for students whose carTag exactly matches the provided tag.
@@ -395,27 +523,30 @@ export async function setStatusForExactTag(tag, status) {
 export async function setStatusForRideShare(rideShare, status){
   await waitForTenant();
   const key = String(rideShare || '').trim();
-  if (!key) return;
+  if (!key) return 0;
   const qy = query(colPath('carGroups'), where('rideShare', '==', key));
   const snap = await getDocs(qy);
-  if (snap.empty) return;
+  if (snap.empty) return 0;
   const allTags = [];
   snap.forEach(d => {
     const tags = (d.data().tags || []).map(normTag).filter(Boolean);
     allTags.push(...tags);
   });
   const uniq = Array.from(new Set(allTags));
-  if (!uniq.length) return;
+  if (!uniq.length) return 0;
   // chunk into 10s for 'in' query
   const batches = chunk(uniq, 10);
+  let total = 0;
   for (const batchTags of batches){
     const q2 = query(colPath('students'), where('carTag', 'in', batchTags));
     const s2 = await getDocs(q2);
     if (s2.empty) continue;
     const wb = writeBatch(db);
-    s2.forEach(d => wb.update(d.ref, { status, updatedAt: serverTimestamp() }));
+    s2.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
     await wb.commit();
   }
+  try { console.debug('[setStatusForRideShare] applied', { rideShare: key, status, total }); } catch {}
+  return total;
 }
 
 /* ------------------------------------------------------------------ */
@@ -726,9 +857,15 @@ export async function setMyNickname(studentId, nickname, sound){
   }
   if (trimmed && trimmed.length > 60) throw new Error('Nickname too long (max 60 chars)');
   if (trimmedSound && trimmedSound.length > 80) throw new Error('Sound id too long (max 80 chars)');
+  // Ensure cleared fields are actually removed (previous logic left stale name when cleared but sound kept)
+  let deleteFieldFn = null;
+  try {
+    const mod = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+    deleteFieldFn = mod.deleteField;
+  } catch {}
   const payload = { updatedAt: serverTimestamp() };
-  if (trimmed) payload.name = trimmed;
-  if (trimmedSound) payload.sound = trimmedSound;
+  if (trimmed) payload.name = trimmed; else if (deleteFieldFn) payload.name = deleteFieldFn();
+  if (trimmedSound) payload.sound = trimmedSound; else if (deleteFieldFn) payload.sound = deleteFieldFn();
   try {
     await setDoc(ref, payload, { merge: true });
     try { console.debug('[nicknames] setMyNickname success', { studentId, payload }); } catch {}

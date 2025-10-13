@@ -4,351 +4,332 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Time To Dismiss — Voice Caller</title>
+  <link rel="stylesheet" href="/styles.css?v=voice1" />
+  <script src="/site-header.js" defer></script>
   <style>
-    body {
-      margin: 0; font-family: Inter, sans-serif; background: #f9fafb; color: #111827;
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      min-height: 100vh;
-    }
-    h1 { font-size: 1.6rem; margin-bottom: 1rem; }
-    .btn {
-      display: inline-block; font-weight: 700; border-radius: 14px;
-      padding: .85rem 1.2rem; border: 1px solid #e5e7eb;
-      background: #fff; color: #111827; cursor: pointer;
-      transition: transform .06s ease, box-shadow .2s ease;
-      margin: .5rem;
-    }
-    .btn:hover { transform: translateY(-1px); }
-    .btn-primary { background: #2563eb; color: #fff; border-color: transparent; }
-    .btn-danger { background: #b91c1c; color: #fff; border-color: transparent; }
-    .status {
-      margin-top: 1rem; font-size: 1.2rem; font-weight: 600; color: #374151;
-    }
-    /* Confirmation overlay */
-    .overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,.65);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 1000; visibility: hidden; opacity: 0;
-      transition: opacity .2s ease;
-    }
-    .overlay.active { visibility: visible; opacity: 1; }
-    .overlay-box {
-      background: #fff; border-radius: 16px; padding: 1.5rem; text-align: center;
-      max-width: 92%; box-shadow: 0 10px 30px rgba(0,0,0,.25);
-    }
-    .overlay-box h2 { margin: 0 0 1rem; font-size: 1.4rem; }
-    .overlay-actions { display: flex; gap: 1rem; justify-content: center; }
-  /* Choices list for disambiguation */
-  .choices{ display:grid; gap:14px; margin: 12px 0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .choice{ display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:1rem; border:1px solid #e5e7eb; border-radius:14px; background:#f8fafc; }
-  .choice .title{ font-weight:700; font-size:1.05rem; }
-  .choice .meta{ color:#64748b; font-size:.9rem; }
-  .choice .actions{ display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
-  .choice .actions .btn{ margin:0; padding:.6rem .5rem; }
+    /* Voice page scoped polish */
+    body.voice-page{ background:#f1f5f9; }
+    .voice-main{ width:min(1100px,92%); margin:0 auto; padding:clamp(0.5rem,1.2vw,1.2rem) 0 3rem; display:flex; flex-direction:column; gap:1rem; }
+    .voice-head{ display:flex; flex-wrap:wrap; align-items:center; gap:.6rem .6rem; }
+    .voice-head-title{ flex:1 1 auto; font-size:clamp(1.3rem,3.2vw,2rem); font-weight:800; margin:0; letter-spacing:.5px; }
+    .voice-nav-btns{ display:flex; gap:.5rem; flex-wrap:wrap; }
+    .voice-nav-btns a, .voice-nav-btns button{ text-decoration:none; font-weight:700; }
+    .voice-hint{ margin:0; font-size:.9rem; color:#475569; background:#fff; border:1px solid #e2e8f0; padding:.6rem .85rem; border-radius:12px; font-weight:500; line-height:1.3; }
+    .voice-actions{ display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
+    #activateBtn{ font-size:1rem; }
+    #micBtn{ width:90px; height:90px; border-radius:50%; font-size:2rem; position:relative; display:flex; align-items:center; justify-content:center; font-weight:700; }
+    #micBtn.pulse::after{ content:""; position:absolute; inset:-10px; border-radius:50%; background:radial-gradient(circle at center, rgba(37,99,235,.35), transparent); animation:micPulse 1.2s infinite ease-in-out; }
+    @keyframes micPulse{0%{opacity:.55; transform:scale(.9);}50%{opacity:1; transform:scale(1);}100%{opacity:0; transform:scale(1.3);} }
+    #status{ font-size:1rem; font-weight:600; min-height:1.3em; }
+    .voice-session-bar{ font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:#475569; display:flex; gap:.75rem; align-items:center; flex-wrap:wrap; }
+    .voice-cards{ display:grid; gap:1rem; }
+    #tilesWrap{ display:none; margin-top:.5rem; }
+    #tilesMeta{ font-size:.6rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin:0 0 .4rem; display:flex; justify-content:space-between; align-items:center; }
+    #tiles{ display:grid; gap:.75rem; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); }
+    .tile{ position:relative; background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:.75rem .7rem .55rem; box-shadow:0 4px 14px -6px rgba(15,23,42,.12),0 1px 2px rgba(15,23,42,.08); display:flex; flex-direction:column; min-height:128px; }
+    .tile.active{ outline:2px solid var(--accent); outline-offset:2px; }
+    .tile .nm{ font-size:.95rem; font-weight:700; margin:0 0 .3rem; line-height:1.2; }
+    .tile .meta{ font-size:.6rem; letter-spacing:.05em; text-transform:uppercase; color:#64748b; }
+    .tile .quick{ margin-top:auto; display:grid; gap:.4rem; grid-template-columns:repeat(2,1fr); }
+    .tile .quick button{ font-size:.62rem; padding:.38rem .45rem; border-radius:8px; }
+    .gesture-banner{ position:absolute; inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; font-size:.75rem; font-weight:700; letter-spacing:.05em; color:#fff; opacity:0; transition:opacity .15s; }
+    .tile.gesture .gesture-banner{ opacity:1; }
+    .swipe-hint{ font-size:.55rem; opacity:.7; }
+    .tile.fade-out{ animation:voiceTileFade 1.4s forwards; }
+    @keyframes voiceTileFade{ to { opacity:0; transform:translateY(4px) scale(.95);} }
+    .hidden{ display:none !important; }
+    /* Direction color overlays */
+    .dir-left{ background:linear-gradient(110deg,#2563eb,#1d4ed8); }
+    .dir-right{ background:linear-gradient(250deg,#0d9488,#0f766e); }
+    .dir-up{ background:linear-gradient(180deg,#7c3aed,#5b21b6); }
+    .dir-down{ background:linear-gradient(0deg,#475569,#1e293b); }
+    @media (max-width:560px){ #tiles{ grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); } .tile{ min-height:110px; } }
   </style>
 </head>
-<body>
-  <h1>Voice Caller</h1>
-  <button id="btnStart" class="btn btn-primary">🎤 Start Listening</button>
-  <button id="btnMute" class="btn btn-danger" hidden>🔇 Mute</button>
-  <div id="status" class="status">Idle</div>
-
-  <!-- Confirmation overlay -->
-  <div id="confirmOverlay" class="overlay">
-    <div class="overlay-box">
-      <h2 id="confirmText">Did you mean ...?</h2>
-      <div id="choices" class="choices" role="list"></div>
-      <div class="overlay-actions">
-        <button id="btnNo" class="btn">Cancel</button>
+<body class="voice-page">
+  <main class="voice-main" id="voiceMain" aria-labelledby="voiceTitle">
+    <header class="voice-head">
+      <h1 id="voiceTitle" class="voice-head-title">Voice Caller</h1>
+      <div class="voice-nav-btns" role="navigation" aria-label="Caller Views">
+  <a id="navClassic" class="btn btn-outline" href="/mastercaller.html">Tiles</a>
+        <a id="navTiles" class="btn btn-outline" href="/mastercaller.html">Tiles</a>
+        <a id="navHub" class="btn btn-outline" href="/callerhub.html">Hub</a>
+        <button id="endVoiceSession" class="btn btn-danger" type="button">End</button>
       </div>
+    </header>
+    <div class="voice-session-bar" id="voiceSessionBar" hidden>
+      <span id="voiceSessionMode">Session</span>
+      <span>• <span id="voiceSessionElapsed">00:00</span></span>
+      <span id="voiceSessionAutoEnd"></span>
     </div>
-  </div>
+    <p id="hint" class="voice-hint">Activate voice, tap mic, then say a student name (e.g. “Ava Johnson”).</p>
+    <div class="voice-actions" id="activationRow">
+      <button id="activateBtn" class="btn btn-primary" type="button">Enable Voice Access</button>
+      <button id="micBtn" class="btn btn-danger hidden" aria-pressed="false" aria-live="polite" title="Start Listening">🎤</button>
+      <div id="status" role="status" aria-live="polite">Idle</div>
+    </div>
+    <section id="tilesWrap" aria-live="polite" aria-atomic="true">
+      <div id="tilesMeta">
+        <span id="tilesTitle">Matches</span>
+        <span class="swipe-hint">Swipe: ◀ Call • ▶ Family • ▲ Ride • ▼ Clear</span>
+      </div>
+      <div id="tiles"></div>
+    </section>
+  </main>
 
   <script type="module">
-  import { init, onStudents, onCarGroups, setStudentStatus } from '/app.js?v=23';
+  import { init, onStudents, onCarGroups, setStudentStatus, setStatusForRideShare, setStatusForGroup, setStatusForTag, getGroupByTag } from '/app.js?v=23';
     await init();
 
-    const btnStart = document.getElementById("btnStart");
-    const btnMute  = document.getElementById("btnMute");
-    const statusEl = document.getElementById("status");
-  const overlay  = document.getElementById("confirmOverlay");
-  const confirmText = document.getElementById("confirmText");
-  const choicesEl = document.getElementById("choices");
-  const btnNo  = document.getElementById("btnNo");
+    const activateBtn    = document.getElementById('activateBtn');
+    const micBtn         = document.getElementById('micBtn');
+    const statusEl       = document.getElementById('status');
+    const tilesWrap      = document.getElementById('tilesWrap');
+    const tilesEl        = document.getElementById('tiles');
+    const tilesTitle     = document.getElementById('tilesTitle');
+    const hintEl         = document.getElementById('hint');
+  const navClassic     = document.getElementById('navClassic');
+    const navTiles       = document.getElementById('navTiles');
+    const navHub         = document.getElementById('navHub');
+    const endVoiceBtn    = document.getElementById('endVoiceSession');
+    const voiceBar       = document.getElementById('voiceSessionBar');
+    const voiceElapsedEl = document.getElementById('voiceSessionElapsed');
+    const voiceAutoEndEl = document.getElementById('voiceSessionAutoEnd');
+    const voiceModeEl    = document.getElementById('voiceSessionMode');
 
-    let recog = null;
-    let listening = false;
-  // ------- Overlay helpers -------
-    function hideOverlay() {
-      overlay.classList.remove("active");
-    }
-    btnNo.addEventListener("click", hideOverlay);
+  let voiceStartedAt=null; let voiceEnded=false; let voiceTimer=null; let autoEndMinutes=30; let voiceEnding=false;
 
-    function startListening() {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (!SpeechRecognition) {
-        alert("Voice recognition not supported in this browser.");
-        return;
-      }
-      recog = new SpeechRecognition();
-      recog.continuous = true;
-      recog.lang = "en-US";
-      recog.onresult = (e) => {
-        const phrase = e.results[e.results.length - 1][0].transcript.trim().toLowerCase();
-        statusEl.textContent = "Heard: " + phrase;
-        parseCommand(phrase);
-      };
-  recog.onerror = (e) => statusEl.textContent = "Error: " + e.error;
-  recog.onend = () => { if (listening) { try { recog.start(); } catch(_){} } };
-      recog.start();
-      listening = true;
-      btnStart.hidden = true;
-      btnMute.hidden = false;
-      statusEl.textContent = "Listening...";
-    }
-
-    function stopListening() {
-      if (recog) recog.stop();
-      listening = false;
-      btnStart.hidden = false;
-      btnMute.hidden = true;
-      statusEl.textContent = "Muted";
+    const vUrlParams = new URLSearchParams(location.search);
+    const vSessionId = vUrlParams.get('session');
+    if (vSessionId){
+  if (navClassic) navClassic.href = '/mastercaller.html?session=' + encodeURIComponent(vSessionId);
+      if (navTiles) navTiles.href = '/mastercaller.html?session=' + encodeURIComponent(vSessionId);
+      if (navHub) navHub.href = '/callerhub.html?session=' + encodeURIComponent(vSessionId);
+      (async ()=>{
+        await waitForContext();
+        try {
+          const { doc, onSnapshot, getFirestore, getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const oid=globalThis.SD?.orgId; const sid=globalThis.SD?.schoolId; if(!oid||!sid) return;
+          const fs=getFirestore();
+          const sRef=doc(fs,'orgs',oid,'schools',sid,'callSessions',vSessionId);
+          const setRef=doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
+          try { const setSnap=await getDoc(setRef); if(setSnap.exists()){ const cfg=setSnap.data(); if(cfg.autoEndMinutes>=5&&cfg.autoEndMinutes<=240) autoEndMinutes=cfg.autoEndMinutes; } } catch {}
+          onSnapshot(sRef,(snap)=>{
+            if(!snap.exists()) return;
+            const data=snap.data();
+            if(data.startedAt && !voiceStartedAt){ voiceStartedAt=data.startedAt.toDate(); if(voiceBar){ voiceBar.hidden=false; } startVoiceTimer(); }
+            if(data.mode) voiceModeEl.textContent='Session ('+(data.mode||'voice')+')';
+            if(data.endedAt && !voiceEnded){ voiceEnded=true; endVoiceBtn.textContent='Dismissal Ended'; endVoiceBtn.disabled=true; if(voiceElapsedEl && voiceStartedAt){ voiceElapsedEl.textContent=vFmt(data.endedAt.toDate()-voiceStartedAt); } }
+          }, (err)=> console.warn('[voice] session snapshot error', err));
+        } catch(e){ console.warn('[voice] session watcher init failed', e); }
+      })();
     }
 
-    btnStart.addEventListener("click", startListening);
-    btnMute.addEventListener("click", stopListening);
-
-    function cleanHeardName(s){
-      let v = s.trim();
-      // strip common trailing fillers: now, please, thanks, thank you
-      v = v.replace(/\b(thank you|thanks|please|now)\b\.?$/i,'').trim();
-      return v;
+    async function endVoiceSession(opts){
+      const skipConfirm = !!(opts && opts.skipConfirm);
+      if (!vSessionId){ endVoiceBtn.disabled=true; endVoiceBtn.textContent='No Session'; return; }
+      if(voiceEnded || voiceEnding) return;
+      if(!skipConfirm){ if(!confirm('End dismissal now? This will finalize the session and stop timing.')) return; }
+      voiceEnding = true;
+      endVoiceBtn.disabled=true; endVoiceBtn.textContent='Ending…';
+      try {
+        const { updateDoc, doc, serverTimestamp, getFirestore, setDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if(!oid||!sid) throw new Error('Missing org/school');
+        const fs = getFirestore();
+        const ref = doc(fs, 'orgs', oid, 'schools', sid, 'callSessions', vSessionId);
+        await updateDoc(ref, { endedAt: serverTimestamp() });
+        try {
+          const signalRef = doc(fs,'orgs',oid,'schools',sid,'signals','dismissal');
+          await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
+        } catch(sigErr){ console.warn('[voice] dismissal signal failed', sigErr); }
+        voiceEnded=true;
+        try { if(voiceTimer){ clearInterval(voiceTimer); voiceTimer=null; } } catch {}
+        if(voiceStartedAt && voiceElapsedEl){ const ms = Date.now() - voiceStartedAt.getTime(); voiceElapsedEl.textContent = vFmt(ms); }
+        endVoiceBtn.textContent='Dismissal Ended';
+      } catch(e){ console.warn('[voice] end session failed', e); if(!skipConfirm) alert('Could not end dismissal here. Try Analytics → End Now.'); endVoiceBtn.textContent='End Dismissal'; endVoiceBtn.disabled=false; }
+      finally { voiceEnding = false; }
     }
-    function parseCommand(text) {
-      const words = text.trim().split(/\s+/);
-      if (!words.length) return;
-      let action = null;
-      if (words[0] === 'call') action = 'called';
-      else if (words[0] === 'clear') action = 'waiting';
-      else if ((words[0] === 'picked' && words[1] === 'up') || words[0]==='pickup' || words[0]==='pick') action = 'picked_up';
-      if (!action) return;
-      const heard = (action==='picked_up') ? words.slice(2).join(' ') : words.slice(1).join(' ');
-      const name = cleanHeardName(heard);
-      if (!name) return;
-      statusEl.textContent = `Heard intent: ${action} → ${name}`;
-      // Always show confirmation candidates; user taps action on the correct tile
-      handleCandidates(action, name);
-    }
+    endVoiceBtn?.addEventListener('click', endVoiceSession);
 
-    // ===== Data + fuzzy matching =====
-    function escapeHtml(s){ return (''+(s??''))
-      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-      .replace(/\"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function vFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
+  async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
+  function startVoiceTimer(){ if(!voiceStartedAt) return; function tick(){ const now=new Date(); const elapsed=now-voiceStartedAt; if(voiceElapsedEl) voiceElapsedEl.textContent=vFmt(elapsed); const limit=autoEndMinutes*60000; if(!voiceEnded){ const remain=limit-elapsed; if(remain<=0){ autoEndVoice(); } else if(voiceAutoEndEl){ voiceAutoEndEl.textContent=' • Auto end in '+vFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); voiceTimer=setInterval(tick,1000); }
+  async function autoEndVoice(){ if(voiceEnded || voiceEnding) return; try{ await endVoiceSession({ skipConfirm:true }); }catch{} }
 
-  const store = { students: [], groupsByTag: {}, byFull: new Map(), byTag: new Map(), byToken: new Map() };
+    let recog = null; let listening=false; let lastHeard = ''; let lastShownStudent=null; let rearmTimer=null;
+
+    // ------------------ Data Structures + Matching ------------------
+  const store = { students: [], byFull:new Map(), aliasIndex:new Map(), groups:[], tagToGroup:new Map(), rideShareIndex:new Map() };
     const numWords = new Map([['k','k'],['kindergarten','k'],['first','1'],['1st','1'],['second','2'],['2nd','2'],['third','3'],['3rd','3'],['fourth','4'],['4th','4'],['fifth','5'],['5th','5'],['sixth','6'],['6th','6']]);
-    const norm = (s) => String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,'').replace(/\s+/g,' ').trim();
-    const simplifyClass = (s) => norm(s).split(' ').map(w=>numWords.get(w)||w).join(' ');
-
-    // Simple Soundex for English names (handles odd spellings like Brentyn vs Brenton)
-    function soundex(s){
-      const str = String(s||'').toUpperCase().replace(/[^A-Z]/g,'');
-      if(!str) return '';
-      const first = str[0];
-      const map = {B:1,F:1,P:1,V:1,C:2,G:2,J:2,K:2,Q:2,S:2,X:2,Z:2,D:3,T:3,L:4,M:5,N:5,R:6};
-      let prev = map[first]||0, out = first, count=1;
-      for(let i=1;i<str.length && count<4;i++){
-        const ch = str[i];
-        const code = map[ch]||0;
-        if(code!==0 && code!==prev){ out += code; count++; }
-        prev = code;
-      }
-      while(out.length<4) out += '0';
-      return out.slice(0,4);
-    }
-
-    function prepStudent(s){
-    const derivedName = [s.firstName, s.lastName].filter(Boolean).join(' ');
-    const name = String(s.name || derivedName || '').trim();
-      const [first='', ...rest] = name.split(/\s+/);
-      const last = rest.join(' ');
-    const clsName = s.className || s.classId || s.grade || '';
-      const fullNorm = norm(name);
-      const tokens = new Set(fullNorm.split(' ').filter(Boolean));
-      return {
-        id: s.id,
-        name,
-        first: first.toLowerCase(),
-        last: last.toLowerCase(),
-        full: fullNorm,
-        tokens,
-        lastInitial: (last[0]||'').toLowerCase(),
-        className: clsName,
-        classKey: simplifyClass(clsName),
-  carTag: (s.carTag || s.tag) ? String(s.carTag || s.tag).toUpperCase() : '',
-  sxFirst: soundex(first),
-  sxLast: soundex(last)
-      };
-    }
-
-    function levenshtein(a,b){
-      a = norm(a); b = norm(b);
-      const m=a.length, n=b.length; if(!m||!n) return Math.max(m,n);
-      const dp = new Array(n+1); for(let j=0;j<=n;j++) dp[j]=j;
-      for(let i=1;i<=m;i++){
-        let prev=dp[0]++;
-        for(let j=1;j<=n;j++){
-          const tmp=dp[j];
-          dp[j] = Math.min(
-            dp[j]+1,
-            dp[j-1]+1,
-            prev + (a[i-1]===b[j-1]?0:1)
-          );
-          prev=tmp;
+    const norm = (s) => String(s||'').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
+    const simplifyClass = (s)=> norm(s).split(' ').map(w=>numWords.get(w)||w).join(' ');
+    const soundex = (s)=>{ const str=String(s||'').toUpperCase().replace(/[^A-Z]/g,''); if(!str) return ''; const first=str[0]; const map={B:1,F:1,P:1,V:1,C:2,G:2,J:2,K:2,Q:2,S:2,X:2,Z:2,D:3,T:3,L:4,M:5,N:5,R:6}; let prev=map[first]||0,out=first,c=1; for(let i=1;i<str.length&&c<4;i++){ const ch=str[i]; const code=map[ch]||0; if(code!==0&&code!==prev){ out+=code; c++; } prev=code; } while(out.length<4) out+='0'; return out.slice(0,4); };
+  function prepStudent(s){ const derived=[s.firstName,s.lastName].filter(Boolean).join(' '); const name=String(s.name||derived||'').trim(); const [first='',...rest]=name.split(/\s+/); const last=rest.join(' '); const rawNick=s.nicknames||s.aliases||[]; const nickArr=Array.isArray(rawNick)?rawNick: typeof rawNick==='string'? rawNick.split(/[,;]+/): []; if(s.preferredName && !nickArr.includes(s.preferredName)) nickArr.push(s.preferredName); const normNicks = nickArr.map(n=>norm(n)).filter(Boolean); return { id:s.id, name, preferredName:s.preferredName||'', first:first.toLowerCase(), last:last.toLowerCase(), className:(s.className||s.classId||s.grade||''), classKey:simplifyClass(s.className||s.classId||s.grade||''), carTag:(s.carTag||s.tag? String(s.carTag||s.tag).toUpperCase():''), full:norm(name), sxFirst:soundex(first), sxLast:soundex(last), nicknames:normNicks }; }
+    function levenshtein(a,b){ a=norm(a); b=norm(b); const m=a.length,n=b.length; if(!m||!n) return Math.max(m,n); const dp=new Array(n+1); for(let j=0;j<=n;j++) dp[j]=j; for(let i=1;i<=m;i++){ let prev=dp[0]++; for(let j=1;j<=n;j++){ const tmp=dp[j]; dp[j]=Math.min(dp[j]+1, dp[j-1]+1, prev + (a[i-1]===b[j-1]?0:1)); prev=tmp; } } return dp[n]; }
+    function similarity(a,b){ const A=norm(a), B=norm(b); if(!A||!B) return 0; const dist=levenshtein(A,B); return 1 - (dist / Math.max(A.length,B.length)); }
+    function matchCandidates(qRaw){
+      const q=norm(qRaw); if(!q) return [];
+      const out=[]; const qTokens=q.split(' ').filter(Boolean); const qFirst=qTokens[0]; const qLast=qTokens.length>1? qTokens[qTokens.length-1]:''; const sxF=soundex(qFirst); const sxL=soundex(qLast); const isFull=qTokens.length>1; const single = qTokens.length===1;
+      // Precompute duplicate counts for first & last names
+      const firstCounts=new Map(); const lastCounts=new Map();
+      for(const s of store.students){ firstCounts.set(s.first,(firstCounts.get(s.first)||0)+1); if(s.last) lastCounts.set(s.last,(lastCounts.get(s.last)||0)+1); }
+      for(const s of store.students){ let score=0;
+        // Base similarity to full name
+        score=Math.max(score, similarity(q,s.full));
+        const nameTokens=s.full.split(' ');
+        if(isFull){
+          // Ordered tokens
+          const startsAll=qTokens.every((qt,i)=> nameTokens[i]?.startsWith(qt)); if(startsAll) score=Math.max(score,.94);
+          if(qTokens.length===nameTokens.length && qTokens.every((qt,i)=> nameTokens[i]===qt)) score=1;
+          // Unordered first/last swap
+          if(qTokens.length===2 && nameTokens.length>=2){ const setQ=new Set(qTokens); const setFL=new Set([s.first,s.last].filter(Boolean)); let unordered=true; for(const t of setQ) if(!Array.from(setFL).some(fl=>fl.startsWith(t))) { unordered=false; break; } if(unordered) score=Math.max(score,.92); }
         }
-      }
-      return dp[n];
-    }
-    function similarity(a,b){
-      const A=norm(a), B=norm(b); if(!A||!B) return 0;
-      const dist = levenshtein(A,B);
-      return 1 - (dist / Math.max(A.length,B.length));
-    }
-
-    function splitFrom(q){
-      const m = q.match(/^(.*?)(?:\s+from\s+)(.+)$/i);
-      return m ? { name:m[1].trim(), cls:m[2].trim() } : { name:q, cls:'' };
-    }
-
-    function matchCandidates(raw){
-      const { name:qNameRaw, cls:qClsRaw } = splitFrom(raw);
-      const qName = norm(qNameRaw);
-      const qCls = simplifyClass(qClsRaw);
-      if (!qName) return [];
-      // Exact full-name match first via index on the 'name' field
-      const exact = store.byFull.get(qName);
-      if (exact) {
-        const filtered = qCls ? exact.filter(s => s.classKey.includes(qCls)) : exact;
-        if (filtered.length) return filtered.map(s => ({ student:s, score: 1.0 })).slice(0,5);
-      }
-      const qParts = qName.split(' ');
-      const hasLastInitial = qParts.length>=2 && qParts[qParts.length-1].length===1 && /[a-z]/.test(qParts[qParts.length-1]);
-      const lastInit = hasLastInitial ? qParts[qParts.length-1] : '';
-      const qFirst = qParts[0]||'';
-      const qLast = qParts.length>1 && !hasLastInitial ? qParts[qParts.length-1] : '';
-      const sxFirst = soundex(qFirst);
-      const sxLast  = soundex(qLast);
-
-      const out = [];
-      for(const s of store.students){
-        if (qCls && !s.classKey.includes(qCls)) continue;
-        let score = 0;
-        // prioritize the name field
-        score = Math.max(score, similarity(qName, s.full));
-        if (s.full.startsWith(qName)) score = Math.max(score, 0.94);
-        if (qName.includes(s.first) && qName.includes(s.last)) score = Math.max(score, 0.93);
-        if (hasLastInitial){
-          if (s.first===qFirst && s.lastInitial===lastInit) score = Math.max(score, 0.92);
-          if (s.first.startsWith(qFirst) && s.lastInitial===lastInit) score = Math.max(score, 0.88);
-        } else {
-          if (s.first===qFirst) score = Math.max(score, 0.86);
-          else if (s.first.startsWith(qFirst)) score = Math.max(score, 0.78);
+        if(s.full.startsWith(q)) score=Math.max(score,.91);
+        if(q.includes(s.first)&&q.includes(s.last)) score=Math.max(score,.9);
+        if(s.first===qFirst) score=Math.max(score,.85); else if(s.first.startsWith(qFirst)) score=Math.max(score,.78);
+        if(qLast){ const lastSim=similarity(qLast,s.last); if(lastSim>.7) score=Math.max(score,.88 + (lastSim-0.7)*0.15); }
+        if(sxF && s.sxFirst===sxF) score=Math.max(score,.8);
+        if(qLast && sxL && s.sxLast===sxL) score=Math.max(score, score+.03);
+        // Single-token last-name only query support
+        if(single){
+          if(s.last===q){ score=Math.max(score, .9 - (lastCounts.get(s.last)>1? .05:0)); }
+          else if(s.last.startsWith(q)) score=Math.max(score,.8);
+          else { const lsim=similarity(q,s.last); if(lsim>.78) score=Math.max(score,.8 + (lsim-.78)*0.15); }
         }
-        // Phonetic boosts for odd spellings (Brentyn ~ Brenton)
-        if (sxFirst && s.sxFirst && sxFirst===s.sxFirst) score = Math.max(score, 0.83);
-        if (sxLast && s.sxLast && sxLast===s.sxLast) score = Math.max(score, score + 0.04);
-        if (qCls && s.classKey===qCls) score += 0.03;
-        if (score>0) out.push({ student:s, score: Math.min(1, score) });
+        // Nicknames / preferred names
+        if(s.nicknames?.length){ for(const nn of s.nicknames){ if(q===nn) score=Math.max(score,.96); else if(nn.startsWith(q)) score=Math.max(score,.82); } }
+        // Unique first name boost (single token)
+        if(single && s.first===qFirst && firstCounts.get(qFirst)===1) score=Math.max(score,.9);
+        if(score>0.55) out.push({student:s, score:Math.min(1,score)}); }
+      out.sort((a,b)=>b.score-a.score); return out.slice(0,8);
+    }
+
+    // ------------------ UI Helpers ------------------
+  function renderTiles(cands){ tilesEl.innerHTML=''; tilesWrap.style.display=cands.length? 'block':'none'; lastShownStudent=cands.length? cands[0].student:null; cands.forEach((c,i)=>{ const s=c.student; const displayName = s.preferredName ? (s.preferredName + (s.last? (' '+s.last):'')) : s.name; const div=document.createElement('div'); div.className='tile'+(i===0?' active':''); div.dataset.id=s.id; div.dataset.tag=s.carTag||''; div.innerHTML=`<div class=\"nm\">${displayName||''}</div><div class=\"meta\">${[s.className||'', s.carTag?('TAG '+s.carTag):''].filter(Boolean).join(' • ')}</div><div class=\"quick\"><button data-act=\"call\" class=\"btn btn-primary\">Call</button><button data-act=\"family\" class=\"btn btn-outline\">Family</button><button data-act=\"ride\" class=\"btn btn-outline\">Ride</button><button data-act=\"clear\" class=\"btn btn-outline nevermind\">Clear</button></div><div class=\"gesture-banner\"></div>`; attachGesture(div); tilesEl.appendChild(div); }); window.__voiceStore = store.students.slice(); }
+  function hideTiles(){ tilesEl.innerHTML=''; tilesWrap.style.display='none'; lastShownStudent=null; }
+    function cleanPhrase(t){ return t.replace(/\b(call|please|thank(s| you)|pickup|pick up|pick)\b/gi,'').replace(/[\.,!?]/g,' ').replace(/\s+/g,' ').trim(); }
+
+    // ------------------ Speech Recognition ------------------
+    function ensureRecognizer(){ if(recog) return true; const SR = window.SpeechRecognition || window.webkitSpeechRecognition; if(!SR){ alert('This browser does not support Speech Recognition. Try Chrome desktop.'); return false;} recog = new SR(); recog.continuous=true; recog.lang='en-US'; recog.interimResults=false; recog.onresult = ev => { const res = ev.results[ev.results.length-1][0]; const phraseRaw = res.transcript; const conf = (res.confidence||0).toFixed(2); const phrase = phraseRaw.toLowerCase(); if(phrase === lastHeard) return; lastHeard = phrase; statusEl.textContent = 'Heard: '+phraseRaw+' ('+conf+')'; processHeard(phrase); }; recog.onerror = e => { statusEl.textContent = 'Error: '+e.error; }; recog.onend = () => { if(listening){ try{ recog.start(); }catch(_){} } }; return true; }
+    function toggleMic(){ if(!listening){ if(!ensureRecognizer()) return; try{ recog.start(); }catch(_){} listening=true; micBtn.classList.add('pulse'); micBtn.setAttribute('aria-pressed','true'); statusEl.textContent='Listening...'; } else { listening=false; try{ recog.stop(); }catch(_){} micBtn.classList.remove('pulse'); micBtn.setAttribute('aria-pressed','false'); statusEl.textContent='Paused'; } }
+    micBtn.addEventListener('click', toggleMic);
+    activateBtn.addEventListener('click', ()=>{ // One-time permission warm-up
+      if(!ensureRecognizer()) return; activateBtn.classList.add('hidden'); micBtn.classList.remove('hidden'); hintEl.textContent='Tap the mic, then speak a student name.'; statusEl.textContent='Ready'; });
+
+    // ------------------ Action Buttons ------------------
+    async function callStudent(stu){ try { await setStudentStatus(stu.id,'called'); statusEl.textContent='Called → '+stu.name; } catch(e){ console.error(e); statusEl.textContent='Call failed'; } }
+    async function callByTagLocal(tag){ const TAG=String(tag||'').toUpperCase(); const matches=store.students.filter(s=>s.carTag===TAG); if(!matches.length) return 0; await Promise.allSettled(matches.map(s=> setStudentStatus(s.id,'called'))); return matches.length; }
+  function markTileDone(tile){ tile.classList.add('fade-out'); setTimeout(()=>{ if(tile.parentElement) tile.remove(); if(!tilesEl.children.length) hideTiles(); },2000); }
+  async function callRideShareForStudent(stu){
+    try {
+      if(!stu || !stu.carTag){ statusEl.textContent='No tag for ride share'; return false; }
+      const TAG = String(stu.carTag).toUpperCase();
+      let grp = store.tagToGroup.get(TAG);
+      // If groups haven't loaded yet, try to resolve directly
+      if(!grp && getGroupByTag){ try { grp = await getGroupByTag(TAG); if(grp){ store.tagToGroup.set(TAG, grp); } } catch{} }
+
+      // Fallback chain mirrors master/mastercaller pages
+      if(grp && grp.id && setStatusForGroup){
+        await setStatusForGroup(grp.id,'called');
+        statusEl.textContent='Family called';
+        return true;
       }
-      if (!out.length){
-        // Substring fallback on the name field
-        for(const s of store.students){
-          if (qCls && !s.classKey.includes(qCls)) continue;
-          if (s.full.includes(qName) || qName.includes(s.full)) out.push({ student:s, score: 0.91 });
-        }
+      if(grp && Array.isArray(grp.tags) && grp.tags.length){
+        const tags = grp.tags.map(t=>String(t||'').toUpperCase());
+        await Promise.allSettled(tags.map(t=> setStatusForTag? setStatusForTag(t,'called') : setStatusForRideShare?.(t,'called')));
+        statusEl.textContent='Family tags called';
+        return true;
       }
-      out.sort((a,b)=> b.score - a.score);
-      return out.slice(0,5);
-    }
-
-    async function actOnStudent(action, s){
-      try{
-        await setStudentStatus(s.id, action);
-        statusEl.textContent = `${action} → ${s.name}`;
-      }catch(e){ console.error('update failed', e); statusEl.textContent = `Failed to update ${s.name}`; }
-    }
-
-    async function handleCandidates(action, name){
-  if (!store.students.length){ statusEl.textContent = `No roster loaded — can’t match "${name}"`; return; }
-      const top = matchCandidates(name);
-  if (!top.length){ statusEl.textContent = `No match among ${store.students.length} students for “${name}”`; return; }
-      confirmText.textContent = 'Which one?';
-      showChoices(top, action);
-    }
-
-    // Family / Ride Share helpers using local roster only (same TAG)
-    async function callByTagLocal(tag, action='called'){
-      const TAG = String(tag||'').toUpperCase();
-      const matches = store.students.filter(s => s.carTag === TAG);
-      if (!matches.length) return { ok:false, count:0 };
-      await Promise.allSettled(matches.map(s => setStudentStatus(s.id, action)));
-      return { ok:true, count:matches.length };
-    }
-
-    function renderChoiceActions(container, action, s){
-      const row = document.createElement('div');
-      row.className = 'choice';
-      row.innerHTML = `<div class="title">${escapeHtml(s.name||'Unnamed')}</div>
-        <div class="meta">${escapeHtml(s.className||s.classId||'')} ${s.carTag? ' • Tag '+escapeHtml(String(s.carTag).toUpperCase()):''}</div>`;
-      const actions = document.createElement('div');
-      actions.className = 'actions';
-      const mkBtn = (label, cls) => { const b=document.createElement('button'); b.className = 'btn '+(cls||''); b.textContent = label; return b; };
-      const bCall = mkBtn('Call','btn-primary');
-      const bFam  = mkBtn('Family');
-      const bRS   = mkBtn('Ride Share');
-      bCall.addEventListener('click', async ()=>{ await setStudentStatus(s.id,'called'); statusEl.textContent = `called → ${s.name}`; });
-      bFam.addEventListener('click', async ()=>{ if(s.carTag) { const r=await callByTagLocal(s.carTag,'called'); statusEl.textContent = r.ok? `family called (tag ${s.carTag}) → ${r.count} student(s)`: `no family found for tag ${s.carTag}`; } });
-      bRS.addEventListener('click', async ()=>{ if(s.carTag) { const r=await callByTagLocal(s.carTag,'called'); statusEl.textContent = r.ok? `ride share called (tag ${s.carTag}) → ${r.count} student(s)`: `no ride share found for tag ${s.carTag}`; } });
-      actions.append(bCall,bFam,bRS);
-      row.appendChild(actions);
-      container.appendChild(row);
-    }
-
-    function showChoices(items, action){
-      choicesEl.innerHTML = '';
-  for(const {student:s} of items){ renderChoiceActions(choicesEl, action, s); }
-      overlay.classList.add('active');
-    }
-
-    // Live data
-    onStudents(null, (list) => {
-      const rows = Array.isArray(list) ? list : [];
-      store.students = rows.map(prepStudent);
-      // Build indexes for exact full-name, tag, and tokens
-      store.byFull = new Map();
-      store.byTag = new Map();
-      store.byToken = new Map();
-      for(const s of store.students){
-        const key = s.full; // normalized full name (name field)
-        if (!store.byFull.has(key)) store.byFull.set(key, []);
-        store.byFull.get(key).push(s);
-        if (s.carTag){
-          const t = s.carTag;
-          if (!store.byTag.has(t)) store.byTag.set(t, []);
-          store.byTag.get(t).push(s);
-        }
-        for(const tok of s.tokens){
-          if (!store.byToken.has(tok)) store.byToken.set(tok, new Set());
-          store.byToken.get(tok).add(s);
-        }
+      if(grp && grp.rideShare && setStatusForRideShare){
+        await setStatusForRideShare(grp.rideShare,'called');
+        statusEl.textContent='Ride share called';
+        return true;
       }
-      statusEl.textContent = `Loaded ${store.students.length} students`;
+      // Last resort: just the single tag
+      if(setStatusForTag){
+        await setStatusForTag(TAG,'called');
+      } else {
+        await callByTagLocal(TAG);
+      }
+      statusEl.textContent='Tag '+TAG+' called';
+      return true;
+    } catch(e){ console.error('rideShare call failed', e); statusEl.textContent='Ride share call failed'; }
+    return false;
+  }
+  tilesEl.addEventListener('click', e=>{ const b=e.target.closest('button[data-act]'); if(!b) return; const tile=b.closest('.tile'); if(!tile) return; const id=tile.dataset.id; const stu=store.students.find(s=>s.id===id); if(!stu) return; if(b.dataset.act==='call'){ callStudent(stu); markTileDone(tile); } else if(b.dataset.act==='family'&&stu.carTag){ callByTagLocal(stu.carTag); markTileDone(tile); } else if(b.dataset.act==='ride'){ callRideShareForStudent(stu).then(()=>markTileDone(tile)); } else if(b.dataset.act==='clear'){ hideTiles(); statusEl.textContent='Cleared'; } });
+
+    // ------------------ Phrase Processing ------------------
+  const phraseCorrections={ 'little boy pause':'ler bwe paw','little boy paws':'ler bwe paw','lil boy pause':'ler bwe paw','lil boy paws':'ler bwe paw','ler boy paw':'ler bwe paw','leb we paw':'ler bwe paw' };
+    function applyCorrections(q){ const n=norm(q); return phraseCorrections[n] || q; }
+    function processHeard(raw){ if(rearmTimer){ clearTimeout(rearmTimer); rearmTimer=null; } let cleaned=cleanPhrase(raw); cleaned=applyCorrections(cleaned); if(!cleaned){ statusEl.textContent='(Ignored)'; return;} if(!store.students.length){ statusEl.textContent='Roster not loaded yet'; return;} const candidates=matchCandidates(cleaned); if(!candidates.length){ statusEl.textContent='No student match for “'+cleaned+'”'; return;} renderTiles(candidates); rearmTimer=setTimeout(()=>{ if(listening) statusEl.textContent='Listening...'; },2500); }
+
+    // ------------------ Live Data (deferred until tenant claims ready) ------------------
+    let unsubscribeStudents = null;
+    function attachStudentsListener(){
+      if (unsubscribeStudents) { try { unsubscribeStudents(); } catch {} }
+      try {
+        unsubscribeStudents = onStudents(null, list => {
+          const rows=Array.isArray(list)? list:[];
+          store.students = rows.map(prepStudent);
+          store.byFull=new Map(); store.aliasIndex=new Map();
+          for(const s of store.students){
+            if(!store.byFull.has(s.full)) store.byFull.set(s.full,[]);
+            store.byFull.get(s.full).push(s);
+            if(s.nicknames) s.nicknames.forEach(nn=>{ if(!store.aliasIndex.has(nn)) store.aliasIndex.set(nn,new Set()); store.aliasIndex.get(nn).add(s); });
+          }
+          statusEl.textContent = store.students.length
+            ? `Roster loaded (${store.students.length})`
+            : 'Roster empty (no students)';
+        });
+      } catch(e){
+        console.error('[voice] failed to attach onStudents:', e);
+        statusEl.textContent='Roster listener failed';
+      }
+    }
+
+    function claimsReady(){
+      if (globalThis.SD?.schoolId && globalThis.SD?.orgId){
+        attachStudentsListener();
+        return true;
+      }
+      return false;
+    }
+
+    // If claims already there (user came from another page), start immediately
+    if (!claimsReady()) {
+      statusEl.textContent='Waiting for roster (sign in / select school if prompted)...';
+      document.addEventListener('sd:claims-ready', () => {
+        claimsReady();
+      }, { once:true });
+      // Safety timeout: attempt anyway after 5s in case waitForTenant can still resolve
+      setTimeout(()=>{ if(!store.students.length) attachStudentsListener(); }, 5000);
+    }
+
+    onCarGroups(groups => {
+      try {
+        store.groups = Array.isArray(groups)? groups:[];
+        store.tagToGroup = new Map();
+        store.rideShareIndex = new Map(); // normKey -> { keyOriginal, groups:Set, tags:Set }
+        for(const g of store.groups){
+          const tags = Array.isArray(g.tags)? g.tags:[];
+          tags.forEach(t=>{ if(t) store.tagToGroup.set(String(t).toUpperCase(), g); });
+          if(g.rideShare){
+            const keyOriginal = String(g.rideShare).trim();
+            if(!keyOriginal) continue;
+            const normKey = keyOriginal.toLowerCase();
+            if(!store.rideShareIndex.has(normKey)) store.rideShareIndex.set(normKey,{ keyOriginal, groups:new Set(), tags:new Set() });
+            const entry = store.rideShareIndex.get(normKey);
+            entry.groups.add(g);
+            tags.forEach(t=> entry.tags.add(String(t).toUpperCase()));
+          }
+        }
+        for(const [k,e] of store.rideShareIndex){ try { console.debug('[rideShareIndex]', e.keyOriginal, 'tags', Array.from(e.tags)); } catch {} }
+      } catch(e){ console.error('carGroups mapping failed', e); }
     });
-    onCarGroups((groups) => {
-      const m = {};
-      (groups||[]).forEach(g => (g.tags||[]).forEach(t => m[String(t||'').toUpperCase()] = g));
-      store.groupsByTag = m;
-    });
+
+    // ------------------ Gesture (moved into module for access to functions) ------------------
+    function attachGesture(tile){ let sx=0,sy=0; tile.addEventListener('touchstart',ev=>{const t=ev.changedTouches[0]; sx=t.clientX; sy=t.clientY;},{passive:true}); tile.addEventListener('touchend',ev=>{const t=ev.changedTouches[0]; const dx=t.clientX-sx, dy=t.clientY-sy; const adx=Math.abs(dx), ady=Math.abs(dy); const min=40; if(adx<min && ady<min) return; let dir=''; if(adx>ady) dir = dx<0?'left':'right'; else dir = dy<0?'up':'down'; fireGesture(tile,dir); },{passive:true}); }
+  function fireGesture(tile,dir){ const id=tile.dataset.id; if(!id) return; const stu=store.students.find(s=>s.id===id); const banner=tile.querySelector('.gesture-banner'); if(banner){ let label=''; if(dir==='left') label='CALL'; else if(dir==='right') label='FAMILY'; else if(dir==='up') label='RIDE'; else if(dir==='down') label='CLEAR'; banner.textContent=label; banner.className='gesture-banner dir-'+dir; tile.classList.add('gesture'); setTimeout(()=>tile.classList.remove('gesture'),550);} if(!stu) return; if(dir==='left'){ callStudent(stu); markTileDone(tile); } else if(dir==='right' && stu.carTag){ callByTagLocal(stu.carTag).finally(()=>markTileDone(tile)); } else if(dir==='up'){ callRideShareForStudent(stu).finally(()=>markTileDone(tile)); } else if(dir==='down'){ hideTiles(); statusEl.textContent='Cleared'; } }
   </script>
 </body>
 </html>

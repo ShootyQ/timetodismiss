@@ -3,6 +3,7 @@
 
 // ───────────────── Imports ─────────────────
 const { onCall, HttpsError }       = require('firebase-functions/v2/https');
+const { onSchedule }               = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten }        = require('firebase-functions/v2/firestore');
 const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
 const { initializeApp }            = require('firebase-admin/app');
@@ -235,6 +236,14 @@ async function computeClaims(uid, email) {
       schoolIds: ['*'],
       roles: ['owner']
     });
+    // Persist an owner marker in Firestore so future claim recomputations (computeClaims)
+    // continue to recognize this user as owner. Previously we only set custom claims;
+    // the next trigger-based recompute would drop owner because users/{uid}.owner was absent.
+    try {
+      await db.doc(`users/${req.auth.uid}`).set({ owner: true, updatedAt: ts() }, { merge: true });
+    } catch (e) {
+      console.warn('Failed to persist owner flag', e);
+    }
     await bumpUserTokens(req.auth.uid, { reason: 'owner-grant' });
     return { ok: true };
   });
@@ -333,6 +342,107 @@ async function computeClaims(uid, email) {
     const user = await auth.getUser(uid).catch(() => null);
     if (user) await applyClaims(uid, user.email || '', 'owner-remove-superintendent');
     return { ok: true };
+  });
+
+  // Reset all students in a school to 'waiting' (admin or caller for that school)
+  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const uid = req.auth.uid;
+    const { orgId, schoolId } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+
+    // Allow owner/superintendent/admin via canManageSchool; also allow active school callers
+    let allowed = await canManageSchool(claims, orgId, schoolId, uid);
+    if (!allowed) {
+      try {
+        const memSnap = await db.doc(`orgs/${orgId}/schools/${schoolId}/members/${uid}`).get();
+        const data = memSnap.data() || {};
+        const flags = flagsFrom(data);
+        allowed = (data.status || 'active') === 'active' && (flags.admin || flags.caller);
+      } catch(_) { allowed = false; }
+    }
+    if (!allowed) throw new HttpsError('permission-denied', 'Caller or Admin for this school required.');
+
+    const col = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students');
+    const snap = await col.get();
+    let changed = 0, scanned = 0;
+    let batch = db.batch();
+    let ops = 0;
+    const FLUSH = async () => { if (ops > 0) { await batch.commit(); batch = db.batch(); ops = 0; } };
+
+    for (const d of snap.docs) {
+      scanned++;
+      const st = (d.get('status') || '').toString();
+      if (st !== 'waiting') {
+        batch.update(d.ref, { status: 'waiting', updatedAt: ts() });
+        changed++; ops++;
+        if (ops >= 450) await FLUSH();
+      }
+    }
+    await FLUSH();
+    return { ok: true, scanned, changed };
+  });
+
+  // ───────────────── Auto end stale call sessions (backend safety net) ─────────────────
+  // Why: client pages enforce auto-end with a timer, but if no caller keeps a page open,
+  // sessions can remain active for hours. This scheduled job ends sessions that exceed
+  // the per-school configured cap (settings/dismissal.autoEndMinutes, default 30).
+  exports.autoEndStaleSessions = onSchedule({
+    schedule: 'every 5 minutes',
+    region: 'us-central1',
+    timeZone: 'America/Chicago', // adjust to your primary tenant timezone if needed
+    minInstances: 1,
+  }, async () => {
+    const nowMs = Date.now();
+    const ended = [];
+    try {
+      // Scan all active sessions (endedAt == null). Expected volume is tiny per org.
+      const snap = await db.collectionGroup('callSessions').where('endedAt', '==', null).get();
+      for (const d of snap.docs) {
+        const data = d.data() || {};
+        const started = data.startedAt;
+        if (!started || typeof started.toMillis !== 'function') continue;
+        // Parse path: orgs/{orgId}/schools/{schoolId}/callSessions/{id}
+        const seg = d.ref.path.split('/');
+        if (seg.length < 6) continue;
+        const orgId = seg[1];
+        const schoolId = seg[3];
+
+        // Load autoEndMinutes from school settings; fall back to 30 (bounded 5..240)
+        let autoEndMinutes = 30;
+        try {
+          const setRef = db.doc(`orgs/${orgId}/schools/${schoolId}/settings/dismissal`);
+          const setSnap = await setRef.get();
+          if (setSnap.exists) {
+            const cfg = setSnap.data() || {};
+            const v = Number(cfg.autoEndMinutes);
+            if (!Number.isNaN(v) && v >= 5 && v <= 240) autoEndMinutes = v;
+          }
+        } catch (_) { /* default */ }
+
+        const ageMs = nowMs - started.toMillis();
+        if (ageMs >= autoEndMinutes * 60000) {
+          try {
+            await d.ref.update({ endedAt: ts() });
+            // Nudge classes with a dismissal-over signal
+            try {
+              await db.doc(`orgs/${orgId}/schools/${schoolId}/signals/dismissal`)?.set({
+                message: 'Dismissal auto-ended by system',
+                lastAt: ts(),
+                seq: FieldValue.increment(1),
+              }, { merge: true });
+            } catch (sigErr) { console.warn('[autoEnd] signal failed', sigErr); }
+            ended.push(d.id);
+          } catch (e) {
+            console.warn('[autoEnd] failed to end', d.ref.path, e);
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[autoEnd] scan failed', e);
+    }
+    if (ended.length) console.log('[autoEnd] ended sessions:', ended.join(','));
   });
 
   // Add a school (owner or superintendent of that org)

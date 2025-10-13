@@ -1007,8 +1007,23 @@ body.has-ticker .container{ padding-bottom: 84px; }
   .hdr-menu-panel.open{ transform:translateX(0); }
   .hdr-menu-panel .menu-inner{ display:flex; flex-direction:column; height:100%; }
   .hdr-menu-panel .menu-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; border-bottom:1px solid #e5e7eb; }
-  .hdr-menu-panel .menu-links{ display:grid; gap:8px; padding:12px; }
-  .hdr-menu-panel .menu-links a{ padding:.6rem .8rem; border:1px solid #e5e7eb; border-radius:12px; font-weight:700; }
+  .hdr-menu-panel .menu-links{ display:grid !important; gap:8px; padding:12px; }
+  .hdr-menu-panel .menu-links a{ 
+    padding:.6rem .8rem; 
+    border:1px solid #e5e7eb; 
+    border-radius:12px; 
+    font-weight:700; 
+    display:block !important; 
+    opacity:1 !important; 
+    visibility:visible !important; 
+    transform:none !important;
+  }
+  .hdr-menu-panel .menu-links a[hidden],
+  .hdr-menu-panel .menu-links a[aria-hidden="true"] {
+    display:block !important;
+    opacity:1 !important;
+    visibility:visible !important;
+  }
   .hdr-menu-panel .menu-auth{ margin-top:auto; padding:12px; display:flex; gap:8px; }
 }
 /* Fail-safe: stop passive overlays from eating scroll on mobile */
@@ -1170,10 +1185,26 @@ body.has-ticker #masterList {
   /* Menu panel: compact, list-like links */
   .hdr-menu-panel .menu-links{ padding:10px 12px; gap:10px; }
   .hdr-menu-panel .menu-links a{
-    display:flex; align-items:center; justify-content:flex-start;
-    padding:10px 12px; line-height:1.2; min-height:0;
-    border:1px solid #e5e7eb; border-radius:12px; background:#fff;
-    font-weight:700; color:#0b132b;
+    display:flex !important; 
+    align-items:center; 
+    justify-content:flex-start;
+    padding:10px 12px; 
+    line-height:1.2; 
+    min-height:0;
+    border:1px solid #e5e7eb; 
+    border-radius:12px; 
+    background:#fff;
+    font-weight:700; 
+    color:#0b132b;
+    opacity:1 !important;
+    visibility:visible !important;
+    transform:none !important;
+  }
+  .hdr-menu-panel .menu-links a[hidden],
+  .hdr-menu-panel .menu-links a[aria-hidden="true"] {
+    display:flex !important;
+    opacity:1 !important;
+    visibility:visible !important;
   }
   .hdr-menu-panel .menu-links a:active{ background:#f3f4f6; }
   .hdr-menu-panel .menu-auth{ padding:10px 12px; }

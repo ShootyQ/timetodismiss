@@ -235,6 +235,7 @@ async function computeClaims(uid, email) {
       schoolIds: ['*'],
       roles: ['owner']
     });
+    try { await db.doc(`users/${req.auth.uid}`).set({ owner: true, updatedAt: ts() }, { merge: true }); } catch(e){ console.warn('persist owner failed', e); }
     await bumpUserTokens(req.auth.uid, { reason: 'owner-grant' });
     return { ok: true };
   });

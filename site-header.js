@@ -6,7 +6,16 @@
 
 (function () {
   // Global build/version id for cache-busting across all pages
-  const BUILD_ID = '2025-09-10-HDR4';
+  const BUILD_ID = '2025-10-06-MENUFIX-FINAL';
+  // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
+  const HDR_SAFE = (() => {
+    try {
+      const u = new URL(location.href);
+      if (u.searchParams.get('hdrsafe') === '1') { localStorage.setItem('SD_HDR_SAFE','1'); return true; }
+      if (u.searchParams.get('hdrsafe') === '0') { localStorage.removeItem('SD_HDR_SAFE'); return false; }
+      return localStorage.getItem('SD_HDR_SAFE') === '1';
+    } catch { return false; }
+  })();
 
   // Proactively purge any old Service Workers and caches that could be serving stale assets
   (async function purgeSwAndCaches(){
@@ -100,7 +109,7 @@
               <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
                 <img src="/classicon.png" alt="Classes" width="26" height="26" decoding="async" style="display:block;" />
               </a>
-              <a href="/master.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
+              <a href="/callerhub.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
               <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
@@ -119,8 +128,7 @@
                 <span id="schoolName" class="sr-only"></span>
               </div>
               <div id="signInBtns" class="signin-btns">
-                <button id="signInGoogle" class="btn btn-outline" type="button">Sign in</button>
-                <button id="signInMicrosoft" class="btn btn-outline" type="button">Microsoft</button>
+                <button id="openSignIn" class="btn btn-outline" type="button">Sign in</button>
               </div>
               <div id="userChip" class="user-chip" style="display:none;">
                 <button id="userAvatarBtn" class="avatar-btn" type="button" aria-haspopup="true" aria-expanded="false" title="Account">
@@ -160,11 +168,11 @@
             <button id="hdrMenuClose" class="icon-btn" type="button" aria-label="Close menu">✕</button>
           </div>
           <nav class="menu-links">
-            <a href="/class.html" data-requires="viewer">Classes</a>
-            <a href="/master.html"  data-requires="caller">Master Caller</a>
-            <a href="/admin.html"   data-requires="admin">Admin</a>
-            <a href="/superintendent.html" data-requires="superintendent">Superintendent</a>
-            <a href="/prefs.html" data-requires="viewer">Preferences</a>
+            <a href="/class.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Classes</a>
+            <a href="/callerhub.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
+            <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
+            <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
+            <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
           </nav>
           <div class="menu-auth">
             <button id="hdrSignInGoogle" class="btn" type="button">Sign in with Google</button>
@@ -184,9 +192,76 @@
     try { console.log('[TTD] site-header loaded, BUILD', BUILD_ID); } catch {}
     document.body.prepend(header);
 
-    // By default, hide any role-gated links until claims are evaluated
+    // Build a simple, professional sign-in modal (desktop)
+    (function ensureSignInModal(){
+      if (document.getElementById('sd-inline-signin-modal')) return; // CSS injected?
+      // CSS
+      const css = `
+      .sd-scrim{ position:fixed; inset:0; background:rgba(2,6,23,.45); z-index:1400; }
+      .sd-modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:1401; }
+      .sd-modal[hidden], .sd-scrim[hidden]{ display:none !important; }
+      .sd-modal-card{ width:min(520px,92vw); background:#fff; border:1px solid #e5e7eb; border-radius:16px; box-shadow:0 20px 40px rgba(2,6,23,.28); padding:16px; }
+      .sd-modal-card h3{ margin:4px 0 10px; font-size:1.2rem; font-weight:800; }
+      .sd-modal-card p.muted{ margin:0 0 12px; color:#64748b; }
+      .sd-modal-close{ position:absolute; right:10px; top:10px; border:1px solid #e5e7eb; background:#fff; border-radius:10px; padding:.35rem .55rem; cursor:pointer; }
+      .provider-grid{ display:grid; grid-template-columns:1fr; gap:10px; }
+      @media (min-width:560px){ .provider-grid{ grid-template-columns:1fr 1fr; } }
+      .provider-btn{ display:flex; align-items:center; gap:10px; padding:.8rem .9rem; border:1px solid #e5e7eb; border-radius:12px; background:#fff; font-weight:800; cursor:pointer; }
+      .provider-btn:hover{ background:#f8fafc; }
+      .provider-btn .ic{ width:18px; height:18px; display:inline-block; }
+      .provider-btn.google .ic-google svg{ display:block; width:18px; height:18px; }
+      .provider-btn.microsoft .ic-microsoft{ position:relative; width:18px; height:18px; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:2px; }
+      .provider-btn.microsoft .ic-microsoft span{ display:block; width:8px; height:8px; }
+      .ic-ms-red{ background:#f35325; } .ic-ms-green{ background:#81bc06; } .ic-ms-blue{ background:#05a6f0; } .ic-ms-yellow{ background:#ffba08; }
+      `;
+      const style = document.createElement('style');
+      style.id = 'sd-inline-signin-modal';
+      style.textContent = css;
+      document.head.appendChild(style);
+
+      // HTML
+      const scrim = document.createElement('div');
+      scrim.id = 'signInScrim'; scrim.className = 'sd-scrim'; scrim.hidden = true;
+      const modal = document.createElement('div');
+      modal.id = 'signInModal'; modal.className = 'sd-modal'; modal.hidden = true; modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','signinTitle');
+      modal.innerHTML = `
+        <div class="sd-modal-card">
+          <button type="button" class="sd-modal-close" id="signInClose" aria-label="Close">✕</button>
+          <h3 id="signinTitle">Sign in</h3>
+          <p class="muted">Choose a sign-in option:</p>
+          <div class="provider-grid">
+            <button id="provGoogle" class="provider-btn google" type="button" aria-label="Continue with Google">
+              <span class="ic ic-google" aria-hidden="true">
+                <svg viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#EA4335" d="M9 7.3v3.4h4.8c-.2 1.1-1.4 3.2-4.8 3.2-2.9 0-5.3-2.4-5.3-5.3S6.1 3.3 9 3.3c1.6 0 2.7.7 3.3 1.3l2.3-2.3C13.3.9 11.3 0 9 0 4 0 0 4 0 9s4 9 9 9c5.2 0 8.6-3.7 8.6-8.8 0-.6-.1-1-.2-1.4H9z"/>
+                  <path fill="#34A853" d="M.5 4.6l3.5 2.6C5 5 6.9 3.9 9 3.9c1.6 0 2.7.6 3.3 1.3l2.3-2.3C13.3.9 11.3 0 9 0 5.4 0 2.3 2 0.5 4.6z" opacity="0"/>
+                  <path fill="#FBBC05" d="M9 18c2.4 0 4.4-.8 5.8-2.2l-2.7-2.2c-.7.5-1.7.8-3.1.8-2.4 0-4.4-1.6-5.1-3.8H.5v2.4C1.9 16 5.1 18 9 18z"/>
+                  <path fill="#4285F4" d="M17.6 9.2c0-.6-.1-1-.2-1.4H9v3.4h4.8c-.2 1.1-1.4 3.2-4.8 3.2-2.4 0-4.5-1.6-5.1-3.8H.5v2.4C1.9 16 5.1 18 9 18c5.2 0 8.6-3.7 8.6-8.8z"/>
+                </svg>
+              </span>
+              <span>Continue with Google</span>
+            </button>
+            <button id="provMicrosoft" class="provider-btn microsoft" type="button" aria-label="Continue with Microsoft">
+              <span class="ic ic-microsoft" aria-hidden="true">
+                <span class="ic-ms-red"></span>
+                <span class="ic-ms-green"></span>
+                <span class="ic-ms-blue"></span>
+                <span class="ic-ms-yellow"></span>
+              </span>
+              <span>Continue with Microsoft</span>
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(scrim);
+      document.body.appendChild(modal);
+    })();
+
+    // By default, show viewer-level links so menu is never empty; hide only admin/superintendent
     try {
-      header.querySelectorAll('[data-requires="superintendent"]').forEach(el => {
+      header.querySelectorAll('[data-requires="viewer"]').forEach(el => {
+        el.hidden = false; el.setAttribute('aria-hidden','false'); el.style.display = '';
+      });
+      header.querySelectorAll('[data-requires="admin"],[data-requires="superintendent"]').forEach(el => {
         el.hidden = true; el.setAttribute('aria-hidden','true');
       });
     } catch {}
@@ -286,94 +361,87 @@
 
     // Inline mobile CSS to avoid stale external CSS blocking the new header and menu polish
     (function ensureMobileHeaderStyles(){
-      const id = 'sd-inline-mobile-menu';
+      // Simpler, no-motion mobile menu styles (replaces complex animated version)
+      const id = 'sd-inline-mobile-menu-simple';
       if (document.getElementById(id)) return;
-      const css = `
-      @media (max-width: 820px){
-        /* Hide legacy header row; show compact toolbar */
-        .site-header .header-inner{ display:none !important; }
-        .site-header .hdr-mobile{ display:flex !important; position:sticky; top:0; background:#fff; z-index:1000; border-bottom:1px solid #eef2f7; padding:8px 4%; }
-        .hdr-mobile .icon-btn{ background:none; border:0; padding:6px 8px; font-size:22px; line-height:1; border-radius:10px; }
-        .hdr-mobile .icon-btn:active{ transform:translateY(1px); }
-
-        /* Scrim + panel (smooth + compact) */
-        .hdr-menu-scrim{ position:fixed; inset:0; background:rgba(15,23,42,.42); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:999; }
-        body.menu-open .hdr-menu-scrim{ opacity:1; pointer-events:auto; }
-
-        .hdr-menu-panel{ position:fixed; top:0; right:0; bottom:0; width:min(86vw, 320px); max-width:92vw; background:#fff; box-shadow:-12px 0 28px rgba(2,6,23,.14); transform:translateX(100%); transition:transform .24s cubic-bezier(.2,.8,.2,1); will-change:transform; z-index:1000; display:flex; flex-direction:column; }
-        body.menu-open .hdr-menu-panel{ transform:translateX(0); }
-        body.menu-open{ overflow:hidden; }
-
-        .hdr-menu-panel .menu-inner{ display:flex; flex-direction:column; height:100%; padding:max(12px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); gap:10px; }
-        .hdr-menu-panel .menu-head{ display:flex; align-items:center; justify-content:space-between; padding:2px 2px 8px; border-bottom:1px solid #f1f5f9; }
-        .hdr-menu-panel .icon-btn{ background:none; border:0; font-size:22px; padding:6px; }
-
-        .hdr-menu-panel .menu-links{ display:flex; flex-direction:column; gap:2px; padding:10px 0; }
-        .hdr-menu-panel .menu-links a{ display:block; padding:8px 10px; border-radius:10px; font-weight:700; color:#0b132b; text-decoration:none; line-height:1.2; }
-        .hdr-menu-panel .menu-links a:hover{ background:#f8fafc; }
-
-        .hdr-menu-panel .menu-auth{ margin-top:auto; display:flex; gap:8px; }
-        .hdr-menu-panel .btn{ padding:.5rem .7rem; border-radius:10px; }
-      }
-      `;
+      const css = `@media (max-width:820px){
+        .site-header .header-inner{display:none !important;}
+        .site-header .hdr-mobile{display:flex !important;position:sticky;top:0;background:#fff;z-index:1000;border-bottom:1px solid #e5e7eb;padding:8px 4%;}
+        .hdr-mobile .icon-btn{background:#fff;border:1px solid #e5e7eb;padding:.5rem .7rem;border-radius:10px;font-size:20px;}
+        .hdr-menu-scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:999;}
+        body.menu-open .hdr-menu-scrim{display:block;}
+        .hdr-menu-panel{position:fixed;top:0;right:0;bottom:0;width:82vw;max-width:320px;background:#fff;box-shadow:-6px 0 18px rgba(0,0,0,.18);transform:translateX(100%);transition:transform .18s ease;z-index:1000;display:flex;flex-direction:column;}
+        body.menu-open .hdr-menu-panel{transform:translateX(0);}
+        .hdr-menu-panel[hidden]{display:none !important;}
+        .hdr-menu-panel .menu-inner{display:flex;flex-direction:column;height:100%;}
+        .hdr-menu-panel .menu-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid #e5e7eb;}
+        .hdr-menu-panel .menu-links{display:flex !important;flex-direction:column;gap:8px;padding:14px;}
+        .hdr-menu-panel .menu-links a{display:block !important;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;font-weight:700;color:#0b132b;text-decoration:none;}
+        .hdr-menu-panel .menu-links a:active{background:#f3f4f6;}
+        .hdr-menu-panel .menu-links a[hidden],.hdr-menu-panel .menu-links a[aria-hidden="true"]{display:block !important;}
+        .hdr-menu-panel .menu-auth{margin-top:auto;padding:14px;display:flex;flex-direction:column;gap:8px;}
+        body.menu-open{overflow:hidden;}
+        /* Mobile account popover (avatar button) */
+        .hdr-account-pop{position:fixed;top:calc(56px + env(safe-area-inset-top,0px));right:10px;background:#fff;border:1px solid #e2e8f0;border-radius:14px;box-shadow:0 8px 28px -4px rgba(2,6,23,.25);padding:12px 14px;min-width:230px;z-index:1101;display:flex;flex-direction:column;gap:8px;}
+        .hdr-account-pop[hidden]{display:none !important;}
+        .hdr-account-pop .acct-email{font-size:.85rem;font-weight:600;line-height:1.15;word-break:break-all;margin:0;}
+        .hdr-account-pop .acct-roles{font-size:.6rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#475569;opacity:.9;margin-top:-4px;}
+        .hdr-account-pop hr{border:0;height:1px;background:#f1f5f9;margin:2px 0 4px;}
+        .hdr-account-pop button{font-size:.78rem;}
+        /* Hide popover while menu drawer open to prevent layering confusion */
+        body.menu-open #hdrAccountPop{display:none !important;}
+      }`;
       const style = document.createElement('style');
-      style.id = id;
-      style.textContent = css;
-      document.head.appendChild(style);
+      style.id = id; style.textContent = css; document.head.appendChild(style);
     })();
 
     // Menu open/close behavior (smooth, with accessibility niceties)
     (function initMobileMenu(){
+      // Ultra-simple mobile menu: toggle class, no animations, no ripples, minimal JS
       const btn = document.getElementById('hdrMenuBtn');
       const scrim = document.getElementById('hdrMenuScrim');
       const panel = document.getElementById('hdrMenuPanel');
       const closeBtn = document.getElementById('hdrMenuClose');
       if (!btn || !scrim || !panel) return;
-
       let lastFocused = null;
-      const focusableSel = 'a,button,input,select,textarea,[tabindex]:not([tabindex="-1"])';
-
+      const FOCUS_SEL = 'a,button,select,textarea,input,[tabindex]:not([tabindex="-1"])';
       function open(){
         lastFocused = document.activeElement;
         document.body.classList.add('menu-open');
         btn.setAttribute('aria-expanded','true');
-        scrim.hidden = false;
-        panel.hidden = false;
-        // focus first item for quick keyboard access
-        const first = panel.querySelector(focusableSel);
-        if (first) setTimeout(() => first.focus(), 50);
+        scrim.hidden = false; panel.hidden = false;
+        // Close mobile account popover if it is open so it doesn't sit under/over the panel
+        try { const pop = document.getElementById('hdrAccountPop'); if (pop) pop.hidden = true; } catch {}
+        // Ensure links visible (baseline safety)
+        panel.querySelectorAll('.menu-links a').forEach(a=>{ a.hidden=false; a.setAttribute('aria-hidden','false'); a.style.display='block'; });
+        const first = panel.querySelector(FOCUS_SEL); if (first) setTimeout(()=>first.focus(),50);
         document.addEventListener('keydown', onKey);
       }
       function close(){
         document.body.classList.remove('menu-open');
         btn.setAttribute('aria-expanded','false');
-        // let the slide-out finish before hiding for better a11y tree stability
-        setTimeout(() => { scrim.hidden = true; panel.hidden = true; }, 260);
+        scrim.hidden = true; panel.hidden = true;
         document.removeEventListener('keydown', onKey);
-        if (lastFocused && typeof lastFocused.focus === 'function') setTimeout(() => lastFocused.focus(), 0);
+        if (lastFocused && lastFocused.focus) setTimeout(()=>lastFocused.focus(),0);
       }
       function onKey(e){ if (e.key === 'Escape') close(); }
-
-      btn.addEventListener('click', open);
-      closeBtn && closeBtn.addEventListener('click', close);
+      btn.addEventListener('click', ()=>{ document.body.classList.contains('menu-open') ? close() : open(); });
       scrim.addEventListener('click', close);
-
-      // Basic focus trap while open (keeps tabbing inside panel)
-      panel.addEventListener('keydown', (e) => {
+      closeBtn && closeBtn.addEventListener('click', close);
+      panel.addEventListener('keydown', (e)=>{
         if (e.key !== 'Tab') return;
-        const nodes = Array.from(panel.querySelectorAll(focusableSel)).filter(el => !el.hasAttribute('disabled') && el.offsetParent !== null);
-        if (nodes.length === 0) return;
-        const first = nodes[0];
-        const last = nodes[nodes.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+        const nodes = Array.from(panel.querySelectorAll(FOCUS_SEL)).filter(n=>!n.disabled && n.offsetParent!==null);
+        if (!nodes.length) return;
+        const first = nodes[0]; const last = nodes[nodes.length-1];
+        if (e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
       });
+      try { window.SD = window.SD || {}; window.SD.openMobileMenu = open; window.SD.closeMobileMenu = close; } catch {}
     })();
 
     const header     = document.querySelector('header.site-header');
     const signInBox  = header.querySelector('#signInBtns');
-    const signInGoogleBtn = header.querySelector('#signInGoogle');
-    const signInMsBtn = header.querySelector('#signInMicrosoft');
+  const openSignInBtn = header.querySelector('#openSignIn');
     const signOutBtn = header.querySelector('#signOutBtn');
   const signOutBtn2 = header.querySelector('#signOutBtn2');
     const userChip   = header.querySelector('#userChip');
@@ -381,6 +449,13 @@
     const userEmail  = header.querySelector('#userEmail');
     const roleBadge  = header.querySelector('#roleBadge');
     const adminLinks = [...header.querySelectorAll('[data-requires="admin"]')];
+    // Wire Master Caller icon/menu to smart navigation
+    try {
+      const callerIcon = header.querySelector('a.nav-icon[href="/callerhub.html"]');
+      const callerMenuLink = header.querySelector('.menu-links a[href="/callerhub.html"]');
+      callerIcon && callerIcon.addEventListener('click', goToCallerSmart);
+      callerMenuLink && callerMenuLink.addEventListener('click', goToCallerSmart);
+    } catch {}
   // Mobile header elements
   const hdrMenuBtn   = header.querySelector('#hdrMenuBtn');
   const hdrAuthBtn   = header.querySelector('#hdrAuthBtn');
@@ -389,9 +464,90 @@
   const hdrMenuPanel = header.querySelector('#hdrMenuPanel');
   const hdrMenuClose = header.querySelector('#hdrMenuClose');
   const hdrMenuScrim = header.querySelector('#hdrMenuScrim');
-  const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
-  const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
+    const hdrSignInGoogle    = header.querySelector('#hdrSignInGoogle');
+    const hdrSignInMicrosoft = header.querySelector('#hdrSignInMicrosoft');
   const hdrSignOut   = header.querySelector('#hdrSignOut');
+  // Smart Caller nav: if an active session exists, jump straight to Tiles instead of Hub
+  async function goToCallerSmart(e){
+    try { e && e.preventDefault && e.preventDefault(); } catch {}
+    try { window.SD?.closeMobileMenu && window.SD.closeMobileMenu(); } catch {}
+    try {
+      const oid = window.SD?.orgId; const sid = window.SD?.schoolId;
+      if (!oid || !sid) { location.href = '/callerhub.html'; return; }
+      const { getFirestore, collection, query, orderBy, limit, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const fs = getFirestore();
+      const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+      const qy = query(coll, orderBy('startedAt','desc'), limit(8));
+      const snap = await getDocs(qy);
+      let activeId = null;
+      snap.forEach(d => { if (activeId) return; const data = d.data(); const isActive = !('endedAt' in data) || data.endedAt == null; if (isActive) activeId = d.id; });
+      if (activeId){ location.href = '/mastercaller.html?session=' + encodeURIComponent(activeId); return; }
+      location.href = '/callerhub.html';
+    } catch {
+      location.href = '/callerhub.html';
+    }
+  }
+  // Will lazily create a mobile account popover
+  let hdrAccountPop = null;
+  function buildHdrAccountPop(){
+    if (hdrAccountPop) return hdrAccountPop;
+    hdrAccountPop = document.createElement('div');
+    hdrAccountPop.id = 'hdrAccountPop';
+    hdrAccountPop.className = 'hdr-account-pop';
+    hdrAccountPop.hidden = true;
+    hdrAccountPop.innerHTML = `
+      <div class="acct-email" id="mAcctEmail">Not signed in</div>
+      <div class="acct-roles" id="mAcctRoles"></div>
+      <hr />
+      <div id="mAcctSignInBtns" style="display:flex; flex-direction:column; gap:6px;">
+        <button type="button" id="mSignInGoogle" class="btn btn-outline" style="width:100%;">Sign in with Google</button>
+        <button type="button" id="mSignInMicrosoft" class="btn btn-outline" style="width:100%;">Microsoft</button>
+      </div>
+      <div id="mAcctAuthedBtns" style="display:none; flex-direction:column; gap:6px;">
+        <button type="button" id="mSignOut" class="btn btn-danger" style="width:100%;">Sign out</button>
+      </div>`;
+    document.body.appendChild(hdrAccountPop);
+    // Wire events
+    const g = hdrAccountPop.querySelector('#mSignInGoogle');
+    const m = hdrAccountPop.querySelector('#mSignInMicrosoft');
+    const so= hdrAccountPop.querySelector('#mSignOut');
+    g?.addEventListener('click', (e) => { e.stopPropagation(); startSignIn('google'); closeHdrAccountPop(); });
+    m?.addEventListener('click', (e) => { e.stopPropagation(); startSignIn('microsoft'); closeHdrAccountPop(); });
+    so?.addEventListener('click', (e) => { e.stopPropagation(); auth.signOut(); closeHdrAccountPop(); });
+    return hdrAccountPop;
+  }
+  function refreshHdrAccountPop(user){
+    const pop = buildHdrAccountPop();
+    const emailEl = pop.querySelector('#mAcctEmail');
+    const rolesEl = pop.querySelector('#mAcctRoles');
+    const signInBox = pop.querySelector('#mAcctSignInBtns');
+    const authedBox = pop.querySelector('#mAcctAuthedBtns');
+    if (!user){
+      if (emailEl) emailEl.textContent = 'Not signed in';
+      if (rolesEl) rolesEl.textContent = '';
+      if (signInBox) signInBox.style.display = 'flex';
+      if (authedBox) authedBox.style.display = 'none';
+    } else {
+      if (emailEl) emailEl.textContent = user.email || '(no email)';
+      const rb = document.querySelector('#roleBadge');
+      if (rolesEl) rolesEl.textContent = (rb && rb.textContent) ? rb.textContent : '';
+      if (signInBox) signInBox.style.display = 'none';
+      if (authedBox) authedBox.style.display = 'flex';
+    }
+  }
+  function openHdrAccountPop(){
+    const pop = buildHdrAccountPop();
+    refreshHdrAccountPop(auth?.currentUser || null);
+    pop.hidden = false;
+    document.addEventListener('click', onHdrAccountDocClick, { capture:true });
+  }
+  function closeHdrAccountPop(){ if (hdrAccountPop) { hdrAccountPop.hidden = true; } document.removeEventListener('click', onHdrAccountDocClick, { capture:true }); }
+  function onHdrAccountDocClick(e){ if (!hdrAccountPop || hdrAccountPop.hidden) return; if (hdrAccountPop.contains(e.target) || hdrAuthBtn.contains(e.target)) return; closeHdrAccountPop(); }
+  hdrAuthBtn?.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    if (hdrAccountPop && !hdrAccountPop.hidden){ closeHdrAccountPop(); return; }
+    openHdrAccountPop();
+  });
   // School switcher elements
   const schoolBox   = header.querySelector('#schoolBox');
   const schoolNameEl= header.querySelector('#schoolName');
@@ -561,18 +717,28 @@
         const isViewerExplicit = !!token?.claims?.viewer;
         const isViewer = isAdmin || isCaller || isSup || isViewerExplicit; // consolidated viewer capability
 
+        // NEW: Guard against hiding everything while claims are still loading.
+        // If the token has none of the known role claims yet, we treat this state as "pending"
+        // and keep previously visible viewer-level links (Classes / Preferences) so the mobile
+        // menu never appears empty. This was causing the perceived "broken" mobile menu where
+        // all links disappeared for a few seconds on first load.
+        const hasAnyClaim = isAdmin || isCaller || isSup || isViewerExplicit;
+        if (!hasAnyClaim) {
+          try { console.debug('[hdr] claims pending – leaving default viewer links visible'); } catch {}
+          // Make sure baseline viewer links remain visible
+          document.querySelectorAll('[data-requires="viewer"]').forEach(el => {
+            el.hidden = false;
+            el.setAttribute('aria-hidden','false');
+            el.style.display = '';
+          });
+          return; // Skip conceal/reveal logic until real claims land
+        }
+
         // Capability groupings
         const canCall  = isAdmin || isCaller; // master caller page
         const canView  = isViewer;            // classes + prefs
 
-        // Hide ALL gated links first
-        const gated = document.querySelectorAll('[data-requires]');
-        gated.forEach(el => {
-          el.hidden = true;
-          el.setAttribute('aria-hidden','true');
-          el.style.display = 'none';
-        });
-
+        // DON'T hide everything first - only hide what user can't access
         // Show helpers
         function reveal(selector){
           document.querySelectorAll(selector).forEach(el => {
@@ -583,11 +749,25 @@
             el.style.pointerEvents = '';
           });
         }
+        function conceal(selector){
+          document.querySelectorAll(selector).forEach(el => {
+            el.hidden = true;
+            el.setAttribute('aria-hidden','true');
+            el.style.display = 'none';
+          });
+        }
 
+        // Show what user CAN access
         if (canView) reveal('[data-requires="viewer"]'); // classes + prefs
         if (canCall) reveal('[data-requires="caller"]'); // master caller
         if (isAdmin) reveal('[data-requires="admin"]');   // admin tools
         if (isSup)   reveal('[data-requires="superintendent"]');
+        
+        // Hide what user CANNOT access
+        if (!canView) conceal('[data-requires="viewer"]');
+        if (!canCall) conceal('[data-requires="caller"]');
+        if (!isAdmin) conceal('[data-requires="admin"]');
+        if (!isSup)   conceal('[data-requires="superintendent"]');
 
         // Role badge label (ordered hierarchy)
         const badges = [];
@@ -631,39 +811,31 @@
     window.SD = window.SD || {};
     window.SD.startSignIn = startSignIn;
 
-    // Desktop sign-in buttons
-  signInGoogleBtn?.addEventListener('click', () => startSignIn('google'));
-  signInMsBtn?.addEventListener('click', () => startSignIn('microsoft'));
+    // Desktop sign-in modal handlers
+    const signInScrim   = document.getElementById('signInScrim');
+    const signInModal   = document.getElementById('signInModal');
+    const signInClose   = document.getElementById('signInClose');
+    const provGoogleBtn = document.getElementById('provGoogle');
+    const provMsBtn     = document.getElementById('provMicrosoft');
+    function openSignInModal(){ if (signInScrim) signInScrim.hidden = false; if (signInModal) signInModal.hidden = false; }
+    function closeSignInModal(){ if (signInScrim) signInScrim.hidden = true; if (signInModal) signInModal.hidden = true; }
+    openSignInBtn?.addEventListener('click', openSignInModal);
+    signInClose?.addEventListener('click', closeSignInModal);
+    signInScrim?.addEventListener('click', closeSignInModal);
+    provGoogleBtn?.addEventListener('click', () => { startSignIn('google'); closeSignInModal(); });
+    provMsBtn?.addEventListener('click',     () => { startSignIn('microsoft'); closeSignInModal(); });
     signOutBtn.addEventListener('click', () => auth.signOut());
   signOutBtn2?.addEventListener('click', () => auth.signOut());
     document.querySelectorAll('[data-login]').forEach(el => {
       el.addEventListener('click', (e) => { e.preventDefault(); startSignIn('google'); });
     });
 
-    // Mobile menu helpers
-    function openMenu(){
-      if (!hdrMenuPanel) return;
-      hdrMenuPanel.hidden = false; hdrMenuPanel.classList.add('open');
-      if (hdrMenuScrim){ hdrMenuScrim.hidden = false; hdrMenuScrim.classList.add('open'); }
-      hdrMenuBtn?.setAttribute('aria-expanded','true');
-    }
-    function closeMenu(){
-      if (!hdrMenuPanel) return;
-      hdrMenuPanel.classList.remove('open');
-      if (hdrMenuScrim){ hdrMenuScrim.classList.remove('open'); setTimeout(()=>{ hdrMenuScrim.hidden = true; }, 200); }
-      setTimeout(()=>{ hdrMenuPanel.hidden = true; }, 200);
-      hdrMenuBtn?.setAttribute('aria-expanded','false');
-    }
-    hdrMenuBtn?.addEventListener('click', () => {
-      const isOpen = hdrMenuPanel && !hdrMenuPanel.hidden && hdrMenuPanel.classList.contains('open');
-      if (isOpen) closeMenu(); else openMenu();
-    });
-    hdrMenuClose?.addEventListener('click', closeMenu);
-    hdrMenuScrim?.addEventListener('click', closeMenu);
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-  hdrSignInGoogle?.addEventListener('click', () => { closeMenu(); startSignIn('google'); });
-  hdrSignInMicrosoft?.addEventListener('click', () => { closeMenu(); startSignIn('microsoft'); });
-    hdrSignOut?.addEventListener('click', () => { closeMenu(); auth.signOut(); });
+    // Unified mobile menu: rely solely on initMobileMenu implementation (body.menu-open toggle)
+    const _closeMobileMenu = () => { try { window.SD?.closeMobileMenu && window.SD.closeMobileMenu(); } catch {} };
+  // Important: call startSignIn BEFORE closing menu to keep popup in same gesture
+  hdrSignInGoogle?.addEventListener('click', (e) => { try { console.debug('[hdr] google sign-in button click'); } catch{} startSignIn('google').finally(()=>_closeMobileMenu()); });
+  hdrSignInMicrosoft?.addEventListener('click', (e) => { try { console.debug('[hdr] ms sign-in button click'); } catch{} startSignIn('microsoft').finally(()=>_closeMobileMenu()); });
+    hdrSignOut?.addEventListener('click', () => { _closeMobileMenu(); auth.signOut(); });
 
   // Read tenant + roles strictly from token claims (domain only as last-resort fallback elsewhere)
     async function resolveTenantAndRoles(user, token) {
@@ -866,6 +1038,7 @@
   if (hdrSignInGoogle)  hdrSignInGoogle.style.display  = 'none';
   if (hdrSignInMicrosoft)  hdrSignInMicrosoft.style.display  = 'none';
   if (hdrSignOut) hdrSignOut.style.display = '';
+  try { if (hdrAccountPop && !hdrAccountPop.hidden) refreshHdrAccountPop(user); } catch {}
 
   try {
         // Step B: ensure claims exist (may call CF and refresh token)

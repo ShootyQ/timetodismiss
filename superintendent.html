@@ -11,17 +11,52 @@
 	<link rel="preconnect" href="https://www.gstatic.com" />
 	<script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
 	<style>
-		.sup-main{ padding:18px 0 28px; }
-		.titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; border-bottom:1px solid #e5e7eb; padding-bottom:10px; }
-		.titlebar .page-title{ margin:0; font-size:1.4rem; font-weight:800; }
+		/* Page */
+		.sup-main{ padding:18px 0 32px; }
+		.titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+		.titlebar .page-title{ margin:0; font-size:1.5rem; font-weight:900; }
 		.muted{ color: var(--muted); }
 		.small{ font-size:.95rem; }
-		.sup-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:12px; }
+
+		/* Hero header */
+		.sup-hero{ background:linear-gradient(180deg,#f8fafc,#ffffff); border:1px solid #e5e7eb; border-radius:16px; padding:14px 16px; margin:2px 0 12px; }
+		.sup-hero h2{ margin:0 0 4px; font-size:1.25rem; font-weight:800; }
+		.sup-hero p{ margin:0; color:#64748b; }
+
+		/* Cards and grid */
+		.sup-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; }
+		.card{ border-radius:14px; }
+		.card-title{ font-weight:800; }
+
+		/* Quota metric */
+		.quota-metric{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+		.quota-badge{ background:#eef2ff; color:#1d4ed8; border:1px solid #dbe3ff; border-radius:10px; padding:4px 8px; font-weight:800; }
+		progress#w-qt{ display:none; }
+		progress.quota{ width:100%; height:10px; accent-color:#2563eb; }
+
+		/* Lists */
+		.list{ list-style:none; padding:0; margin:0; display:grid; gap:10px; }
+		.school-item{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:12px; }
+		.row-between{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+		.admin-list{ list-style:none; padding:8px 0 0; margin:8px 0 0; display:grid; gap:6px; }
+		.admin-pill{ display:flex; align-items:center; justify-content:space-between; gap:8px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:6px 8px; transition:background .15s ease, border-color .15s ease; }
+		.admin-pill:hover{ background:#f3f4f6; border-color:#d1d5db; }
+		.admin-pill small{ color: var(--muted); }
+
+		/* School details disclosure */
+		details.school-details{ margin-top:6px; }
+		details.school-details > summary{ list-style:none; cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px; padding:8px 10px; border:1px dashed #e5e7eb; border-radius:10px; color:#334155; background:linear-gradient(180deg,#f8fafc,#ffffff); }
+		details.school-details[open] > summary{ border-style:solid; box-shadow:inset 0 0 0 1px #e5e7eb; }
+		.school-manage{ padding:10px 8px 4px; }
+		.inline-invite{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:2px 0 6px; }
+		.inline-invite input, .inline-invite select{ background:#fff; border:1px solid #d1d5db; border-radius:10px; padding:.5rem .6rem; }
+		.inline-invite button{ white-space:nowrap; }
+		.danger-zone{ display:flex; gap:8px; align-items:center; margin-top:10px; }
+		.btn-danger{ border-color:#ef4444; color:#991b1b; }
+
+		/* Forms */
 		.field{ display:flex; flex-direction:column; gap:6px; }
 		.field input, .field select{ background:#fff; border:1px solid #d1d5db; color:#0b132b; border-radius:12px; padding:.55rem .7rem; }
-		.row-between{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
-		.list{ list-style:none; padding:0; margin:0; display:grid; gap:10px; }
-		.school-item{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; }
 	</style>
 	<script>
 		// Lightweight toast helper (text-only)
@@ -49,29 +84,63 @@
 		// Renders schools with live admin counts from state
 		function renderSchools(list){
 			const ul = document.getElementById('schoolsList');
-			const sel = document.getElementById('schoolSel');
 			if(!ul) return;
 			ul.innerHTML = '';
 			(list || []).forEach(s => {
 				const li = document.createElement('li');
 				li.className = 'school-item';
 				const count = (window.__ADMIN_COUNTS__ && typeof window.__ADMIN_COUNTS__[s.id] === 'number') ? window.__ADMIN_COUNTS__[s.id] : (Array.isArray(s.admins) ? s.admins.length : 0);
-				li.innerHTML = `<div class="row-between"><strong>${escapeHtml(s.name || s.id)}</strong><span class="muted small">Admins: ${count}</span></div>`;
+				const admins = (window.__ADMIN_LIST__ && Array.isArray(window.__ADMIN_LIST__[s.id])) ? window.__ADMIN_LIST__[s.id] : [];
+				const aid = `admins-${s.id}`;
+				li.setAttribute('data-school-id', s.id);
+				li.innerHTML = `
+				  <div class="row-between">
+				    <strong>${escapeHtml(s.name || s.id)}</strong>
+				    <span class="muted small">Admins: <span data-admin-count for="${s.id}">${count}</span></span>
+				  </div>
+				  <details class="school-details">
+				    <summary>Manage</summary>
+				    <div class="school-manage">
+				      <div class="inline-invite" data-school-id="${s.id}">
+				        <input type="email" placeholder="name@school.org" data-invite-email aria-label="Admin email" />
+				        <select data-invite-role aria-label="Role"><option value="admin">Admin</option></select>
+				        <button class="btn btn-primary small" data-action="invite-admin" data-school-id="${s.id}">Add Admin</button>
+				      </div>
+				      <ul id="${aid}" class="admin-list"></ul>
+				      <div class="danger-zone">
+				        <button class="btn btn-outline btn-danger small" data-action="delete-school" data-school-id="${s.id}">Remove School</button>
+				        <button class="btn btn-outline btn-danger small" data-action="confirm-delete-school" data-school-id="${s.id}" hidden>Confirm Delete</button>
+				      </div>
+				    </div>
+				  </details>
+				`;
+				// Render current admin rows
+				const ulAdmins = li.querySelector('#'+aid);
+				if (admins.length === 0){
+					const empty = document.createElement('li');
+					empty.className = 'muted small';
+					empty.textContent = 'No admins yet';
+					ulAdmins.appendChild(empty);
+				} else {
+					admins.forEach(a => {
+						const row = document.createElement('li');
+						row.className = 'admin-pill';
+						const name = a.displayName ? `${a.displayName}` : '';
+						const email = a.email || '';
+						row.innerHTML = `<div><strong>${escapeHtml(name || email || a.uid || '')}</strong>${email && name ? ` <small>${escapeHtml(email)}</small>` : ''}</div>` +
+						  `<div><button class="btn btn-outline small" data-action="remove-admin" data-school-id="${s.id}" data-uid="${a.uid || a.id}">Remove</button></div>`;
+						ulAdmins.appendChild(row);
+					});
+				}
 				ul.appendChild(li);
 			});
-			if(sel){
-				sel.innerHTML = '';
-				(list || []).forEach(s => {
-					const opt = document.createElement('option');
-					opt.value = s.id; opt.textContent = s.name || s.id; sel.appendChild(opt);
-				});
-			}
 		}
 
 		function initPortal(ctx){
 			const { db, fx, orgId } = ctx;
 			const addBtn = document.getElementById('addSchoolBtn');
-			const inviteForm = document.getElementById('inviteForm');
+			// make orgId available for admin actions
+			window.__ORG_ID__ = orgId;
 
 			// State for quota reconciliation
 			const state = { allowed: 0, usedFromOrg: 0, schoolsCount: 0 };
@@ -95,7 +164,9 @@
 					// Update quota based on live count
 					state.schoolsCount = list.length;
 					renderQuota({ used: state.schoolsCount || state.usedFromOrg, allowed: state.allowed });
-					// Start/refresh admin count listeners per school
+					// cache list for re-render on admin updates
+					window.__SCHOOLS_CACHE__ = list;
+					// Start/refresh admin listeners per school
 					ensureAdminCounts(db, orgId, list.map(s => s.id));
 					renderSchools(list);
 				});
@@ -115,22 +186,37 @@
 				}
 			});
 
-			inviteForm?.addEventListener('submit', async (e) => {
-				e.preventDefault();
-				const email = document.getElementById('inviteEmail')?.value?.trim();
-				const schoolId = document.getElementById('schoolSel')?.value;
-				const role = document.getElementById('roleSel')?.value || 'admin';
-				if(!email || !schoolId){ setToast('Email and school are required.', true); return; }
+			// Inline actions within the Schools list
+			document.getElementById('schoolsList')?.addEventListener('click', async (e) => {
+				const btn = e.target.closest('button'); if (!btn) return;
+				const action = btn.getAttribute('data-action'); if (!action) return;
+				const schoolId = btn.getAttribute('data-school-id');
 				try{
-					const inviteUser = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('inviteUser');
-					await inviteUser({ email, orgId, schoolId, role });
-					setToast('Invitation sent.');
-					e.target.reset();
-				}catch(err){
-					const msg = err?.message || '';
-					const code = err?.code || '';
-					setToast(`Failed to invite user${code?` [${code}]`:''}${msg?`: ${msg}`:''}`, true);
-				}
+					if (action === 'invite-admin'){
+						const wrap = btn.closest('.inline-invite');
+						const email = wrap?.querySelector('[data-invite-email]')?.value?.trim();
+						const role = wrap?.querySelector('[data-invite-role]')?.value || 'admin';
+						if(!email){ setToast('Enter an email.', true); return; }
+						const inviteUser = (fx ? fx : firebase.app().functions('us-central1')).httpsCallable('inviteUser');
+						await inviteUser({ email, orgId, schoolId, role });
+						setToast('Invitation sent.');
+						wrap.querySelector('[data-invite-email]').value='';
+						return;
+					}
+					if (action === 'delete-school'){
+						const confirmBtn = btn.parentElement?.querySelector('[data-action="confirm-delete-school"]');
+						if (confirmBtn){ confirmBtn.hidden = false; btn.hidden = true; }
+						return;
+					}
+					if (action === 'confirm-delete-school'){
+						btn.textContent = 'Deleting…'; btn.disabled = true;
+						const fxApp = (fx ? fx : firebase.app().functions('us-central1'));
+						const del = fxApp.httpsCallable('deleteSchool');
+						await del({ schoolId });
+						setToast('School deleted.');
+						return;
+					}
+				}catch(err){ console.error(err); setToast(err?.message || 'Action failed', true); }
 			});
 		}
 
@@ -170,88 +256,82 @@
 		document.addEventListener('DOMContentLoaded', requireSuperintendent);
 	</script>
 	<script>
-		// Maintain live admin counts per school (roles array-contains 'admin')
+		// Maintain live admin counts per school (supports roles array OR roles.admin map)
 		(function(){
-			let unsubMap = new Map(); // schoolId -> unsubscribe
+			// schoolId -> combined unsubscribe
+			let unsubMap = new Map();
 			window.__ADMIN_COUNTS__ = window.__ADMIN_COUNTS__ || {};
+			window.__ADMIN_LIST__ = window.__ADMIN_LIST__ || {};
+			function buildUnsub(unsubs){ return () => { for (const u of unsubs) { try { u(); } catch {} } } }
 			window.ensureAdminCounts = function(db, orgId, schoolIds){
 				// Unsubscribe removed schools
 				for (const [sid, unsub] of Array.from(unsubMap.entries())){
-					if (!schoolIds.includes(sid)) { try { unsub(); } catch {}; unsubMap.delete(sid); delete window.__ADMIN_COUNTS__[sid]; }
+					if (!schoolIds.includes(sid)) { try { unsub(); } catch {}; unsubMap.delete(sid); delete window.__ADMIN_COUNTS__[sid]; delete window.__ADMIN_LIST__[sid]; }
 				}
 				// Subscribe new schools
 				for (const sid of schoolIds){
 					if (unsubMap.has(sid)) continue;
 					try{
-						const q = db.collection('orgs').doc(orgId).collection('schools').doc(sid)
-							.collection('members').where('roles', 'array-contains', 'admin');
-						const unsub = q.onSnapshot((qs) => {
-							window.__ADMIN_COUNTS__[sid] = qs.size || 0;
-							// Re-render schools list count if present
-							try { const list = document.getElementById('schoolsList'); if (list) { /* trigger minimal refresh by dispatching event */ document.dispatchEvent(new CustomEvent('ttd:admin-counts-updated')); } } catch {}
-						});
-						unsubMap.set(sid, unsub);
-					}catch(e){ console.warn('admin count listen failed for', sid, e); }
+						const base = db.collection('orgs').doc(orgId).collection('schools').doc(sid).collection('members');
+						const listeners = [];
+						// Maintain per-source arrays so removals are reflected
+						const store = (window.__ADMIN_LIST_SOURCES__ = window.__ADMIN_LIST_SOURCES__ || {});
+						store[sid] = store[sid] || { array: [], map: [] };
+						const recalc = () => {
+							const arr = [...(store[sid].array || []), ...(store[sid].map || [])];
+							const uniq = new Map();
+							arr.forEach(x => { const key = x.uid || x.id; if (!key) return; if (!uniq.has(key)) uniq.set(key, x); });
+							window.__ADMIN_LIST__[sid] = Array.from(uniq.values());
+							window.__ADMIN_COUNTS__[sid] = window.__ADMIN_LIST__[sid].length;
+							document.dispatchEvent(new CustomEvent('ttd:admins-updated'));
+						};
+						// roles array format
+						listeners.push(base.where('roles', 'array-contains', 'admin').onSnapshot((qs)=>{
+							store[sid].array = qs.docs.map(d=>({ id:d.id, uid:(d.data()||{}).uid||d.id, email:(d.data()||{}).email||'', displayName:(d.data()||{}).displayName||'' }));
+							recalc();
+						}));
+						// roles map format
+						listeners.push(base.where('roles.admin', '==', true).onSnapshot((qs)=>{
+							store[sid].map = qs.docs.map(d=>({ id:d.id, uid:(d.data()||{}).uid||d.id, email:(d.data()||{}).email||'', displayName:(d.data()||{}).displayName||'' }));
+							recalc();
+						}));
+						unsubMap.set(sid, buildUnsub(listeners));
+					}catch(e){ console.warn('admin listen failed for', sid, e); }
 				}
 			};
-			// Re-render on counts update with current DOM state (cheap refresh via reading current items)
-			document.addEventListener('ttd:admin-counts-updated', () => {
-				try{
-					const ul = document.getElementById('schoolsList');
-					if (!ul) return;
-					ul.querySelectorAll('li.school-item').forEach(li => {
-						const title = li.querySelector('strong');
-						if (!title) return;
-						const name = title.textContent.trim();
-						// Find schoolId from sibling text (not reliable). Better to rebuild via renderSchools on main listener.
-					});
-				} catch {}
+			// Re-render schools list whenever admins change
+			document.addEventListener('ttd:admins-updated', () => {
+				try { if (window.__SCHOOLS_CACHE__) renderSchools(window.__SCHOOLS_CACHE__); } catch {}
 			});
 		})();
 	</script>
 	<script>
-		// Delete School UI & handler
+		// Admin actions (remove admin)
 		(function(){
 			document.addEventListener('DOMContentLoaded', () => {
-				const listCard = document.querySelector('#schoolsList')?.closest('.card');
-				if (!listCard) return;
-				const wrap = document.createElement('div');
-				wrap.className = 'mt-12';
-				wrap.innerHTML = `
-				  <div class="card" style="border:1px solid #fee2e2;background:#fff7f7;">
-				    <h4 class="card-title" style="color:#991b1b;">Delete School</h4>
-				    <p class="small muted">This permanently deletes the selected school and its data. This action cannot be undone.</p>
-				    <div class="field" style="max-width:420px;">
-				      <label for="delSchoolSel">School</label>
-				      <select id="delSchoolSel"></select>
-				    </div>
-				    <div class="mt-8">
-				      <button id="deleteSchoolBtn" class="btn btn-outline" type="button" style="border-color:#ef4444;color:#991b1b;">Delete School</button>
-				    </div>
-				  </div>`;
-				listCard.parentElement.appendChild(wrap);
-				// Keep delete select in sync with main school select
-				const srcSel = document.getElementById('schoolSel');
-				const dstSel = document.getElementById('delSchoolSel');
-				function syncOptions(){ if (!srcSel || !dstSel) return; dstSel.innerHTML = srcSel.innerHTML; }
-				const obs = new MutationObserver(syncOptions);
-				if (srcSel) obs.observe(srcSel, { childList: true });
-				syncOptions();
-				// Wire delete
-				document.getElementById('deleteSchoolBtn')?.addEventListener('click', async () => {
-					const schoolId = dstSel?.value || '';
-					if (!schoolId) { alert('Select a school to delete.'); return; }
-					if (!confirm(`Delete school ${schoolId}? This cannot be undone.`)) return;
+				const ul = document.getElementById('schoolsList');
+				if (!ul) return;
+				ul.addEventListener('click', async (e) => {
+					const btn = e.target.closest('button[data-action="remove-admin"]');
+					if (!btn) return;
+					const schoolId = btn.getAttribute('data-school-id');
+					const uid = btn.getAttribute('data-uid');
+					if (!schoolId || !uid) return;
+					if (!confirm('Remove this admin from the school?')) return;
 					try{
 						const fx = (window.SD && window.SD.functions) ? window.SD.functions : firebase.app().functions('us-central1');
-						const del = fx.httpsCallable('deleteSchool');
-						await del({ schoolId }); // orgId resolved in backend from token or SD.orgId
-						alert('School deleted. It may take a moment to fully disappear.');
-					}catch(e){ console.error(e); alert('Delete failed: ' + (e?.message || e)); }
+						const setRoles = fx.httpsCallable('setSchoolMemberRoles');
+						await setRoles({ orgId: window.__ORG_ID__, schoolId, user: { uid }, roles: { admin:false, caller:false, viewer:false } });
+						setToast('Admin removed.');
+					}catch(err){
+						console.error(err);
+						setToast('Failed to remove admin: ' + (err?.message || err), true);
+					}
 				});
 			});
 		})();
 	</script>
+    <!-- Integrated delete school lives within each School's details; removed old global delete card. -->
 </head>
 <body class="sd-body">
 	<main class="container sup-main">
@@ -260,17 +340,25 @@
 			<span id="roleBadge" class="muted small">Restricted</span>
 		</header>
 
+		<section class="sup-hero">
+			<h2>District overview</h2>
+			<p class="small">Manage schools, admins, and invites across your organization.</p>
+		</section>
+
 		<p id="gateMsg" class="small muted">Checking access…</p>
 
 		<div id="portal" hidden>
 			<section class="sup-grid" aria-labelledby="overview-h">
 				<article class="card" aria-live="polite">
 					<h3 class="card-title">Quota</h3>
-								<p class="muted small">Schools used: <strong id="quotaUsed">0</strong> of <strong id="quotaAllowed">0</strong></p>
-								<progress id="quotaProgress" value="0" max="0" class="w-100"></progress>
+					<div class="quota-metric">
+						<p class="muted small" style="margin:0;">Schools used</p>
+						<span class="quota-badge"><span id="quotaUsed">0</span>/<span id="quotaAllowed">0</span></span>
+					</div>
+					<progress id="quotaProgress" value="0" max="0" class="quota"></progress>
 				</article>
 
-							<article class="card">
+				<article class="card">
 					<h3 class="card-title">Add School</h3>
 					<p class="muted small">Create a new school in your district (within your quota).</p>
 					<button id="addSchoolBtn" class="btn btn-primary" type="button">Add School</button>
@@ -284,34 +372,10 @@
 						<span id="toast" class="muted small" aria-live="polite"></span>
 					</div>
 					<ul id="schoolsList" class="list" aria-live="polite"></ul>
+								<p class="muted small" style="margin-top:8px;">Note: Invites and delete actions call Cloud Functions when deployed.</p>
 				</article>
 			</section>
 
-						<section class="mt-12" aria-labelledby="invite-h">
-				<article class="card">
-					<h3 id="invite-h" class="card-title">Invite Admin</h3>
-					<form id="inviteForm">
-						<div class="field">
-							<label for="inviteEmail">Email</label>
-							<input id="inviteEmail" type="email" placeholder="name@school.org" required autocomplete="email" />
-						</div>
-						<div class="field">
-							<label for="schoolSel">School</label>
-							<select id="schoolSel" required></select>
-						</div>
-						<div class="field">
-							<label for="roleSel">Role</label>
-							<select id="roleSel">
-								<option value="admin">Admin</option>
-							</select>
-						</div>
-									<div class="mt-8">
-							<button class="btn btn-primary" type="submit">Send Invite</button>
-						</div>
-					</form>
-								<p class="muted small mt-8">Note: This page is a stub. Actions will call Cloud Functions once deployed.</p>
-				</article>
-			</section>
 		</div>
 	</main>
 </body>

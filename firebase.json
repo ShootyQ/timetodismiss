@@ -15,10 +15,16 @@
     "cleanUrls": true,
     "headers": [
       {
-        "source": "**/*.html",
-        "source": "/*.html",
+        "source": "**/*.{html,htm}",
         "headers": [
-          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" }
+          { "key": "Cross-Origin-Opener-Policy", "value": "same-origin-allow-popups" },
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+        ]
+      },
+      {
+        "source": "**/{site-header.js,styles.css}",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
         ]
       }
     ]

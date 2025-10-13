@@ -27,6 +27,8 @@
     .scroll{ max-height:380px; overflow:auto; border:1px solid #e5e7eb; border-radius:10px; }
     .titlebar{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
     .title-actions{ display:flex; align-items:center; gap:8px; }
+    /* local helper for template download buttons */
+    .template-links{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
   </style>
 </head>
 <body class="sd-body">
@@ -45,9 +47,9 @@
         <div class="field">
           <label for="entity">Import type</label>
           <select id="entity">
-            <option value="students">Students</option>
             <option value="classes">Classes</option>
-            <option value="families">Car Families</option>
+            <option value="students">Students</option>
+            <option value="families">Ride Share</option>
           </select>
         </div>
 
@@ -70,6 +72,14 @@
           <label for="file" class="sr-only">Upload CSV file</label>
           <input type="file" id="file" accept=".csv,text/csv" aria-label="Upload CSV file" />
           <div class="small muted" id="hint"></div>
+          <div class="small" style="margin-top:6px">
+            Need a starting point? Download an Excel template, fill it out, then Save As CSV:
+            <div class="template-links" role="group" aria-label="Download templates">
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/students.xlsx" download="students-template.xlsx" title="Download Students Excel template" aria-label="Download Students Excel template">Students template</a>
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/classes.xlsx" download="classes-template.xlsx" title="Download Classes Excel template" aria-label="Download Classes Excel template">Classes template</a>
+              <a class="btn btn-secondary btn-sm" href="/excel%20files/rideshares.xlsx" download="ride-share-template.xlsx" title="Download Ride Share Excel template" aria-label="Download Ride Share Excel template">Ride Share template</a>
+            </div>
+          </div>
         </div>
 
         <div class="field">
@@ -119,28 +129,28 @@
     // UI text per entity
     const samples = {
       students:
-`name,classId,carTag
-Nova Bloodsaw,5,B4
-John Lee,3B,T3`,
-      classes:
-`id,name
-K,Kindergarten
-1,First Grade
-2,Second Grade`,
+`firstName,lastName,preferredName,carTag,studentId,laneId,busId,classId
+Gary,Nobelson,Little Gar,N4,12345,L1,BUS001,5
+John,Lee,,T3,12346,L2,BUS002,3B`,
+  classes:
+`id,name,order
+K,Kindergarten,1
+1,First Grade,2
+2,Second Grade,3`,
   families:
 `id,name,tags
 smith,Smith Family,K4 A2 T3
 baker,Baker Family,G1 A7` // tags can be space or comma separated in one column, or use tag1,tag2 headers
     };
     const hints = {
-  students: 'Columns: name, classId, carTag/tag. Optional: studentId, firstName, lastName (we will still create these fields as empty when not provided). Status is always set to waiting.',
-      classes: 'Columns: id (class id), name/title (display name).',
-      families: 'Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
+  students: 'Columns: firstName, lastName, preferredName, carTag, studentId, laneId, busId, classId. Required: firstName, classId, carTag. Optional fields will be created empty if not provided. Legacy "name" field supported for compatibility.',
+  classes: 'Columns: id (class id), name/title (display name), order (optional numeric sort).',
+  families: 'Ride Share: Columns: id, name, tags. tags can be a single column with space/comma-separated list, or separate columns tag1, tag2, ...'
     };
     const headersView = {
-  students: ['#','Name','Class','Tag'],
+  students: ['#','First Name','Last Name','Preferred','Class','Car Tag','Student ID','Lane','Bus'],
       classes: ['#','Class ID','Name','Order'],
-      families: ['#','Family ID','Name','Tags']
+  families: ['#','Ride Share ID','Name','Tags']
     };
 
     function resetPlaceholders(){
@@ -196,15 +206,35 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
       if (!records.length) return [];
       const rows = [];
       for (const rec of records){
-        const firstName = pick(rec, 'firstname','first');
-        const lastName  = pick(rec, 'lastname','last');
-        const display   = pick(rec, 'name','displayname');
-        const id        = pick(rec, 'studentid','id');
-        const classId   = pick(rec, 'classid','class','classcode');
-        const tag       = up(pick(rec, 'cartag','tag'));
+        const firstName     = pick(rec, 'firstname','first');
+        const lastName      = pick(rec, 'lastname','last');
+        const preferredName = pick(rec, 'preferredname','preferred');
+        const display       = pick(rec, 'name','displayname'); // legacy field support
+        const id            = pick(rec, 'studentid','id');
+        const classId       = pick(rec, 'classid','class','classcode');
+        const tag           = up(pick(rec, 'cartag','tag'));
+        const laneId        = pick(rec, 'laneid','lane');
+        const busId         = pick(rec, 'busid','bus');
+        
+        // Build display name: use legacy name field if present, otherwise construct from first/last
         const name = display || [lastName, firstName].filter(Boolean).join(', ');
-        if (!(firstName||lastName||name||id||tag||classId)) continue;
-        rows.push({ firstName, lastName, name, id, classId, tag, carTag: tag, status: 'waiting' });
+        
+        // Skip row if missing required fields (firstName, classId, carTag)
+        if (!firstName || !classId || !tag) continue;
+        
+        rows.push({ 
+          firstName, 
+          lastName, 
+          preferredName,
+          name, 
+          id, 
+          classId, 
+          tag, 
+          carTag: tag, 
+          laneId,
+          busId,
+          status: 'waiting' 
+        });
       }
       return rows;
     }
@@ -264,7 +294,7 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
         const r = slice[i];
         let tds = '';
         if (e === 'students'){
-          tds = `<td>${i+1}</td><td>${r.name}</td><td>${r.classId||''}</td><td>${r.tag||''}</td>`;
+          tds = `<td>${i+1}</td><td>${r.firstName||''}</td><td>${r.lastName||''}</td><td>${r.preferredName||''}</td><td>${r.classId||''}</td><td>${r.tag||''}</td><td>${r.id||''}</td><td>${r.laneId||''}</td><td>${r.busId||''}</td>`;
         } else if (e === 'classes'){
           tds = `<td>${i+1}</td><td>${r.id}</td><td>${r.name||r.title||''}</td><td>${r.order ?? ''}</td>`;
         } else {
@@ -311,11 +341,14 @@ baker,Baker Family,G1 A7` // tags can be space or comma separated in one column,
             const payload = {
               firstName: r.firstName||'',
               lastName: r.lastName||'',
+              preferredName: r.preferredName||'',
               name: r.name||[r.lastName||'', r.firstName||''].filter(Boolean).join(', '),
               id: r.id||'',
               classId: r.classId||'',
               tag: r.tag||'',
               carTag: r.carTag||r.tag||'',
+              laneId: r.laneId||'',
+              busId: r.busId||'',
               status: 'waiting',
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()

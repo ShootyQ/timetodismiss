@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Analytics</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-03-AN1" />
+  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <style>
+    .ana-main{ padding:18px 0 40px; }
+    table{ width:100%; border-collapse:separate; border-spacing:0; }
+    th,td{ padding:.5rem .65rem; border-bottom:1px solid #e5e7eb; text-align:left; font-size:.85rem; }
+    thead th{ background:#f8fafc; font-size:.75rem; letter-spacing:.05em; text-transform:uppercase; color:#334155; }
+    .badge{ display:inline-block; padding:.2rem .45rem; border-radius:8px; background:#f1f5f9; font-weight:600; font-size:.65rem; }
+    .muted{ color:#64748b; }
+    .actions{ display:flex; gap:6px; }
+    .small{ font-size:.8rem; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container ana-main">
+    <header class="titlebar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px;">
+      <h1 class="page-title" style="margin:0;">Dismissal Analytics</h1>
+      <a href="/admin.html" class="btn btn-outline">Admin</a>
+    </header>
+    <p class="small muted" id="ctxSchool">—</p>
+
+    <section style="margin-top:10px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 6px;">Recent Sessions</h2>
+      <div class="small muted" id="sessionsMeta">Loading…</div>
+      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; margin-top:8px;">
+        <table aria-label="Recent sessions">
+          <thead><tr><th>Date</th><th>Start</th><th>End</th><th>Duration</th><th>Mode</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="sessBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:760px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Daily Student Metrics</h2>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
+        <label class="small" style="font-weight:600;">Date <input id="statsDate" type="date" /></label>
+        <button id="reloadStats" class="btn btn-secondary btn-sm" type="button">Load</button>
+        <div id="statsSummary" class="small muted">Pick a date</div>
+      </div>
+      <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:400px;">
+        <table aria-label="Daily student stats" id="statsTable">
+          <thead><tr>
+            <th>Student</th><th>Class</th>
+            <th>Called→EnRoute</th><th>EnRoute→Pickup</th><th>Called→Pickup</th>
+          </tr></thead>
+          <tbody id="statsBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+  import { init, colPath, getStudentStatsForDay, computeStudentDurations, summarizeDayStats, getClasses } from '/app.js?v=23';
+  import { getDocs, query, orderBy, limit, updateDoc, doc, serverTimestamp, onSnapshot, getFirestore, collection } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+    await init();
+
+    const ctxSchool = document.getElementById('ctxSchool');
+    function updateCtx(){ const n = window.SD && (window.SD.schoolName || window.SD.schoolId); if(ctxSchool) ctxSchool.textContent = n || '—'; }
+    document.addEventListener('sd:school-changed', updateCtx);
+    document.addEventListener('sd:claims-ready', updateCtx);
+    updateCtx();
+
+    const sessBody = document.getElementById('sessBody');
+    const sessionsMeta = document.getElementById('sessionsMeta');
+
+    function fmt(ts){ if(!ts) return '—'; try{ const d=ts.toDate? ts.toDate(): ts; return d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }); }catch{ return '—'; } }
+    function dur(start, end){ if(!start) return '—'; const s=start.toDate? start.toDate(): start; const e=end? (end.toDate? end.toDate(): end): new Date(); let ms=e-s; if(ms<0) ms=0; const secs=Math.floor(ms/1000); const m=Math.floor(secs/60); const rs=secs%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'): rm)+':'+String(rs).padStart(2,'0'); }
+
+    function sessionDay(ts){ try { const d = ts?.toDate? ts.toDate(): (ts||new Date()); return d.toISOString().slice(0,10); } catch { return '—'; } }
+    let sessionActiveForStatsDate = false; // whether there's an active session for the currently selected stats date
+    function renderRows(rows){
+      sessionsMeta.textContent = rows.length + ' sessions';
+      sessBody.innerHTML = rows.map(r => {
+        const ended = !!r.endedAt;
+        return `<tr data-id="${r.id}">
+          <td>${sessionDay(r.startedAt)}</td>
+          <td>${fmt(r.startedAt)}</td>
+          <td>${fmt(r.endedAt)}</td>
+          <td>${dur(r.startedAt, r.endedAt)}</td>
+          <td>${r.mode||''}</td>
+          <td>${ended? '<span class="badge">Ended</span>' : '<span class="badge" style="background:#fee2e2;color:#991b1b;">Active</span>'}</td>
+          <td class="actions">${ended? `<button data-del="${r.id}" class="btn btn-outline" style="font-size:.65rem; padding:.25rem .45rem;">Delete</button>` : `<button data-end="${r.id}" class="btn btn-danger" style="font-size:.65rem; padding:.25rem .45rem;">End Now</button>`}</td>
+        </tr>`;
+      }).join('');
+      // Determine if any active session matches the currently chosen stats date
+      const chosen = document.getElementById('statsDate')?.value;
+      if(chosen){
+        sessionActiveForStatsDate = rows.some(r => !r.endedAt && sessionDay(r.startedAt) === chosen);
+        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
+      }
+    }
+
+    async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(window.SD?.orgId && window.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
+
+    let unsubSessions = null;
+    async function attachSessions(retries=3){
+      if(unsubSessions){ try{unsubSessions();}catch{} unsubSessions=null; }
+      const ready = await waitForContext();
+      if(!ready){ sessionsMeta.textContent='Context not ready'; return; }
+      try{
+        const fs = getFirestore();
+        const oid=window.SD.orgId, sid=window.SD.schoolId;
+        const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+        const q = query(coll, orderBy('startedAt','desc'), limit(25));
+        unsubSessions = onSnapshot(q, (snap)=>{
+          const rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+          renderRows(rows);
+        }, (err)=>{
+          console.warn('[analytics] snapshot error', err);
+          sessionsMeta.textContent='Live updates failed';
+        });
+      }catch(e){
+        console.warn('[analytics] attach sessions failed', e);
+        if(retries>0){ sessionsMeta.textContent='Retrying…'; setTimeout(()=>attachSessions(retries-1), 600); }
+        else sessionsMeta.textContent='Failed to load sessions';
+      }
+    }
+
+    sessBody.addEventListener('click', async (e) => {
+      const endBtn = e.target.closest('button[data-end]');
+      const delBtn = e.target.closest('button[data-del]');
+      if(!endBtn && !delBtn) return;
+      await waitForContext();
+      const fs = getFirestore();
+      const oid=window.SD?.orgId, sid=window.SD?.schoolId; if(!oid||!sid) { console.warn('Missing context'); return; }
+      if(endBtn){
+        if(!confirm('End this active session now?')) return;
+        try {
+          const id = endBtn.getAttribute('data-end');
+          const ref = doc(fs,'orgs',oid,'schools',sid,'callSessions',id);
+          await updateDoc(ref, { endedAt: serverTimestamp() });
+          try {
+            const signalRef = doc(fs,'orgs',oid,'schools',sid,'signals','dismissal');
+            await updateDoc(signalRef, { message:'Dismissal is over!', lastAt: serverTimestamp(), seq: (window.firebaseIncrementHack||null) });
+          } catch {
+            try { const { setDoc, increment } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js'); const signalRef2 = doc(fs,'orgs',oid,'schools',sid,'signals','dismissal'); await setDoc(signalRef2,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true }); } catch(sigErr){ console.warn('[analytics] dismissal signal failed', sigErr); }
+          }
+        } catch(err){ console.warn('[analytics] end now failed', err); }
+      } else if(delBtn){
+        if(!confirm('Delete this session permanently?')) return;
+        try {
+          const id = delBtn.getAttribute('data-del');
+          const ref = doc(fs,'orgs',oid,'schools',sid,'callSessions',id);
+          await (await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js')).deleteDoc(ref);
+        } catch(err){ console.warn('[analytics] delete failed', err); }
+      }
+    });
+    attachSessions();
+
+    /* ---------------- Daily Student Stats ---------------- */
+    const statsDate = document.getElementById('statsDate');
+    const reloadStats = document.getElementById('reloadStats');
+    const statsBody = document.getElementById('statsBody');
+    const statsSummary = document.getElementById('statsSummary');
+    let classMap = {};
+    try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
+
+    function fmtMs(ms){ if(ms==null) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
+    function ensureDateDefault(){ if(!statsDate.value){ const today=new Date(); statsDate.value = today.toISOString().slice(0,10); } }
+    ensureDateDefault();
+
+    let liveTickIv = null;
+    function finalizeIncompleteDurations(){
+      // For each stats row, if the necessary end timestamp is missing AND there is no active session for that date, mark N/A
+      const rows = Array.from(statsBody.querySelectorAll('tr[data-stat]'));
+      rows.forEach(tr => {
+        const called = tr.getAttribute('data-called');
+        const enroute = tr.getAttribute('data-enroute');
+        const pickup = tr.getAttribute('data-pickup');
+        const cteEl = tr.querySelector('[data-cte]');
+        const etpEl = tr.querySelector('[data-etp]');
+        const ctpEl = tr.querySelector('[data-ctp]');
+        // Called→EnRoute only valid if both exist
+        if(called && !enroute){ cteEl.textContent='N/A'; }
+        // Intervals requiring pickup
+        if(!pickup){
+          etpEl.textContent = 'N/A';
+          ctpEl.textContent = 'N/A';
+        }
+      });
+      if(liveTickIv){ clearInterval(liveTickIv); liveTickIv=null; }
+    }
+    async function loadDay(){
+      const day = statsDate.value; if(!day){ statsSummary.textContent='Pick a date'; return; }
+      statsSummary.textContent='Loading…'; statsBody.innerHTML='';
+      try {
+        const rows = await getStudentStatsForDay(day);
+        rows.sort((a,b)=> (a.studentName||'').localeCompare(b.studentName||''));
+        const tr = [];
+        const durations = rows.map(r=>({ r, d: computeStudentDurations(r) }));
+        durations.forEach(({r,d})=>{
+          const baseId = r.id.replace(/[^A-Za-z0-9:_-]/g,'');
+          const calledMs = r.calledAt?.toDate?.()?.getTime() || '';
+          const enrouteMs = r.enRouteAt?.toDate?.()?.getTime() || '';
+          const pickupMs = r.pickedUpAt?.toDate?.()?.getTime() || '';
+          tr.push(`<tr data-stat="${baseId}" data-called="${calledMs}" data-enroute="${enrouteMs}" data-pickup="${pickupMs}"><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td data-cte>${fmtMs(d.calledToEnRoute)}</td><td data-etp>${fmtMs(d.enRouteToPickup)}</td><td data-ctp>${fmtMs(d.calledToPickup)}</td></tr>`);
+        });
+        statsBody.innerHTML = tr.join('');
+        const agg = summarizeDayStats(rows);
+        statsSummary.textContent = `${rows.length} students • Avg C→E ${fmtMs(agg.avgCalledToEnRoute)} • Avg E→P ${fmtMs(agg.avgEnRouteToPickup)} • Avg C→P ${fmtMs(agg.avgCalledToPickup)}`;
+
+        // Live tick for in-progress rows (where a later timestamp is missing)
+        if(liveTickIv) { clearInterval(liveTickIv); liveTickIv=null; }
+        function liveTick(){
+          if(!sessionActiveForStatsDate){ return; }
+          const now = Date.now();
+          // Iterate DOM rows for up-to-date state
+          statsBody.querySelectorAll('tr[data-stat]').forEach(rowEl => {
+            const called = parseInt(rowEl.getAttribute('data-called')) || 0;
+            const enroute = parseInt(rowEl.getAttribute('data-enroute')) || 0;
+            const pickup = parseInt(rowEl.getAttribute('data-pickup')) || 0;
+            const cteEl = rowEl.querySelector('[data-cte]');
+            const etpEl = rowEl.querySelector('[data-etp]');
+            const ctpEl = rowEl.querySelector('[data-ctp]');
+            if(called && !enroute){ const ms = now - called; cteEl.textContent = fmtMs(ms); ctpEl.textContent = pickup? fmtMs(pickup-called): fmtMs(ms); }
+            if(enroute && !pickup){ const ms = now - enroute; etpEl.textContent = fmtMs(ms); if(called) ctpEl.textContent = fmtMs(now - called); }
+          });
+        }
+        liveTick();
+        liveTickIv = setInterval(liveTick, 1000);
+        if(!sessionActiveForStatsDate){ finalizeIncompleteDurations(); }
+      } catch(e){ statsSummary.textContent='Failed to load stats'; console.warn('[analytics] loadDay failed', e); }
+    }
+    reloadStats?.addEventListener('click', loadDay);
+    statsDate?.addEventListener('change', loadDay);
+    // Auto-load today
+    loadDay();
+  </script>
+</body>
+</html>

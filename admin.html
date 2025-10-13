@@ -22,6 +22,33 @@
     .mt-2{ margin-top:.5rem; }
     .mt-8{ margin-top:8px; }
     .mt-12{ margin-top:12px; }
+
+    /* --- Admin: Quick Actions makeover (scoped) --- */
+    .quick-actions{ margin-top:4px; }
+    .qa-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(240px,1fr)); gap:12px; }
+    .qa-card{
+      display:flex; align-items:flex-start; gap:12px; padding:14px; border-radius:14px; text-decoration:none;
+      background:#ffffff; border:1px solid #e5e7eb; color:#0b132b;
+      box-shadow: 0 6px 24px -12px rgba(15,23,42,.12);
+      transition: transform .06s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease;
+    }
+    .qa-card:hover{ transform:translateY(-2px); box-shadow:0 12px 32px -12px rgba(15,23,42,.16); background:#f8fafc; }
+    .qa-card:focus{ outline:3px solid var(--ring); outline-offset:3px; }
+    .qa-ic{
+      flex:0 0 auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center;
+      /* Fallback */
+      background:#eef2ff; border:1px solid #c7d2fe; color: var(--accent);
+      /* Enhanced when supported */
+      background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+      border:1px solid color-mix(in srgb, var(--accent) 24%, #e5e7eb);
+    }
+    .qa-ic svg{ width:24px; height:24px; display:block; }
+    .qa-text{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+    .qa-title{ font-weight:800; font-size:1rem; line-height:1.2; }
+    .qa-sub{ color:var(--muted); font-size:.9rem; line-height:1.2; }
+    @media (max-width: 480px){ .qa-title{ font-size:.98rem; } }
+    /* Settings input polish */
+    .admin-main input[type="number"]{ padding:.6rem .65rem; border-radius:10px; border:1px solid #e5e7eb; }
   </style>
   </head>
 <body class="sd-body">
@@ -42,12 +69,56 @@
           <p class="small muted mt-2">Admins manage roster, classes, and operations. Adding schools is superintendent-only.</p>
         </article>
 
+        <article class="card pad quick-actions">
+          <h3 class="card-title">Quick Actions</h3>
+          <nav class="qa-grid" aria-label="Admin quick actions">
+            <a class="qa-card" href="/manage.html">
+              <span class="qa-ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
+                  <path d="M7 7a3 3 0 1 1 6 0v1h4a2 2 0 0 1 2 2v7h-2v-3h-4v3H5v-7a2 2 0 0 1 2-2h3V7zM7 12v3h6v-3H7z"/>
+                </svg>
+              </span>
+              <span class="qa-text"><span class="qa-title">Roster, Classes, Ride Shares</span><span class="qa-sub">Add students, organize classes, manage ride groups</span></span>
+            </a>
+
+            <a class="qa-card" href="/qr-codes.html">
+              <span class="qa-ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
+                  <path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8 0h8v8h-8V5zm2 2v4h4V7h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm12 0h-2v2h2v2h2v-2h2v-2h-2v-2h-2v2z"/>
+                </svg>
+              </span>
+              <span class="qa-text"><span class="qa-title">QR Codes</span><span class="qa-sub">Print or download pickup codes</span></span>
+            </a>
+
+            <a class="qa-card" href="/roles.html">
+              <span class="qa-ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
+                  <path d="M12 2l7 4v5c0 5-3.5 9.74-7 11-3.5-1.26-7-6-7-11V6l7-4zm0 4.2L7 7.8V11c0 3.76 2.06 7.28 5 8.86 2.94-1.58 5-5.1 5-8.86V7.8l-5-1.6zM9.5 11a2.5 2.5 0 1 1 5 0 2.5 2.5 0 0 1-5 0z"/>
+                </svg>
+              </span>
+              <span class="qa-text"><span class="qa-title">Staff Roles</span><span class="qa-sub">Invite and manage staff permissions</span></span>
+            </a>
+
+            <a class="qa-card" href="/analytics.html">
+              <span class="qa-ic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
+                  <path d="M4 19V5h2v14H4zm6 0V9h2v10h-2zm6 0V3h2v16h-2z"/>
+                </svg>
+              </span>
+              <span class="qa-text"><span class="qa-title">Dismissal Analytics</span><span class="qa-sub">See trends and performance</span></span>
+            </a>
+          </nav>
+        </article>
         <article class="card pad">
-          <h3 class="card-title">Quick actions</h3>
+          <h3 class="card-title">Dismissal Settings</h3>
+          <p class="small muted">Configure auto-end for active calling sessions. Applies to new and current sessions.</p>
           <div class="row mt-8">
-            <a class="btn btn-primary" href="/manage.html" title="Manage Students, Classes, and Ride Shares">Manage Student Roster, Classes, and Ride Shares</a>
-            <a class="btn btn-primary" href="/qr-codes.html">QR Codes</a>
-            <a class="btn btn-primary" href="/roles.html">Manage Staff Roles</a>
+            <label class="small" style="display:flex; flex-direction:column; gap:4px;">
+              <span>Auto End (minutes)</span>
+              <input id="autoEndMinutes" type="number" min="5" max="240" step="5" value="30" style="width:120px;" />
+            </label>
+            <button id="saveDismissalCfg" class="btn btn-primary" type="button">Save</button>
+            <span id="dismissalCfgStatus" class="small muted"></span>
           </div>
         </article>
       </section>
@@ -102,10 +173,40 @@
           if (d.orgId) setText('orgId', d.orgId);
           if (d.schoolName || d.schoolId) setText('schoolId', d.schoolName || d.schoolId);
         });
+        loadDismissalSettings();
       }
     }
 
     document.addEventListener('DOMContentLoaded', requireAdmin);
+
+    async function loadDismissalSettings(){
+      try {
+        if(!window.firebase?.firestore) return;
+        const db = firebase.firestore();
+        const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
+        if(!realOid || !realSid) return;
+        const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissal');
+        const snap = await ref.get();
+        if(snap.exists){ const data = snap.data() || {}; if(typeof data.autoEndMinutes === 'number') document.getElementById('autoEndMinutes').value = data.autoEndMinutes; }
+      } catch(e){ console.warn('[admin] load dismissal settings failed', e); }
+    }
+
+    document.addEventListener('click', async (e) => {
+      const btn = e.target.closest('#saveDismissalCfg'); if(!btn) return;
+      const statusEl = document.getElementById('dismissalCfgStatus');
+      const val = parseInt(document.getElementById('autoEndMinutes').value, 10);
+      if(isNaN(val) || val < 5 || val > 240){ statusEl.textContent = 'Enter 5–240.'; return; }
+      try {
+        if(!window.firebase?.firestore){ statusEl.textContent='Firestore not ready'; return; }
+        const db = firebase.firestore();
+        const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
+        if(!realOid || !realSid){ statusEl.textContent='Context missing'; return; }
+        const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissal');
+        await ref.set({ autoEndMinutes: val, updatedAt: new Date() }, { merge:true });
+        statusEl.textContent = 'Saved';
+        setTimeout(()=>{ statusEl.textContent=''; }, 2000);
+      } catch(err){ console.error(err); statusEl.textContent='Save failed'; }
+    });
   </script>
 </body>
 </html>

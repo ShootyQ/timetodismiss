@@ -57,7 +57,7 @@
       <div class="field">
         <label for="message">Anything else that would be useful?</label>
         <textarea id="message" name="message" rows="5" placeholder="Timeline, current process, challenges, etc."></textarea>
-        <div class="help">You can also email us directly at <a href="mailto:andrewpcarlson85@gmail.com">andrewpcarlson85@gmail.com</a>.</div>
+  <div class="help">You can also email us directly at <a href="mailto:info@timetodismiss.com">info@timetodismiss.com</a>.</div>
       </div>
 
       <button class="btn btn-primary" type="submit">Send</button>
@@ -81,7 +81,7 @@
         'Message:',
         (f.get('message') || '')
       ];
-      const recipient = 'andrewpcarlson85@gmail.com'; // TODO: set your real inbox
+  const recipient = 'info@timetodismiss.com'; // Updated contact email
       const subject = 'Time To Dismiss — Inquiry';
       const body = encodeURIComponent(lines.join('\\n'));
       const url = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${body}`;

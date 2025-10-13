@@ -65,6 +65,18 @@
   .modal-actions{ display:flex; gap:10px; margin-top:18px; align-items:center; }
   .separator-line{ height:1px; background:#e5e7eb; margin:18px 0 12px; }
   .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+  /* Family student picker */
+  .fam-picker{ display:flex; flex-direction:column; gap:6px; position:relative; }
+  .fam-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+  .fam-chip{ background:#f1f5f9; border:1px solid #e2e8f0; padding:4px 8px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; font-size:.65rem; font-weight:600; }
+  .fam-chip button{ background:transparent; border:none; cursor:pointer; font-size:.9em; line-height:1; padding:0 2px; color:#334155; }
+  .fam-chip button:hover{ color:#b91c1c; }
+  .fam-suggest{ list-style:none; margin:0; padding:4px 0; position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 6px 14px -4px rgba(0,0,0,.15); z-index:50; max-height:220px; overflow:auto; }
+  .fam-suggest li{ padding:6px 10px; font-size:.75rem; display:flex; justify-content:space-between; gap:12px; cursor:pointer; }
+  .fam-suggest li:hover, .fam-suggest li[aria-selected="true"]{ background:#f1f5f9; }
+  .fam-suggest-tag{ font-weight:700; letter-spacing:.5px; }
+  .fam-suggest-name{ flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .fam-suggest-empty{ padding:6px 10px; font-size:.7rem; color:var(--muted); }
   </style>
 </head>
 <body class="sd-body">
@@ -81,9 +93,9 @@
     <section class="toolbar" aria-label="Roster tools">
       <label class="sr-only" for="entitySel">Entity</label>
       <select id="entitySel" aria-label="Select entity">
-        <option value="students">Students</option>
         <option value="classes">Classes</option>
-        <option value="families">Car Families</option>
+        <option value="students">Students</option>
+        <option value="families">Ride Share</option>
       </select>
       <label class="sr-only" for="search">Search</label>
       <input id="search" placeholder="Search…" inputmode="search" autocomplete="off" />
@@ -129,7 +141,7 @@
   <script type="module">
   import { init, onAuthChanged, colPath, docPath, getClasses, onCarGroups } from '/app.js?v=23';
     await init();
-  import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
+  import { onSnapshot, addDoc, setDoc, deleteDoc, getDoc, getDocs, serverTimestamp, orderBy, query } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js';
 
     // UI refs
     const entitySel = document.getElementById('entitySel');
@@ -186,11 +198,14 @@
     let filter = '';
   let editingId = null; // students: current docId being edited
   let classFilter = '';
+  // Students cache for name->tag resolution (lazy)
+  let studentsCache = null; // array of { id, firstName, lastName, preferredName, name, carTag, studentId, displayName }
+  let studentsCacheLoading = false;
 
     const headersMap = {
       students: ['Preferred / Name','ID','Class','Tag','Bus','Lane','Updated',''],
       classes:  ['Order','Class ID','Name',''],
-      families: ['Family ID','Name','Tags','']
+      families: ['Ride Share ID','Name','Tags','']
     };
 
     function renderHead(){
@@ -274,6 +289,36 @@
 
     function escapeHtml(s){ return String(s??'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
+    async function ensureStudentsCache(){
+      if (studentsCache || studentsCacheLoading) return;
+      studentsCacheLoading = true;
+      try {
+        await waitTenant().catch(()=>{});
+        const qy = query(colPath('students'), orderBy('name','asc'));
+        const snap = await getDocs(qy);
+        studentsCache = snap.docs.map(d => {
+          const data = d.data()||{};
+          const first = data.firstName||''; const last = data.lastName||''; const pref = data.preferredName||'';
+          const baseFull = (first||last) ? (first + (last?(' '+last):'')) : (data.name||'');
+          let composite = baseFull;
+          if (pref && pref.trim()){
+            if (baseFull && pref.trim().toLowerCase() !== baseFull.trim().toLowerCase()) composite = `${pref} (${baseFull})`; else composite = pref;
+          }
+          return {
+            _docId: d.id,
+            firstName:first,
+            lastName:last,
+            preferredName:pref,
+            name:data.name||'',
+            displayName: composite,
+            carTag: (data.carTag||data.tag||'').toString().toUpperCase(),
+            studentId: data.id || ''
+          };
+        });
+      } catch(e){ console.warn('[families] student cache load failed', e); studentsCache = []; }
+      finally { studentsCacheLoading = false; }
+    }
+
     function renderForm(){
       const e = entitySel.value;
       if (e === 'students'){
@@ -316,9 +361,9 @@
         }
       } else if (e === 'classes'){
         formFields.innerHTML = `
-          <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /></div>
-          <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /></div>
-          <div class="field"><label for="classOrder">Order</label><input id="classOrder" type="number" inputmode="numeric" placeholder="e.g., 10" /></div>
+          <div class="field"><label for="classKey">Class ID</label><input id="classKey" placeholder="e.g., G1-A" /><div class="small">System key used for recognition and referenced by each student's class assignment. Not shown to teachers.</div></div>
+          <div class="field"><label for="className">Name</label><input id="className" placeholder="e.g., Grade 1 - A" /><div class="small">Display name teachers see on pages and pickers.</div></div>
+          <div class="field"><label for="classOrder">Order</label><input id="classOrder" type="number" inputmode="numeric" placeholder="e.g., 10" /><div class="small">Optional: lower numbers sort first across pages. If blank or tied, classes fall back to alphabetical by name.</div></div>
         `;
         const keyEl = document.getElementById('classKey');
         keyEl?.focus();
@@ -328,34 +373,42 @@
           titleEl.textContent = 'Edit Class';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
-          document.getElementById('hint').textContent = 'Update the class name and submit.';
+          document.getElementById('hint').textContent = 'Update class details. ID is the system key, Name is shown to teachers, and Order controls sorting.';
         } else {
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
-          document.getElementById('hint').textContent = 'Creates or updates a class with the given ID and name.';
+          document.getElementById('hint').textContent = 'Creates or updates a class. ID is the system key; Name is displayed to teachers; Order controls list position.';
         }
       } else {
         formFields.innerHTML = `
-          <div class="field"><label for="famId">Family ID</label><input id="famId" placeholder="e.g., smith" /></div>
-          <div class="field"><label for="famName">Name</label><input id="famName" placeholder="e.g., Smith Family" /></div>
+          <div class="field"><label for="famId">Ride Share ID</label><input id="famId" placeholder="e.g., smith" /></div>
+          <div class="field"><label for="famName">Ride Share Name</label><input id="famName" placeholder="e.g., Smith Ride Share" /></div>
           <div class="field"><label for="famTags">Tags</label><input id="famTags" placeholder="e.g., K4 A2 T3" aria-describedby="tagsHelp" /></div>
           <div id="tagsHelp" class="small">Separate tags by space or comma. Tags will be uppercased.</div>
+          <div class="field fam-picker" style="margin-top:6px;">
+            <label for="famStudentSearch">Add Student Tags</label>
+            <input id="famStudentSearch" placeholder="Type name or ID…" autocomplete="off" />
+            <ul id="famSuggest" class="fam-suggest" hidden></ul>
+            <div class="fam-chips" id="famStudentChips" aria-live="polite"></div>
+            <div class="small" id="famStudentsHelp">Type to find a student; selecting adds their car tag. Remove chips to undo.</div>
+          </div>
         `;
         const idEl = document.getElementById('famId');
         idEl?.focus();
         if (editingId) {
           try { idEl.setAttribute('disabled','disabled'); } catch {}
-          titleEl.textContent = 'Edit Family';
+          titleEl.textContent = 'Edit Ride Share';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Cancel';
-          document.getElementById('hint').textContent = 'Update the family and submit.';
+          document.getElementById('hint').textContent = 'Update the ride share and submit.';
         } else {
           titleEl.textContent = 'Add';
           addBtn.textContent = 'Add';
           clearBtn.textContent = 'Clear';
-          document.getElementById('hint').textContent = 'Creates or updates a car family with one or more tags.';
+          document.getElementById('hint').textContent = 'Creates or updates a ride share group with one or more tags.';
         }
+        initFamilyStudentPicker();
       }
     }
 
@@ -694,7 +747,7 @@
             <div class="modal-actions">
               <button type="submit" class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-ghost" data-class-close>Cancel</button>
-              <span class="small">Update class info then Save.</span>
+              <span class="small">Update class details. ID is the system key; Name is shown to teachers; Order controls sorting.</span>
             </div>
           </form>
         </div>`;
@@ -716,9 +769,9 @@
         if (!snap.exists()) { setToast('Class not found', true); return; }
         const d = snap.data() || {};
         classEditFields.innerHTML = `
-          <div class="field"><label for="edit_classKey">Class ID</label><input id="edit_classKey" value="${escapeHtml(id)}" disabled /></div>
-          <div class="field"><label for="edit_className">Name</label><input id="edit_className" value="${escapeHtml(d.name || d.title || '')}" /></div>
-          <div class="field"><label for="edit_classOrder">Order</label><input id="edit_classOrder" type="number" inputmode="numeric" value="${d.order === undefined || d.order === null ? '' : escapeHtml(d.order)}" placeholder="e.g., 10" /></div>
+          <div class="field"><label for="edit_classKey">Class ID</label><input id="edit_classKey" value="${escapeHtml(id)}" disabled /><div class="small">System key used for recognition and referenced by each student's class assignment.</div></div>
+          <div class="field"><label for="edit_className">Name</label><input id="edit_className" value="${escapeHtml(d.name || d.title || '')}" /><div class="small">Display name teachers see on pages and pickers.</div></div>
+          <div class="field"><label for="edit_classOrder">Order</label><input id="edit_classOrder" type="number" inputmode="numeric" value="${d.order === undefined || d.order === null ? '' : escapeHtml(d.order)}" placeholder="e.g., 10" /><div class="small">Optional: lower numbers sort first across pages. If blank or tied, classes fall back to alphabetical by name.</div></div>
         `;
         showClassModal();
         classEditFields.querySelector('#edit_className')?.focus();
@@ -748,13 +801,13 @@
       wrap.innerHTML = `
         <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="familyEditTitle">
           <button class="modal-close" type="button" aria-label="Close" data-family-close>&times;</button>
-          <h2 id="familyEditTitle">Edit Family</h2>
+          <h2 id="familyEditTitle">Edit Ride Share</h2>
           <form id="familyEditForm" novalidate>
             <div class="edit-grid" id="familyEditFields"></div>
             <div class="modal-actions">
               <button type="submit" class="btn btn-primary">Save</button>
               <button type="button" class="btn btn-ghost" data-family-close>Cancel</button>
-              <span class="small">Update the family then Save.</span>
+              <span class="small">Update the ride share then Save.</span>
             </div>
           </form>
         </div>`;
@@ -773,15 +826,23 @@
       activeEditFamilyId = id;
       try {
         const snap = await getDoc(docPath('carGroups', id));
-        if (!snap.exists()) { setToast('Family not found', true); return; }
+        if (!snap.exists()) { setToast('Ride share not found', true); return; }
         const d = snap.data() || {};
         familyEditFields.innerHTML = `
-          <div class="field"><label for="edit_famId">Family ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
-          <div class="field"><label for="edit_famName">Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
+          <div class="field"><label for="edit_famId">Ride Share ID</label><input id="edit_famId" value="${escapeHtml(id)}" disabled /></div>
+          <div class="field"><label for="edit_famName">Ride Share Name</label><input id="edit_famName" value="${escapeHtml(d.name||'')}" /></div>
           <div class="field" style="grid-column:1 / -1"><label for="edit_famTags">Tags</label><input id="edit_famTags" value="${escapeHtml((d.tags||[]).join(' '))}" placeholder="e.g., K4 A2 T3" /></div>
+          <div class="field fam-picker" style="grid-column:1 / -1; margin-top:4px;">
+            <label for="edit_famStudentSearch">Add Student Tags</label>
+            <input id="edit_famStudentSearch" placeholder="Type name or ID…" autocomplete="off" />
+            <ul id="edit_famSuggest" class="fam-suggest" hidden></ul>
+            <div class="fam-chips" id="edit_famStudentChips" aria-live="polite"></div>
+            <div class="small">Type to search; selecting adds car tag. Edit Tags field to fine-tune.</div>
+          </div>
         `;
         showFamilyModal();
         familyEditFields.querySelector('#edit_famName')?.focus();
+        initFamilyStudentPicker(true);
       } catch(err){ console.error(err); setToast('Load failed: ' + (err?.message||'Unknown'), true); }
     }
     familyEditForm.addEventListener('submit', async (e) => {
@@ -792,10 +853,83 @@
         const tags = (document.getElementById('edit_famTags')?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
         const payload = { name: name || activeEditFamilyId, tags, updatedAt: serverTimestamp() };
         await setDoc(docPath('carGroups', activeEditFamilyId), payload, { merge:true });
-        setToast('Family updated.');
+        setToast('Ride share updated.');
         closeFamilyModal();
       } catch(err){ console.error(err); setToast('Save failed: ' + (err?.message||'Unknown'), true); }
     });
+
+    // Autocomplete picker for family student tag selection
+    function initFamilyStudentPicker(isEdit=false){
+      const input = document.getElementById(isEdit ? 'edit_famStudentSearch' : 'famStudentSearch');
+      const list  = document.getElementById(isEdit ? 'edit_famSuggest' : 'famSuggest');
+      const chips = document.getElementById(isEdit ? 'edit_famStudentChips' : 'famStudentChips');
+      const tagsEl= document.getElementById(isEdit ? 'edit_famTags' : 'famTags');
+      if (!input || !list || !chips || !tagsEl) return;
+      if (input.dataset.wired) return; input.dataset.wired='1';
+      const added = new Set();
+      function renderChips(){
+        chips.innerHTML = Array.from(added).map(tag => `<span class="fam-chip" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)} <button type="button" aria-label="Remove ${escapeHtml(tag)}">×</button></span>`).join('');
+        chips.querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {
+          const t = btn.parentElement?.getAttribute('data-tag');
+          if (t){
+            const parts = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean);
+            const next = parts.filter(p => p.toUpperCase() !== t);
+            tagsEl.value = next.join(' ');
+            added.delete(t);
+            renderChips();
+          }
+        }));
+      }
+      function mergeIntoTags(){
+        const existing = (tagsEl.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
+        const merged = Array.from(new Set([...existing, ...added]));
+        tagsEl.value = merged.join(' ');
+      }
+      function hideList(){ list.hidden = true; list.innerHTML=''; highlighted = -1; }
+      let current = [];
+      let highlighted = -1;
+      function showSuggestions(items){
+        if (!items.length){ list.innerHTML = '<li class="fam-suggest-empty">No matches</li>'; list.hidden=false; highlighted=-1; return; }
+        list.innerHTML = items.slice(0,50).map((s,i)=>{
+          const tag = (s.carTag||'').toString().toUpperCase();
+            const label = s.displayName || s.name || (s.firstName||'');
+          return `<li role="option" data-idx="${i}" aria-selected="${i===highlighted}"><span class="fam-suggest-name">${escapeHtml(label)}</span><span class="fam-suggest-tag">${escapeHtml(tag)}</span></li>`;
+        }).join('');
+        list.hidden = false;
+        list.querySelectorAll('li[data-idx]').forEach(li => li.addEventListener('click', () => {
+          const idx = parseInt(li.getAttribute('data-idx'),10); selectIdx(idx);
+        }));
+      }
+      function updateHighlight(delta){
+        if (list.hidden || !current.length) return;
+        highlighted = (highlighted + delta + current.length) % current.length;
+        showSuggestions(current);
+      }
+      function selectIdx(idx){
+        const item = current[idx];
+        if (item && item.carTag){ added.add(item.carTag.toUpperCase()); mergeIntoTags(); renderChips(); }
+        input.value=''; hideList(); input.focus();
+      }
+      input.addEventListener('input', async () => {
+        const q = input.value.trim().toLowerCase();
+        if (!q){ hideList(); return; }
+        await ensureStudentsCache();
+        const hay = studentsCache || [];
+        current = hay.filter(s => {
+          const all = `${s.displayName||''} ${s.name||''} ${s.firstName||''} ${s.lastName||''} ${s.studentId||''}`.toLowerCase();
+          return all.includes(q);
+        }).slice(0,100);
+        highlighted = current.length ? 0 : -1;
+        showSuggestions(current);
+      });
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown'){ updateHighlight(1); e.preventDefault(); }
+        else if (e.key === 'ArrowUp'){ updateHighlight(-1); e.preventDefault(); }
+        else if (e.key === 'Enter'){ if (!list.hidden && highlighted>=0){ e.preventDefault(); selectIdx(highlighted); } }
+        else if (e.key === 'Escape'){ hideList(); }
+      });
+      document.addEventListener('click', (e) => { if (!list.contains(e.target) && e.target !== input){ hideList(); } });
+    }
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -888,17 +1022,17 @@
           const id   = (idEl?.value||'').trim();
           const name = (nmEl?.value||'').trim();
           const tags = (tgEl?.value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase());
-          if (!id) return setToast('Family ID is required.', true);
+          if (!id) return setToast('Ride share ID is required.', true);
           const payload = { id, name: name || id, tags, updatedAt: serverTimestamp() };
           if (editingId){
             await setDoc(docPath('carGroups', editingId), payload, { merge: true });
-            setToast('Family updated.');
+            setToast('Ride share updated.');
             try { idEl?.removeAttribute('disabled'); } catch {}
             exitEditMode();
           } else {
             payload.createdAt = serverTimestamp();
             await setDoc(docPath('carGroups', id), payload, { merge: true });
-            setToast('Family saved.');
+            setToast('Ride share saved.');
             form.reset();
           }
         }
