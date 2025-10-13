@@ -79,11 +79,11 @@
     .pa-gridflow .pa-item{ width:100%; height:auto; }
     .pa-gridflow .pa-qr > div{ margin:0 auto; }
 
-  /* Large Name + QR rows (one per code) */
-  .pa-nameqr{ grid-template-columns: 1fr; padding: .75in; row-gap: .35in; }
-  .pa-nameqr .pa-item{ width:100%; height:auto; padding:.05in 0; display:flex; align-items:center; justify-content:space-between; }
-  .pa-nameqr .pa-bigname{ font-weight:900; font-size: 48pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; margin-right:.25in; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pa-nameqr .pa-qr{ flex: 0 0 auto; }
+  /* Large Name + QR rows (one per code), tuned for 2 rows per landscape page */
+  .pa-nameqr{ grid-template-columns: 1fr; padding: .6in; row-gap: .35in; }
+  .pa-nameqr .pa-item{ width:100%; height:auto; padding:.05in 0; display:grid; grid-template-columns: 1fr auto; align-items:center; column-gap: .35in; }
+  .pa-nameqr .pa-bigname{ font-weight:900; font-size: 54pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pa-nameqr .pa-qr{ justify-self:end; }
 
     /* Print-time cleanup */
   .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
@@ -404,7 +404,7 @@
         case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
         case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
         case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
-        case 'nameqr':    return { class: 'pa-nameqr',    qrIn: 2.0,  perPage: 8,   bigName: true };
+  case 'nameqr':    return { class: 'pa-nameqr',    qrIn: 2.4,  perPage: 2,   bigName: true, landscape: true };
         default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
     }
@@ -472,8 +472,8 @@
       const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
       for (let i=0; i<source.length; i+=perPage){
         const pageItems = source.slice(i, i+perPage);
-        const page = document.createElement('div');
-        page.className = 'pa-page ' + preset.class;
+  const page = document.createElement('div');
+  page.className = 'pa-page ' + preset.class + (preset.landscape ? ' pa-landscape' : '');
         paPages.appendChild(page);
 
         for (const item of pageItems){
@@ -537,6 +537,7 @@
           .pa-label{font-weight:800;font-family:inherit;}
           .pa-name{font-size:.8rem;color:#334155;text-align:center;}
           .pa-page{width:8.5in;min-height:11in;box-sizing:border-box;}
+          .pa-landscape{width:11in;min-height:8.5in;}
           .pa-avery5160{grid-template-columns:repeat(3,2.625in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
           .pa-avery5160 .pa-item{width:2.625in;height:1in;padding:0;}
           .pa-avery5160 .pa-label{font-size:10px;line-height:1;margin-top:1px;}
@@ -550,11 +551,11 @@
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
-          .pa-nameqr{grid-template-columns:1fr;padding:.75in;row-gap:.35in;}
-          .pa-nameqr .pa-item{width:100%;height:auto;padding:.05in 0;display:flex;align-items:center;justify-content:space-between;}
-          .pa-nameqr .pa-bigname{font-weight:900;font-size:48pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;margin-right:.25in;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-          .pa-nameqr .pa-qr{flex:0 0 auto;}
-          @page{size:letter;margin:0;}
+          .pa-nameqr{grid-template-columns:1fr;padding:.6in;row-gap:.35in;}
+          .pa-nameqr .pa-item{width:100%;height:auto;padding:.05in 0;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.35in;}
+          .pa-nameqr .pa-bigname{font-weight:900;font-size:54pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .pa-nameqr .pa-qr{justify-self:end;}
+          @page{size:letter landscape;margin:0;}
           @media print{body{background:#fff;}}
         </style>
       </head><body>${paPages.innerHTML}</body></html>`;
