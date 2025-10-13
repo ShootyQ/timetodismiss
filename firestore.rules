@@ -2,6 +2,19 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Collection group access for student events (used by analytics Session Metrics)
+    // Relies on orgId/schoolId fields stored in each event document
+    match /orgs/{orgId}/schools/{schoolId}/{rest=**}/events/{eventId} {
+      allow get, list: if isAuthed() && isAtLeastViewer() && inSchool(orgId, schoolId);
+      // Mirror create rule here for any writes that may use collection group paths (normally writes go via students/{id}/events)
+      allow create: if isAuthed()
+                     && isAtLeastViewer()
+                     && inSchool(orgId, schoolId)
+                     && request.resource.data.keys().hasOnly(['status','at','sessionId','orgId','schoolId','studentId','classId','studentName'])
+                     && (request.resource.data.status is string)
+                     && ('at' in request.resource.data);
+      allow update, delete: if false;
+    }
 
     // ───────────── Helpers ─────────────
     function isAuthed() { return request.auth != null; }
