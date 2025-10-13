@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>How It Works (Prototype 3) — Time To Dismiss</title>
+
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+
+  <!-- Ultimate page styles: combines P1 structure with P2 motion/parallax; all scoped to avoid conflicts -->
+  <style>
+    :root{
+      --ux-max: 1180px;
+      --ux-gap: 18px;
+      --ux-radius: 14px;
+      --ux-border:#e5e7eb;
+      --ux-dark:#0f172a;
+      --ux-dark-2:#111827;
+      --ux-accent: var(--primary, #4f46e5);
+      --ux-accent-2:#4338ca;
+      --ux-muted:#475569;
+      --ux-card:#fff;
+      --ux-shadow: 0 8px 24px rgba(15,23,42,.08);
+    }
+
+    .ux-wrap{ max-width: var(--ux-max); margin: 0 auto; padding: 0 18px; }
+    .section{ padding: 64px 0; }
+    @media (min-width: 860px){ .section{ padding: 84px 0; } }
+    .center{ text-align:center; }
+
+    /* Hero with parallax background (from P2) */
+    .hero{ position:relative; min-height: 76vh; display:grid; place-items:center; color:#fff; overflow:hidden; }
+    .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(15,23,42,.55), rgba(15,23,42,.75)); z-index:1; }
+    .hero-bg{ position:absolute; inset:0; background-image:url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670'); background-size:cover; background-position:center; transform: scale(1.1); z-index:0; }
+    .hero-inner{ position:relative; z-index:2; max-width: 900px; padding: 18px; text-align:center; animation: fadeIn .9s ease-out both; }
+    .eyebrow{ display:inline-block; background: rgba(255,255,255,.14); padding:6px 12px; border-radius:999px; font-weight:700; letter-spacing:.02em; }
+    .hero h1{ font-size: clamp(1.9rem, 2.4vw + 1rem, 3.1rem); line-height:1.1; margin:10px 0 8px; }
+    .lead{ color: rgba(255,255,255,.9); font-weight:600; max-width:68ch; margin: 0 auto; }
+    .cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px; }
+    .btn{ appearance:none; border:1px solid transparent; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+    .btn.primary{ background:var(--ux-accent); color:#fff; }
+    .btn.primary:hover{ background:var(--ux-accent-2); }
+    .btn.ghost{ background:#fff; color:var(--ux-accent); border-color:var(--ux-border); }
+
+    /* Icon strip (from P1) */
+    .icon-strip{ display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:16px; border:1px solid var(--ux-border); border-radius:14px; padding:16px; background:#fff; box-shadow: var(--ux-shadow); }
+    .icon-pill{ display:flex; flex-direction:column; align-items:center; gap:8px; font-weight:800; color:#0f172a; }
+    .icon{ width:54px; height:54px; border-radius:50%; display:grid; place-items:center; background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff; font-size:24px; }
+
+    /* Benefits band (from P1, restyled) */
+    .band{ background: linear-gradient(180deg, #0b1220, #111827); color:#cbd5e1; margin:40px 0; padding: 48px 0; }
+    .benefits{ display:grid; gap:18px; }
+    @media (min-width: 900px){ .benefits{ grid-template-columns: repeat(3,1fr);} }
+    .benefit{ border:1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.15); border-radius:14px; padding:18px; }
+    .benefit h3{ margin:0 0 6px; color:#fff; }
+
+    /* Section headings */
+    .section h2{ font-size: clamp(1.5rem, 1.1rem + 1.6vw, 2.2rem); margin:0 0 10px; }
+    .muted{ color: var(--ux-muted); }
+
+    /* Cards & grids */
+    .grid{ display:grid; gap:18px; }
+    @media (min-width: 860px){ .grid.cols-3{ grid-template-columns: repeat(3,1fr);} }
+    @media (min-width: 980px){ .grid.cols-4{ grid-template-columns: repeat(4,1fr);} }
+    .card{ background:#fff; border:1px solid var(--ux-border); border-radius:var(--ux-radius); padding:16px; box-shadow: var(--ux-shadow); }
+    .card img{ width:100%; height:auto; border-radius:12px; margin-top:10px; }
+    .card .num{ display:inline-flex; width:30px; height:30px; align-items:center; justify-content:center; border-radius:999px; background:#eef2ff; color:#3730a3; font-weight:800; margin-right:8px; }
+
+    /* Roles */
+    .roles{ display:grid; gap:18px; }
+    @media (min-width: 980px){ .roles{ grid-template-columns: repeat(4,1fr);} }
+    .role{ text-align:center; padding:18px; background:#fff; border:1px solid var(--ux-border); border-radius:14px; box-shadow:var(--ux-shadow); }
+    .role img{ width:64px; height:64px; object-fit:contain; margin-bottom:10px; }
+    .quote{ font-weight:700; color:#0f172a; }
+
+    /* Classroom split (from P2) */
+    .classroom{ background:#0f172a; color:#fff; }
+    .split{ display:grid; gap:28px; align-items:center; }
+    @media (min-width: 960px){ .split{ grid-template-columns: 1fr 1.1fr; } }
+    .split-image{ border-radius:16px; overflow:hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,.5); height: 420px; background:#000; }
+    .split-image img{ width:100%; height:100%; object-fit:cover; display:block; }
+    .split-content h2, .split-content p{ color:#fff; }
+    .benefit-list{ list-style:none; padding:0; margin:12px 0 0; }
+    .benefit-list li{ display:flex; gap:10px; align-items:flex-start; margin-bottom:12px; }
+    .benefit-list .icon{ color:#93c5fd; }
+
+    /* FAQ (from P1) */
+    .faq{ display:grid; gap:10px; }
+    details.faq-item{ background:#fff; border:1px solid var(--ux-border); border-radius:12px; padding:12px 14px; box-shadow: var(--ux-shadow); }
+    details.faq-item summary{ cursor:pointer; list-style:none; font-weight:700; }
+    details.faq-item summary::-webkit-details-marker{ display:none; }
+    details.faq-item[open]{ background:#f8fafc; }
+
+    /* CTA band */
+    .cta-band{ background: #0b1220; color:#fff; margin: 40px 0 16px; border-radius:16px; padding:24px; text-align:center; }
+
+    /* Motion system (from P2) */
+    .animatable{ opacity:0; transform: translateY(26px); transition: opacity .9s ease, transform .9s ease; }
+    .animatable.is-visible{ opacity:1; transform:none; }
+    [data-delay="1"]{ transition-delay:.1s; }
+    [data-delay="2"]{ transition-delay:.2s; }
+    [data-delay="3"]{ transition-delay:.3s; }
+
+    @keyframes fadeIn{ from{ opacity:0; transform: translateY(10px);} to{opacity:1; transform:none;} }
+    @media (max-width: 760px){ .icon-strip{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+  </style>
+</head>
+<body class="sd-body">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-bg" id="hero-bg"></div>
+    <div class="hero-inner">
+      <span class="eyebrow">Dismissal, Organized</span>
+      <h1>Faster, calmer student pick‑up for every classroom</h1>
+      <p class="lead">Time To Dismiss keeps callers, classrooms, and the front office perfectly in sync. Scan a tag or select a ride share and every room updates instantly — no walkies, no chaos.</p>
+      <div class="cta">
+        <a class="btn primary" href="#process">See how it works</a>
+        <a class="btn ghost" href="/contact.html">Request a demo</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ICON STRIP -->
+    <section aria-label="Supported dismissal modes" class="section">
+      <div class="ux-wrap">
+        <div class="icon-strip animatable">
+          <div class="icon-pill"><div class="icon" aria-hidden="true">🚗</div><div>Carline</div></div>
+          <div class="icon-pill"><div class="icon" aria-hidden="true">🚌</div><div>Bus</div></div>
+          <div class="icon-pill"><div class="icon" aria-hidden="true">🚶‍♂️</div><div>Walker</div></div>
+          <div class="icon-pill"><div class="icon" aria-hidden="true">🚴‍♀️</div><div>Bike</div></div>
+          <div class="icon-pill"><div class="icon" aria-hidden="true">🤝</div><div>Carpool</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BENEFITS BAND -->
+    <section class="band">
+      <div class="ux-wrap">
+        <h2 class="center animatable">Why schools choose Time To Dismiss</h2>
+        <div class="benefits" style="margin-top:14px;">
+          <article class="benefit animatable" data-delay="1">
+            <h3>Speed without stress</h3>
+            <p>Scan a tag or select a ride share; students appear instantly on every classroom display. Lines move, not walkies.</p>
+          </article>
+          <article class="benefit animatable" data-delay="2">
+            <h3>One source of truth</h3>
+            <p>Master view drives consistent calls, prevents duplicates, and keeps staff focused on safety and flow.</p>
+          </article>
+          <article class="benefit animatable" data-delay="3">
+            <h3>Flexible and friendly</h3>
+            <p>Works on laptops, tablets, projectors, and TVs. No app installs, no special hardware, just a browser.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROCESS (from P1) -->
+    <section id="process" class="section" aria-labelledby="process-h">
+      <div class="ux-wrap">
+        <h2 id="process-h" class="animatable">What the day looks like</h2>
+        <div class="grid cols-4" style="margin-top:10px;">
+          <article class="card animatable" data-delay="1">
+            <div><span class="num">1</span><strong>Set up your school</strong></div>
+            <p class="muted">Add classes, students, and ride shares. Import CSVs if you prefer.</p>
+            <img src="/Pictures/setup1.png" alt="Setup — add your school" />
+          </article>
+          <article class="card animatable" data-delay="2">
+            <div><span class="num">2</span><strong>Print QR tags</strong></div>
+            <p class="muted">Generate QR codes sized for common label sheets with plain‑text tags.</p>
+            <img src="/Pictures/setup3.png" alt="Printable QR tags" />
+          </article>
+          <article class="card animatable" data-delay="3">
+            <div><span class="num">3</span><strong>Start dismissal</strong></div>
+            <p class="muted">Open the master page to coordinate and watch every classroom update live.</p>
+            <img src="/Pictures/calling1.png" alt="Start a dismissal session" />
+          </article>
+          <article class="card animatable" data-delay="3">
+            <div><span class="num">4</span><strong>Call & go</strong></div>
+            <p class="muted">Search and select or just scan a QR tag — the group is called at once.</p>
+            <img src="/Pictures/calling3.png" alt="Ride share and family calling" />
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CALLING FEATURE CARDS (P2 style, local images) -->
+    <section class="section" aria-labelledby="calling-h">
+      <div class="ux-wrap">
+        <h2 id="calling-h" class="animatable">Intelligent calling, unrivaled control</h2>
+        <p class="muted center animatable" data-delay="1">Manage the entire flow with speed and precision — scan tags or search rosters with powerful filters.</p>
+        <div class="grid cols-3" style="margin-top:14px;">
+          <article class="card animatable" data-delay="1">
+            <img src="/Pictures/calling1.png" alt="Initiate dismissal" />
+            <h3 style="margin:10px 0 4px;">Initiate dismissal</h3>
+            <p class="muted">One click creates a live session and syncs all classroom displays.</p>
+          </article>
+          <article class="card animatable" data-delay="2">
+            <img src="/Pictures/calling2.png" alt="Smart calling & scanning" />
+            <h3 style="margin:10px 0 4px;">Smart calling & scanning</h3>
+            <p class="muted">Use a device camera or Bluetooth scanner, or find students instantly with filters.</p>
+          </article>
+          <article class="card animatable" data-delay="3">
+            <img src="/Pictures/calling3.png" alt="Group & go" />
+            <h3 style="margin:10px 0 4px;">Group & go</h3>
+            <p class="muted">Call entire carpools or families at once — perfect for staff on the move.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROLES -->
+    <section class="section" aria-labelledby="roles-h">
+      <div class="ux-wrap">
+        <h2 id="roles-h" class="animatable">Built for every role</h2>
+        <div class="roles" style="margin-top:10px;">
+          <article class="role animatable" data-delay="1">
+            <img src="/admin.png" alt="Admin icon" />
+            <h3>Administrators</h3>
+            <p class="muted">Simple onboarding, easy roster imports, and real‑time visibility.</p>
+            <p class="quote">“Dismissal went from hectic to predictable.”</p>
+          </article>
+          <article class="role animatable" data-delay="2">
+            <img src="/caller.png" alt="Caller icon" />
+            <h3>Callers</h3>
+            <p class="muted">Fast search and class filters — or scan and go.</p>
+            <p class="quote">“It’s faster than our walkie process ever was.”</p>
+          </article>
+          <article class="role animatable" data-delay="3">
+            <img src="/classicon.png" alt="Classroom icon" />
+            <h3>Teachers</h3>
+            <p class="muted">Projector‑friendly list with high contrast for calm, quiet rooms.</p>
+            <p class="quote">“The room stays quiet and focused.”</p>
+          </article>
+          <article class="role animatable" data-delay="3">
+            <img src="/superintendent.png" alt="District icon" />
+            <h3>Districts</h3>
+            <p class="muted">Consistency across campuses with a lightweight, browser‑based solution.</p>
+            <p class="quote">“Standardized, safe, and easy to roll out.”</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLASSROOM SPLIT -->
+    <section class="section classroom" aria-labelledby="classroom-h">
+      <div class="ux-wrap">
+        <div class="split animatable">
+          <div class="split-image"><img src="/Pictures/classroom1.png" alt="Calm classroom display" /></div>
+          <div class="split-content">
+            <span class="eyebrow" style="background: rgba(255,255,255,.12);">Classroom</span>
+            <h2 id="classroom-h">Calm, coordinated classrooms</h2>
+            <p style="color:#e5e7eb;">A silent, visual flow replaces loudspeakers and walkies so teachers keep teaching and students line up calmly.</p>
+            <ul class="benefit-list">
+              <li><span class="icon">✔</span> <strong>Real‑time updates</strong> — new calls highlight up top for quick line‑ups.</li>
+              <li><span class="icon">✔</span> <strong>Works everywhere</strong> — TVs, tablets, laptops; no app install required.</li>
+              <li><span class="icon">✔</span> <strong>One source of truth</strong> — no duplicate pages or overlapping instructions.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" aria-labelledby="faq-h">
+      <div class="ux-wrap">
+        <h2 id="faq-h" class="animatable">Frequently asked</h2>
+        <div class="faq">
+          <details class="faq-item animatable" data-delay="1">
+            <summary>How long does setup take?</summary>
+            <p>Most schools are up and running in under an hour. Import rosters, generate QR tags, and you’re ready for first dismissal.</p>
+          </details>
+          <details class="faq-item animatable" data-delay="2">
+            <summary>Do we need special hardware?</summary>
+            <p>No. Any modern browser works. Bluetooth scanners are optional — device cameras can scan too.</p>
+          </details>
+          <details class="faq-item animatable" data-delay="3">
+            <summary>Can we call siblings or carpools together?</summary>
+            <p>Yes. Group students into a ride share and call the entire group at once from the page or by scanning their tag.</p>
+          </details>
+          <details class="faq-item animatable" data-delay="3">
+            <summary>How does the classroom display update?</summary>
+            <p>Calls instantly update every relevant classroom page. New names are highlighted at the top.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA BAND -->
+    <section class="cta-band" aria-label="Get started">
+      <div class="ux-wrap center">
+        <h2 style="margin:0 0 6px;">Ready to simplify dismissal?</h2>
+        <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">Let us show you how Time To Dismiss can speed things up and keep classrooms calm.</p>
+        <div class="cta" style="justify-content:center; margin:0;">
+          <a class="btn primary" href="/contact.html">Request a demo</a>
+          <a class="btn ghost" href="/index.html">Explore features</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Parallax hero background (from Prototype 2)
+    const heroBg = document.getElementById('hero-bg');
+    window.addEventListener('scroll', () => {
+      const y = window.pageYOffset || 0;
+      if(heroBg){ heroBg.style.transform = `translate3d(0, ${y * 0.4}px, 0) scale(1.1)`; }
+    }, { passive:true });
+
+    // IntersectionObserver to reveal animatable elements (from Prototype 2)
+    const animatables = document.querySelectorAll('.animatable');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
+    }, { threshold: 0.12 });
+    animatables.forEach(a => obs.observe(a));
+
+    // Smooth scroll for internal anchors (from Prototype 2)
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', (e) => {
+        const id = a.getAttribute('href');
+        if(id && id.startsWith('#') && id.length > 1){
+          e.preventDefault();
+          const el = document.querySelector(id);
+          if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+        }
+      });
+    });
+
+    // Keyboard support for FAQ toggles
+    document.querySelectorAll('details.faq-item > summary').forEach((s)=>{
+      s.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); s.click(); }
+      });
+    });
+  </script>
+</body>
+</html>
