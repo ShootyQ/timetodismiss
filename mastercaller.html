@@ -145,6 +145,17 @@
       .tiles-toolbar .small{ width: 100%; display:flex; justify-content:flex-end; }
       #endSessionBtn{ padding:.5rem .65rem; }
     }
+
+    /* Mobile declutter: reduce top UI on small screens */
+    @media (max-width: 640px){
+      .row-top h1{ display:none; }
+      .small-help{ display:none; }
+      #classFilter{ display:none; }
+      #tilesCount{ display:none; }
+      .row-top{ padding:6px 3%; }
+      .filters{ flex:1 1 auto; width:100%; }
+      #tilesSearch{ flex:1 1 auto; width:100%; }
+    }
   </style>
   <script>
     // Make touchmove passive for smoother scrolling
@@ -636,8 +647,10 @@
     const MIN_SCAN_LEN = 3; // ignore tiny bursts
     const QUIET_FINALIZE_MS = 150; // if no new char within this window, attempt finalize (scanner usually ends burst)
     let quietTimer = null;
+    let scanningSuspended = false; // true while user is typing in an input/textarea
     function resetScanBuffer(){ scanChars=[]; scanLastTs=0; }
     function bufferChar(ch){
+      if (scanningSuspended) return;
       const now=Date.now();
       if(!scanChars.length || (now - scanLastTs) <= SCAN_SEQ_TIMEOUT){
         scanChars.push({ch,time:now});
@@ -663,6 +676,7 @@
     function tryQuietFinalize(){
       // Only attempt if the last keystroke was recently and buffer not empty
       if(!scanChars.length) return;
+      if (scanningSuspended) { resetScanBuffer(); return; }
       const now = Date.now();
       if(now - scanLastTs >= QUIET_FINALIZE_MS){
         tryFinalizeScan();
@@ -760,7 +774,9 @@
       if(!scanEnable?.checked) return; // scanning disabled
       if(e.metaKey||e.ctrlKey||e.altKey) return; // ignore combos
       const active = document.activeElement;
-      const isInput = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA');
+      const isInput = !!(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable));
+      // If the user is typing in a field, don't treat keystrokes as scans
+      if(isInput){ scanningSuspended = true; resetScanBuffer(); return; }
       if(e.key === 'Enter' || e.key === 'Tab'){
         // Decide if buffered burst qualifies as scan
         if(tryFinalizeScan()){ if(!isInput) e.preventDefault(); }
@@ -781,6 +797,12 @@
     }, true);
     // Periodic debug refresh in case quiet finalize cleared
     setInterval(()=>{ if(scanEnable?.checked) updateScanDebug(); }, 500);
+
+    // Suspend background scan while interacting with the search box
+    try{
+      search?.addEventListener('focus', () => { scanningSuspended = true; resetScanBuffer(); });
+      search?.addEventListener('blur',  () => { scanningSuspended = false; });
+    }catch{}
 
     async function bootstrap(claims){
       const allowed = !!(claims && (claims.caller || claims.admin));

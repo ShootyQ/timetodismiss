@@ -131,6 +131,7 @@
             sessionNote.innerHTML = 'Press Start to begin.';
             resetOnStart?.closest('label')?.removeAttribute('hidden');
             resetReason?.removeAttribute('hidden');
+            try{ if (resetOnStart){ resetOnStart.disabled = false; if (typeof resetOnStart.checked === 'boolean') resetOnStart.checked = true; } }catch{}
             return;
           }
           // Use first active document
@@ -143,6 +144,7 @@
           // Hide reset option when joining
           resetOnStart?.closest('label')?.setAttribute('hidden','hidden');
           resetReason?.setAttribute('hidden','hidden');
+          try{ if (resetOnStart){ resetOnStart.checked = false; resetOnStart.disabled = true; } }catch{}
           // If user didn't explicitly request to stay on the hub, auto-redirect to the active session
           try {
             const u = new URL(location.href);
@@ -228,12 +230,8 @@
       if(joinMode && activeSession && activeSession.id){
         startBtn.disabled = true;
         startBtn.textContent = 'Joining…';
-        try{
-          const res = await runResetIfChecked();
-          if (resetOnStart?.checked){
-            sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
-          }
-        }catch{}
+        // Never reset statuses when joining an existing active session
+        try{ if (resetOnStart){ resetOnStart.checked = false; } }catch{}
         const nav = navFor('tiles', activeSession.id);
         setTimeout(()=>{ location.href = nav; }, 30);
         return;
