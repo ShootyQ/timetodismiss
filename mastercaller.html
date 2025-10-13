@@ -58,6 +58,12 @@
     .tile-btn.picked_up .tile-tag .pill{ background: rgba(0,0,0,.12); color: var(--calledText); border-color: transparent; }
     .tile-btn.picked_up .tile-tag .muted{ color: var(--calledText); opacity:.9 }
 
+  /* Absent: muted violet tone, matches classroom styling */
+  .tile-btn.absent{ background:#f3e8ff; /* violet-100 */ color:#3b0764; border-color:#e9d5ff; }
+  .tile-btn.absent .tile-name{ color:#3b0764; }
+  .tile-btn.absent .tile-tag .pill{ background:#e9d5ff; color:#6b21a8; border-color:transparent; }
+  .tile-btn.absent .tile-tag .muted{ color:#6b21a8; opacity:.95 }
+
     /* Letter tile (group header) */
     .letter-tile{ display:flex; align-items:center; justify-content:center; font-weight:900; font-size:1.05rem; border:1px solid var(--accent); color:var(--accent); background:#f8fafc; border-radius:10px; pointer-events:none; }
 
@@ -213,7 +219,7 @@
   <div id="qrSheet" hidden></div>
 
   <script type="module">
-  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare } from '/app.js?v=23';
+  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
     await init();
 
     const classFilter = document.getElementById('classFilter');
@@ -306,6 +312,7 @@
   const urlParams = new URLSearchParams(location.search);
   const sessionId = urlParams.get('session');
   if (sessionId){
+    try { setActiveSession(sessionId); } catch {}
     if (toHub) toHub.href = '/callerhub.html?session=' + encodeURIComponent(sessionId);
     if (tilesSessionBar) tilesSessionBar.style.display='block';
     (async ()=>{
@@ -433,7 +440,8 @@
         const fam = (s.groupName || s.carName || '').toString().toLowerCase();
         return (s.name||'').toLowerCase().includes(q) || tag.includes(q) || fam.includes(q);
       });
-      const order = { waiting: 0, null: 0, undefined: 0, called: 1, en_route: 2, picked_up: 3 };
+  // Status ordering: Absent should always be at the bottom
+  const order = { waiting: 0, null: 0, undefined: 0, called: 1, en_route: 2, picked_up: 3, absent: 4 };
       const list = base.slice().sort((a,b) => {
         const as = order[a.status] ?? 0;
         const bs = order[b.status] ?? 0;
