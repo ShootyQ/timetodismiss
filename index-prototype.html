@@ -24,9 +24,11 @@
     .center{ text-align:center; }
 
     /* HERO (borrowed from Prototype 3 with glass + glow) */
-    .hero{ position:relative; min-height:66vh; display:grid; place-items:center; color:#fff; overflow:hidden; mask-image: linear-gradient(to bottom, rgba(0,0,0,1) 75%, rgba(0,0,0,0) 100%); }
-    .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(2,6,23,.35) 0%, rgba(2,6,23,.48) 45%, rgba(2,6,23,.68) 100%); z-index:1; }
-    .hero::after{ content:''; position:absolute; left:-15%; right:-15%; top:-10%; height:70%; background: radial-gradient(1200px 600px at 50% -10%, rgba(79,70,229,.35), rgba(79,70,229,0) 60%); filter: blur(38px); opacity:.7; z-index:1; animation: sheen 12s ease-in-out infinite; }
+  .hero{ position:relative; min-height:64vh; display:grid; place-items:center; color:#fff; overflow:hidden; }
+  /* Softer overlay */
+  .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(2,6,23,.35) 0%, rgba(2,6,23,.42) 35%, rgba(2,6,23,.62) 100%); z-index:1; }
+  /* Aurora color wash */
+  .hero::after{ content:''; position:absolute; inset:-20% -20% -10% -20%; background: conic-gradient(from 180deg at 50% 35%, rgba(79,70,229,.28), rgba(99,102,241,.18), rgba(56,189,248,.22), rgba(16,185,129,.16), rgba(79,70,229,.28)); filter: blur(70px) saturate(140%); opacity:.8; z-index:1; animation: aurora 22s ease-in-out infinite; }
     .hero-bg{ position:absolute; inset:0; background-image:url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670'); background-size:cover; background-position:center; transform: scale(1.1); z-index:0; }
     .hero-inner{ position:relative; z-index:2; max-width: 980px; padding: 22px; text-align:center; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); border-radius:18px; box-shadow: 0 20px 50px rgba(2,6,23,.25); }
     .eyebrow{ display:inline-block; background: rgba(255,255,255,.14); padding:6px 12px; border-radius:999px; font-weight:700; letter-spacing:.02em; }
@@ -73,7 +75,10 @@
     [data-delay="2"]{ transition-delay:.2s; }
     [data-delay="3"]{ transition-delay:.3s; }
 
-    @keyframes sheen{ 0%{ transform: translateX(-8%);} 50%{ transform: translateX(8%);} 100%{ transform: translateX(-8%);} }
+    @keyframes aurora{ 0%{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1.05);} 50%{ transform: translate3d(4%, 1%, 0) rotate(8deg) scale(1.08);} 100%{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1.05);} }
+    @media (prefers-reduced-motion: reduce){ .hero::after{ animation: none; } }
+    /* Curved divider to white */
+    .hero-wave{ position:absolute; bottom:-1px; left:0; right:0; height:110px; z-index:2; pointer-events:none; }
     @media (max-width: 760px){ .icon-strip{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
   </style>
 </head>
@@ -91,6 +96,11 @@
         <a class="btn primary" href="#overview">See how it works</a>
         <a class="btn ghost" href="/contact.html">Request a demo</a>
       </div>
+    </div>
+    <div class="hero-wave" aria-hidden="true">
+      <svg viewBox="0 0 1440 120" preserveAspectRatio="none" width="100%" height="100%">
+        <path d="M0,96 C240,48 480,144 720,96 C960,48 1200,0 1440,72 L1440,120 L0,120 Z" fill="#ffffff" opacity="1"></path>
+      </svg>
     </div>
   </header>
 
