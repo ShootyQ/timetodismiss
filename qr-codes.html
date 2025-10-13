@@ -75,9 +75,15 @@
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
     /* Fluid grid (non label) auto paginate by browser */
-    .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
+  .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
     .pa-gridflow .pa-item{ width:100%; height:auto; }
     .pa-gridflow .pa-qr > div{ margin:0 auto; }
+
+  /* Large Name + QR rows (one per code) */
+  .pa-nameqr{ grid-template-columns: 1fr; padding: .75in; row-gap: .35in; }
+  .pa-nameqr .pa-item{ width:100%; height:auto; padding:.05in 0; display:flex; align-items:center; justify-content:space-between; }
+  .pa-nameqr .pa-bigname{ font-weight:900; font-size: 48pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; margin-right:.25in; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pa-nameqr .pa-qr{ flex: 0 0 auto; }
 
     /* Print-time cleanup */
   .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
@@ -132,6 +138,7 @@
         <option value="avery5163">Avery 5163 (10/pg)</option>
         <option value="square2">Square 2×2 in</option>
         <option value="square3">Square 3×3 in</option>
+        <option value="nameqr">Large Name + QR rows</option>
       </select>
       <label class="inline-flex">
         <input id="includeRideShares" type="checkbox" /> Ride Shares
@@ -397,6 +404,7 @@
         case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
         case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
         case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
+        case 'nameqr':    return { class: 'pa-nameqr',    qrIn: 2.0,  perPage: 8,   bigName: true };
         default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
     }
@@ -432,15 +440,38 @@
       return str.substring(0, max-1) + '…';
     }
 
+    function uniqByPayload(items){
+      const seen = new Set();
+      const out = [];
+      for (const it of items){
+        const p = buildPayload(it, modeStudents.checked);
+        if (seen.has(p)) continue;
+        seen.add(p);
+        out.push(it);
+      }
+      return out;
+    }
+
+    function lastName(str){
+      const s = String(str||'').trim();
+      if (!s) return '';
+      // Expect either "Last, First" or full name; take last token or segment before comma.
+      if (s.includes(',')) return s.split(',')[0].trim();
+      const parts = s.split(/\s+/).filter(Boolean);
+      return parts.length ? parts[parts.length-1] : s;
+    }
+
     function buildPrintArea(items){
       const useStudents = modeStudents.checked;
       const preset = presetInfo(layoutSel.value);
       paPages.className = 'pa-pages';
       paPages.innerHTML = '';
       const qrPx = toPx(preset.qrIn || 1);
-      const perPage = preset.gridFlow ? items.length : (preset.perPage || items.length);
-      for (let i=0; i<items.length; i+=perPage){
-        const pageItems = items.slice(i, i+perPage);
+      // If using name+qr layout, dedupe by the QR payload to avoid repeats
+      const source = (layoutSel.value === 'nameqr') ? uniqByPayload(items) : items;
+      const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
+      for (let i=0; i<source.length; i+=perPage){
+        const pageItems = source.slice(i, i+perPage);
         const page = document.createElement('div');
         page.className = 'pa-page ' + preset.class;
         paPages.appendChild(page);
@@ -448,7 +479,7 @@
         for (const item of pageItems){
           const tag = useStudents ? (item.tag || '') : item.tag;
             const nameRaw = useStudents ? nameOf(item) : (item.name || '');
-            const name = (preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw;
+            const name = (preset.bigName ? lastName(nameRaw) : ((preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw));
             const id = useStudents ? (item.id || item.studentId || '') : null;
             const labelTextRaw = useStudents ? (tag || id || '') : tag;
             const labelText = (preset.maxLabelChars && labelTextRaw.length > preset.maxLabelChars)
@@ -458,11 +489,18 @@
 
             const div = document.createElement('div');
             div.className = 'pa-item';
-            div.innerHTML = `
-              <div class="pa-qr"></div>
-              <div class="pa-label">${labelText}</div>
-              ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
-            `;
+            if (layoutSel.value === 'nameqr'){
+              div.innerHTML = `
+                <div class="pa-bigname">${name || '&nbsp;'}</div>
+                <div class="pa-qr"></div>
+              `;
+            } else {
+              div.innerHTML = `
+                <div class="pa-qr"></div>
+                <div class="pa-label">${labelText}</div>
+                ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+              `;
+            }
             page.appendChild(div);
 
             const host = div.querySelector('.pa-qr');
@@ -512,6 +550,10 @@
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
+          .pa-nameqr{grid-template-columns:1fr;padding:.75in;row-gap:.35in;}
+          .pa-nameqr .pa-item{width:100%;height:auto;padding:.05in 0;display:flex;align-items:center;justify-content:space-between;}
+          .pa-nameqr .pa-bigname{font-weight:900;font-size:48pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;margin-right:.25in;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .pa-nameqr .pa-qr{flex:0 0 auto;}
           @page{size:letter;margin:0;}
           @media print{body{background:#fff;}}
         </style>
