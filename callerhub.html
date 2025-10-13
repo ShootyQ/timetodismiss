@@ -243,6 +243,14 @@
       try {
         // Ensure org/school context so colPath works for the reset
         try { await waitForContext(); } catch {}
+        // Determine if reset is requested and perform it BEFORE creating a new session
+        try { if (resetOnStart) resetOnStart.disabled = false; } catch {}
+        const wantResetStart = !!(resetOnStart && resetOnStart.checked);
+        if (wantResetStart){
+          sessionNote.textContent = 'Resetting all students to Waiting…';
+          const res = await runResetIfChecked();
+          sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Starting session…';
+        }
         const docRef = await addDoc(colPath('callSessions'), {
           mode: 'tiles',
           startedAt: serverTimestamp(),
@@ -254,10 +262,7 @@
             statsReady: false
         });
         const id = docRef.id;
-        if (resetOnStart?.checked){
-          const res = await runResetIfChecked();
-          sessionNote.textContent = (res.changed>0 ? ('Reset '+res.changed+' students to Waiting. ') : 'All students already set to Waiting. ') + 'Redirecting…';
-        }
+        // If we did the reset above, we're ready to navigate
         const nav = navFor('tiles', id);
         setTimeout(()=>{ location.href = nav; }, 50);
       } catch(e){
