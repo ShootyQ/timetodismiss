@@ -6,7 +6,7 @@
 
 (function () {
   // Global build/version id for cache-busting across all pages
-  const BUILD_ID = '2025-10-06-MENUFIX-FINAL';
+  const BUILD_ID = '2025-10-13-HDR6';
   // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
   const HDR_SAFE = (() => {
     try {
@@ -109,7 +109,7 @@
               <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
                 <img src="/classicon.png" alt="Classes" width="26" height="26" decoding="async" style="display:block;" />
               </a>
-              <a href="/callerhub.html"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
+              <a href="/callerhub.html?stay=1"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
               <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
@@ -149,7 +149,7 @@
             </div>
           </div>
           <!-- Compact mobile toolbar -->
-          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:8px;padding:6px 4%;">
+          <div class="hdr-mobile" style="align-items:center;justify-content:space-between;gap:6px;padding:6px 4%;">
         <button id="hdrMenuBtn" class="icon-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="hdrMenuPanel" title="Menu" aria-label="Open menu">☰</button>
         <button id="hdrAuthBtn" class="icon-btn" type="button" title="Account" aria-label="Account">
           <span id="hdrAuthIcon" aria-hidden="true">👤</span>
@@ -165,7 +165,7 @@
           </div>
           <nav class="menu-links">
             <a href="/class.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Classes</a>
-            <a href="/callerhub.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
+            <a href="/callerhub.html?stay=1" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
             <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
             <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
             <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
@@ -445,12 +445,16 @@
     const userEmail  = header.querySelector('#userEmail');
     const roleBadge  = header.querySelector('#roleBadge');
     const adminLinks = [...header.querySelectorAll('[data-requires="admin"]')];
-    // Wire Master Caller icon/menu to smart navigation
+    // Wire Master Caller icon/menu to smart navigation (disabled by default)
+    // Set to true to auto-jump to an active Tiles session if one exists
+    const ENABLE_SMART_CALLER_REDIRECT = false;
     try {
       const callerIcon = header.querySelector('a.nav-icon[href="/callerhub.html"]');
       const callerMenuLink = header.querySelector('.menu-links a[href="/callerhub.html"]');
-      callerIcon && callerIcon.addEventListener('click', goToCallerSmart);
-      callerMenuLink && callerMenuLink.addEventListener('click', goToCallerSmart);
+      if (ENABLE_SMART_CALLER_REDIRECT) {
+        callerIcon && callerIcon.addEventListener('click', goToCallerSmart);
+        callerMenuLink && callerMenuLink.addEventListener('click', goToCallerSmart);
+      }
     } catch {}
   // Mobile header elements
   const hdrMenuBtn   = header.querySelector('#hdrMenuBtn');

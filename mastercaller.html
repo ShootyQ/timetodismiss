@@ -10,21 +10,21 @@
   <link rel="stylesheet" href="/styles.css?v=2025-09-05-MC4" />
   <link rel="preconnect" href="https://www.gstatic.com" />
   <script>(function(){ try{ console.log('[TTD] Page BUILD','2025-10-12-MC5','tiles'); }catch{} })();</script>
-  <script src="/site-header.js?v=2025-09-10-HDR4" defer></script>
+  <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
   <style>
     /* Scoped styles for the tiles page */
     .tiles-main{ padding:8px 0 20px; }
     .tiles-container{ padding:8px 3%; }
 
-    /* Toolbar */
-    .row-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 4%; }
+  /* Toolbar */
+  .row-top{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 4%; }
     .row-top h1{ font-size:1.05rem; margin:0; font-weight:800; }
     .filters{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
   .filters select, .filters input{ border:1px solid #e5e7eb; border-radius:10px; padding:8px 10px; background:#fff; color:#0b132b; }
   /* iOS: prevent zoom on focus */
   .filters input, .filters select{ font-size:16px; }
 
-    .tiles-toolbar{ display:flex; gap:8px; align-items:center; padding:8px 3%; }
+    .tiles-toolbar{ display:flex; gap:8px; align-items:center; padding:6px 3%; }
     .tiles-toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.45rem .6rem; }
     .tiles-toolbar .spacer{ flex:1 1 auto; }
 
@@ -124,6 +124,21 @@
   .tiles-toolbar input,
   .tiles-toolbar select,
   .tiles-toolbar textarea{ font-size:16px; line-height:1.2; }
+
+    /* Options group: inline on desktop; collapsed on mobile until toggled */
+    .tiles-toolbar .opts{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    @media (max-width: 640px){
+      .tiles-toolbar .opts{ display:none; }
+      .tiles-toolbar.opts-open .opts{ display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; width:100%; }
+    }
+
+    /* Mobile: keep Hub + End visible by wrapping toolbar rows */
+    @media (max-width: 640px){
+      .tiles-toolbar{ flex-wrap: wrap; row-gap: 8px; }
+      .tiles-toolbar .spacer{ flex-basis: 100%; height: 0; }
+      .tiles-toolbar .small{ width: 100%; display:flex; justify-content:flex-end; }
+      #endSessionBtn{ padding:.5rem .65rem; }
+    }
   </style>
   <script>
     // Make touchmove passive for smoother scrolling
@@ -144,29 +159,32 @@
   <div class="small-help">Tap a student to call or open actions. RS calls a ride share/family group.</div>
 
     <div class="tiles-toolbar">
-      <label class="small">Cols
-        <select id="colsSel" aria-label="Columns">
-          <option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option>
-        </select>
-      </label>
-      <label class="small">Rows
-        <select id="rowsSel" aria-label="Rows">
-          <option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option>
-        </select>
-      </label>
-      <label class="small">Sort
-        <select id="sortSel" aria-label="Sort by">
-          <option value="first" selected>First Name</option>
-          <option value="last">Last Name</option>
-        </select>
-      </label>
-      <label class="small" style="display:flex; align-items:center; gap:4px;">
-        <input type="checkbox" id="scanEnable" /> Scan
-      </label>
-      <label class="small" id="scanAutoWrap" style="display:none; align-items:center; gap:4px;">
-        <input type="checkbox" id="scanAutoCall" /> Auto Call
-      </label>
       <button id="openScanner" class="btn btn-outline" type="button" style="font-size:.7rem;">Camera</button>
+      <button id="optsBtn" class="btn btn-outline" type="button" style="font-size:.7rem;">Options</button>
+      <div class="opts" id="tilesOpts">
+        <label class="small">Cols
+          <select id="colsSel" aria-label="Columns">
+            <option>3</option><option>4</option><option>5</option><option selected>6</option><option>7</option>
+          </select>
+        </label>
+        <label class="small">Rows
+          <select id="rowsSel" aria-label="Rows">
+            <option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option>
+          </select>
+        </label>
+        <label class="small">Sort
+          <select id="sortSel" aria-label="Sort by">
+            <option value="first" selected>First Name</option>
+            <option value="last">Last Name</option>
+          </select>
+        </label>
+        <label class="small" style="display:flex; align-items:center; gap:4px;">
+          <input type="checkbox" id="scanEnable" /> Scan
+        </label>
+        <label class="small" id="scanAutoWrap" style="display:none; align-items:center; gap:4px;">
+          <input type="checkbox" id="scanAutoCall" /> Auto Call
+        </label>
+      </div>
       <div class="spacer"></div>
       <div class="small" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
         <a id="toHub" class="btn btn-outline" href="/callerhub.html" style="font-size:.7rem;">Hub</a>
@@ -191,8 +209,6 @@
     <div class="sheet-title" id="sheetTitle">Actions</div>
     <div class="actions" id="sheetActions"></div>
   </section>
-
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <!-- Camera scanner overlay host -->
   <div id="qrSheet" hidden></div>
 
@@ -218,6 +234,8 @@
   const tilesCount = document.getElementById('tilesCount');
   const toHub = document.getElementById('toHub');
   const endSessionBtn = document.getElementById('endSessionBtn');
+  const optsBtn = document.getElementById('optsBtn');
+  const tilesToolbar = document.querySelector('.tiles-toolbar');
   const tilesSessionBar = document.getElementById('tilesSessionBar');
   const tilesSessionMode = document.getElementById('tilesSessionMode');
   const tilesSessionElapsed = document.getElementById('tilesSessionElapsed');
@@ -335,6 +353,9 @@
     finally { tilesEnding = false; }
   }
   endSessionBtn?.addEventListener('click', endSession);
+
+  // Options toggle (mobile)
+  optsBtn?.addEventListener('click', () => { tilesToolbar?.classList.toggle('opts-open'); });
 
   function tilesFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
   async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
