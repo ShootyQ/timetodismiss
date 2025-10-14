@@ -80,10 +80,12 @@
     .pa-gridflow .pa-qr > div{ margin:0 auto; }
 
   /* Large Name + QR rows (one per code), tuned for 2 rows per landscape page */
-  .pa-nameqr{ grid-template-columns: 1fr; padding: .6in; row-gap: .35in; }
-  .pa-nameqr .pa-item{ width:100%; height:auto; padding:.05in 0; display:grid; grid-template-columns: 1fr auto; align-items:center; column-gap: .35in; }
-  .pa-nameqr .pa-bigname{ font-weight:900; font-size: 54pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pa-nameqr .pa-qr{ justify-self:end; }
+  /* Large Name + QR: force exactly 2 rows per landscape page using flex (grid was causing some browsers to isolate each row onto its own page) */
+  .pa-nameqr{ display:flex; flex-direction:column; justify-content:space-between; padding:.6in; }
+  .pa-nameqr .pa-item{ width:100%; flex:1 1 50%; display:flex; align-items:center; justify-content:space-between; column-gap:.5in; padding:.15in 0; }
+  .pa-nameqr .pa-item + .pa-item{ border-top:0.04in dashed #e5e7eb; }
+  .pa-nameqr .pa-bigname{ font-weight:900; font-size:50pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; }
+  .pa-nameqr .pa-qr{ flex:0 0 auto; }
 
     /* Print-time cleanup */
   .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
@@ -555,10 +557,11 @@
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
-          .pa-nameqr{grid-template-columns:1fr;padding:.6in;row-gap:.35in;}
-          .pa-nameqr .pa-item{width:100%;height:auto;padding:.05in 0;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.35in;}
-          .pa-nameqr .pa-bigname{font-weight:900;font-size:54pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-          .pa-nameqr .pa-qr{justify-self:end;}
+          .pa-nameqr{display:flex;flex-direction:column;justify-content:space-between;padding:.6in;}
+          .pa-nameqr .pa-item{width:100%;flex:1 1 50%;display:flex;align-items:center;justify-content:space-between;column-gap:.5in;padding:.15in 0;}
+          .pa-nameqr .pa-item + .pa-item{border-top:0.04in dashed #e5e7eb;}
+          .pa-nameqr .pa-bigname{font-weight:900;font-size:50pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;}
+          .pa-nameqr .pa-qr{flex:0 0 auto;}
           @page{size:letter landscape;margin:0;}
           @media print{body{background:#fff;}}
         </style>
