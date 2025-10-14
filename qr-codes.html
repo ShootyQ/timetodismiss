@@ -517,6 +517,8 @@
             }
         }
       }
+      // Return the exact sequence used so caller (printNow) can mirror payload ordering
+      return source;
     }
 
     function printNow(printWin, items){
@@ -527,7 +529,8 @@
       }
       const useStudents = modeStudents.checked;
       // Build printable markup in isolation to avoid any layout constraints.
-      buildPrintArea(items);
+      // Build area and capture the actual item order (may be de-duped for nameqr layout)
+      const usedItems = buildPrintArea(items);
       const html = `<!doctype html><html><head><meta charset="utf-8"><title>QR Codes</title>
         <style>
           body{margin:0;padding:0;background:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;}
@@ -576,7 +579,8 @@
         let idx=0;
         const preset = presetInfo(layoutSel.value);
         const qrPx = toPx(preset.qrIn || 1);
-        const payloads = items.map(it => buildPayload(it, modeStudents.checked));
+        // Use the items actually rendered (usedItems) so QR codes align with names after de-dupe
+        const payloads = (usedItems||items).map(it => buildPayload(it, modeStudents.checked));
         qrs.forEach(host => {
           const holder = w.document.createElement('div');
           holder.style.width = qrPx+'px'; holder.style.height = qrPx+'px';

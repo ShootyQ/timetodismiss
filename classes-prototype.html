@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — Classes (Prototype)</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-10-14-CP1" />
+  <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+  <style>
+    :root{
+      --board-gap: 12px;
+      --card-gap: 8px;
+    }
+    .cp-main{ padding:16px 0 40px; }
+    .muted{ color:#64748b; }
+    .toolbar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:6px 0 10px; }
+    .toolbar .grow{ flex:1 1 220px; }
+    .toolbar .input{ width:100%; max-width:420px; }
+    .chipbar{ display:flex; flex-wrap:wrap; gap:6px; }
+    .chipbar .chip{ user-select:none; }
+    .board{ display:grid; grid-template-columns: repeat(12, 1fr); gap: var(--board-gap); align-items:start; }
+    .col{ background:#fafafa; border:1px solid #e5e7eb; border-radius:12px; padding:10px; min-height:140px; }
+    .col h3{ margin:0 0 6px; font-size:.9rem; font-weight:800; color:#0f172a; display:flex; justify-content:space-between; }
+    .shelf{ display:flex; flex-direction:column; gap: var(--card-gap); }
+    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:8px 10px; display:flex; align-items:center; gap:8px; box-shadow:0 1px 0 rgba(0,0,0,.02); }
+    .card .name{ font-weight:700; }
+    .card .tag{ font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; background:#0f172a; color:#fff; border-radius:6px; padding:2px 6px; font-size:.8rem; letter-spacing:.5px; }
+    .card .meta{ margin-left:auto; display:flex; align-items:center; gap:8px; }
+    .badge{ display:inline-block; padding:.15rem .45rem; border-radius:999px; font-weight:700; font-size:.65rem; background:#f1f5f9; color:#0f172a; }
+    .actions{ display:flex; gap:6px; }
+    .actions .btn-xs{ padding:.2rem .4rem; font-size:.7rem; }
+    .elapsed{ opacity:.8; font-variant-numeric: tabular-nums; font-size:.78rem; }
+    .aging1{ outline:2px solid #dbeafe; }
+    .aging2{ outline:2px solid #fecaca; box-shadow:0 0 0 4px #fee2e2 inset; }
+    .dense .card{ padding:6px 8px; }
+    .dense .card .actions .btn-xs{ padding:.18rem .35rem; font-size:.66rem; }
+    .big .card{ padding:12px 14px; font-size:1.1rem; }
+    .big .card .tag{ font-size:.95rem; }
+    .toast-host{ position:fixed; inset:auto 12px 12px auto; display:grid; gap:8px; z-index:1000; }
+    .toast{ background:#111827; color:#fff; padding:.5rem .7rem; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.35); animation: slidein .18s ease-out; }
+    .toast.out{ opacity:0; transform: translateY(4px); transition: all .22s ease-in; }
+    @keyframes slidein{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+    @media (max-width: 1024px){ .board{ grid-template-columns: repeat(6, 1fr); } }
+    @media (max-width: 680px){ .board{ grid-template-columns: repeat(1, 1fr); } }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container cp-main">
+    <header class="titlebar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px;">
+      <div>
+        <h1 class="page-title" style="margin:0;">Classes — Prototype</h1>
+        <div class="small muted" id="ctxLine">—</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <a href="/callerhub.html?stay=1" class="btn btn-outline">Call Hub</a>
+        <button id="openScanner" class="btn btn-primary" type="button">Scan</button>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <div class="chipbar" id="classChips"></div>
+      <div class="grow"></div>
+      <input id="search" class="input" type="search" placeholder="Search name or tag…" />
+      <select id="density" class="input" style="max-width:160px;">
+        <option value="default">Density: Default</option>
+        <option value="dense">Density: Dense</option>
+        <option value="big">Density: Big</option>
+      </select>
+      <label class="switch small"><input type="checkbox" id="calledOnly" /> <span>Only show called</span></label>
+    </section>
+
+    <section class="board" id="board">
+      <div class="col" style="grid-column: span 4;" id="col-waiting">
+        <h3>Waiting <span class="badge" id="count-waiting">0</span></h3>
+        <div class="shelf" id="shelf-waiting"></div>
+      </div>
+      <div class="col" style="grid-column: span 4;" id="col-called">
+        <h3>Called <span class="badge" id="count-called">0</span></h3>
+        <div class="shelf" id="shelf-called"></div>
+      </div>
+      <div class="col" style="grid-column: span 4;" id="col-enroute">
+        <h3>En Route <span class="badge" id="count-enroute">0</span></h3>
+        <div class="shelf" id="shelf-enroute"></div>
+      </div>
+      <div class="col" style="grid-column: span 12;" id="col-picked">
+        <h3>Picked Up <span class="badge" id="count-picked">0</span></h3>
+        <div class="shelf" id="shelf-picked"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Scanner host element (scanner.js creates the inner UI when present) -->
+  <div id="qrSheet" hidden></div>
+  <div class="toast-host" id="toasts"></div>
+
+  <script type="module">
+  import { init, onAuthChanged, onStudents, getClasses, setStudentStatus, setStatusForTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
+    await init();
+
+    // Context line
+    const ctxLine = document.getElementById('ctxLine');
+    function setCtx(){ try { ctxLine.textContent = (window.SD?.schoolName || window.SD?.schoolId || '—'); } catch { ctxLine.textContent = '—'; } }
+    document.addEventListener('sd:school-changed', setCtx); document.addEventListener('sd:claims-ready', setCtx); setCtx();
+
+    // Elements
+    const chipsEl = document.getElementById('classChips');
+    const searchEl = document.getElementById('search');
+    const densitySel = document.getElementById('density');
+    const calledOnlyEl = document.getElementById('calledOnly');
+    const boardEl = document.getElementById('board');
+    const shelves = {
+      waiting: document.getElementById('shelf-waiting'),
+      called: document.getElementById('shelf-called'),
+      enroute: document.getElementById('shelf-enroute'),
+      picked: document.getElementById('shelf-picked')
+    };
+    const counts = {
+      waiting: document.getElementById('count-waiting'),
+      called: document.getElementById('count-called'),
+      enroute: document.getElementById('count-enroute'),
+      picked: document.getElementById('count-picked')
+    };
+
+    // UI helpers
+    function toast(msg){ const host=document.getElementById('toasts'); if(!host) return; const el=document.createElement('div'); el.className='toast'; el.textContent=msg; host.appendChild(el); setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(), 240); }, 2400); }
+    function fmtElapsed(ms){ const m=Math.floor(ms/60000).toString().padStart(2,'0'); const s=Math.floor((ms%60000)/1000).toString().padStart(2,'0'); return m+':'+s; }
+
+    // Selection & search state
+    let classList = [];
+    let selected = new Set();
+    let queryText = '';
+    let showCalledOnly = false;
+    let density = 'default';
+
+    densitySel.addEventListener('change', () => {
+      density = densitySel.value; boardEl.classList.remove('dense','big'); if (density==='dense') boardEl.classList.add('dense'); if (density==='big') boardEl.classList.add('big');
+    });
+    calledOnlyEl.addEventListener('change', () => { showCalledOnly = !!calledOnlyEl.checked; render(); });
+    searchEl.addEventListener('input', () => { queryText = (searchEl.value||'').trim().toLowerCase(); render(); });
+    searchEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ callFirstVisible(); }});
+
+    // Students cache and timers
+    let allStudents = []; // source of truth from onStudents()
+    const calledAt = new Map(); // id -> ms epoch
+    const overdueBeeped = new Set();
+    const prevStatus = new Map();
+
+    // Live session id for analytics tagging
+    (async function wireActiveSession(){
+      try {
+        const { getFirestore, collection, query, orderBy, limit, onSnapshot } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+        const ok = async(ms=8000)=>{ const t=Date.now(); while(Date.now()-t<ms){ if(window.SD?.orgId && window.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; };
+        if(!await ok()) return; const fs=getFirestore(); const oid=window.SD?.orgId, sid=window.SD?.schoolId; if(!oid||!sid) return;
+        const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+        const qy = query(coll, orderBy('startedAt','desc'), limit(6));
+        onSnapshot(qy, (snap)=>{ let act=null; snap.forEach(d=>{ if(act) return; const x=d.data()||{}; const active= !('endedAt' in x) || x.endedAt == null; if(active) act=d; }); try { setActiveSession(act?act.id:null); } catch{} });
+      } catch {}
+    })();
+
+    // Build class chips
+    async function loadClasses(){
+      try { classList = await getClasses(); } catch { classList = []; }
+      classList.sort((a,b)=>{ const ao=(typeof a.order==='number')?a.order:999999; const bo=(typeof b.order==='number')?b.order:999999; if(ao!==bo) return ao-bo; return (a.name||a.id||'').localeCompare(b.name||b.id||''); });
+      chipsEl.innerHTML = classList.map(c=>`<label class="chip"><input type="checkbox" value="${c.id}" /> <span>${c.name||c.id}</span></label>`).join('');
+      selected = new Set(classList.map(c=>c.id)); // default: all
+      chipsEl.addEventListener('change', ()=>{ selected = new Set(Array.from(chipsEl.querySelectorAll('input:checked')).map(cb=>cb.value)); render(); });
+    }
+
+    // Subscribe to all students then filter client-side by selection & search
+    function subscribe(){
+      let stop = onStudents(null, (rows)=>{
+        allStudents = rows.map(r=>({ ...r, displayName: r.name }));
+        // track transitions for timers + sounds
+        rows.forEach(s=>{ const before = prevStatus.get(s.id); const after = s.status; if(before !== after){ if(after==='called'){ calledAt.set(s.id, Date.now()); overdueBeeped.delete(s.id); try { ding(); } catch{} } if(after!=='called'){ calledAt.delete(s.id); overdueBeeped.delete(s.id); } prevStatus.set(s.id, after); } });
+        render();
+      });
+      return stop;
+    }
+
+    function passFilters(s){
+      if (selected.size && !selected.has(s.classId)) return false;
+      if (queryText){
+        const t = (s.displayName||s.name||'').toLowerCase();
+        const tag = (s.carTag||'').toLowerCase();
+        if (!t.includes(queryText) && !tag.includes(queryText)) return false;
+      }
+      return true;
+    }
+
+    function render(){
+      const lists = { waiting:[], called:[], enroute:[], picked:[] };
+      for (const s of allStudents){ if(!passFilters(s)) continue; const st=s.status; if(st==='called') lists.called.push(s); else if(st==='en_route') lists.enroute.push(s); else if(st==='picked_up') lists.picked.push(s); else lists.waiting.push(s); }
+      // optional hide waiting
+      const waitingWrap = document.getElementById('col-waiting'); waitingWrap.style.display = showCalledOnly ? 'none' : '';
+      if (showCalledOnly) lists.waiting = [];
+      // sort each shelf by name
+      const byName=(a,b)=>(a.displayName||a.name||'').localeCompare(b.displayName||b.name||'');
+      Object.keys(lists).forEach(k=>lists[k].sort(byName));
+      counts.waiting.textContent = lists.waiting.length; counts.called.textContent = lists.called.length; counts.enroute.textContent = lists.enroute.length; counts.picked.textContent = lists.picked.length;
+      shelves.waiting.innerHTML = lists.waiting.map(cardHtml).join('');
+      shelves.called.innerHTML  = lists.called.map(s=>cardHtml(s,true)).join('');
+      shelves.enroute.innerHTML = lists.enroute.map(cardHtml).join('');
+      shelves.picked.innerHTML  = lists.picked.map(cardHtml).join('');
+      // Update aging timers now
+      renderAging();
+    }
+
+    function cardHtml(s, showActions=false){
+      const tag = s.carTag ? `<span class="tag">${s.carTag}</span>` : '';
+      const act = showActions ? `<span class="actions">
+        <button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button>
+        <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>
+      </span>` : '';
+      return `<div class="card" data-id="${s.id}" data-status="${s.status}">
+        <span class="name">${(s.displayName||s.name||'').replace(/</g,'&lt;')}</span>
+        ${tag}
+        <span class="badge">${classLabel(s.classId)}</span>
+        <span class="meta"><span class="elapsed" data-elapsed="${s.id}"></span>${act}</span>
+      </div>`;
+    }
+
+    function classLabel(id){ const m = classList.find(c=>c.id===id); return (m?.name||id||''); }
+
+    // Aging timers & mild alert
+    const AGING1_MS = 10*1000, AGING2_MS = 20*1000, BEEP_MS = 40*1000;
+    function renderAging(){
+      const now = Date.now();
+      document.querySelectorAll('[data-elapsed]').forEach(span=>{
+        const id = span.getAttribute('data-elapsed'); const since = calledAt.get(id); if(!since) { span.textContent=''; return; }
+        const dt = Math.max(0, now - since); span.textContent = fmtElapsed(dt);
+        const card = span.closest('.card'); if(!card) return;
+        card.classList.toggle('aging1', dt>=AGING1_MS && dt<AGING2_MS);
+        card.classList.toggle('aging2', dt>=AGING2_MS);
+        if (dt>=BEEP_MS && !overdueBeeped.has(id)) { overdueBeeped.add(id); try { ding(); } catch{} }
+      });
+    }
+    setInterval(renderAging, 600);
+
+    // Actions
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button[data-act]'); if(!btn) return;
+      const id = btn.getAttribute('data-id'); const act = btn.getAttribute('data-act'); if(!id||!act) return;
+      if (act==='enroute') updateStatus(id,'en_route');
+      else if (act==='absent') updateStatus(id,'absent');
+    });
+
+    async function updateStatus(id, status){
+      try { await setStudentStatus(id, status); if(status==='en_route'||status==='absent') toast('Updated'); } catch(e){ console.warn('[proto] set status failed', e); }
+    }
+
+    // Quick-call: call the first visible match
+    function callFirstVisible(){
+      const first = document.querySelector('#shelf-waiting .card') || document.querySelector('#shelf-enroute .card');
+      const id = first?.getAttribute('data-id'); if(!id) return; updateStatus(id,'called'); toast('Called');
+    }
+
+    // Keyboard shortcuts: E (enroute), P (picked), A (absent) apply to the top most called card
+    document.addEventListener('keydown', (e) => {
+      if (e.target && ['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+      if (e.key==='e' || e.key==='E'){ const id = document.querySelector('#shelf-called .card')?.getAttribute('data-id'); if(id) updateStatus(id,'en_route'); }
+      else if (e.key==='p' || e.key==='P'){ const id = document.querySelector('#shelf-enroute .card')?.getAttribute('data-id'); if(id) updateStatus(id,'picked_up'); }
+      else if (e.key==='a' || e.key==='A'){ const id = document.querySelector('#shelf-called .card')?.getAttribute('data-id'); if(id) updateStatus(id,'absent'); }
+    });
+
+    // Scanner integrations
+    window.addEventListener('scan:car-tag', async (ev)=>{
+      const t = ev?.detail?.tag; if(!t) return; try { const n = await setStatusForTag(t, 'called'); toast('Called '+t); } catch(e){ console.warn('[proto] tag call failed', e); }
+    });
+    window.addEventListener('scan:ride-share', async (ev)=>{
+      const k = ev?.detail?.rs; if(!k) return; try { const n = await setStatusForRideShare(k, 'called'); toast('Called ride-share '+k); } catch(e){ console.warn('[proto] ride-share call failed', e); }
+    });
+
+    // Minimal ding
+    function ding(){ try{ const AC=window.AudioContext||window.webkitAudioContext; const c=new AC(); const o=c.createOscillator(); const g=c.createGain(); o.type='sine'; o.frequency.value=990; o.connect(g); g.connect(c.destination); g.gain.value=0.12; o.start(); setTimeout(()=>{ o.stop(); c.close(); }, 180); }catch{} }
+
+    onAuthChanged(async (user) => {
+      if (!user){ try { location.replace('/index.html#login'); } catch { location.href='/index.html#login'; } return; }
+      await loadClasses();
+      subscribe();
+    });
+  </script>
+  <script src="/scanner.js" defer></script>
+</body>
+</html>
