@@ -80,11 +80,11 @@
     .pa-gridflow .pa-qr > div{ margin:0 auto; }
 
   /* Large Name + QR rows (one per code), tuned for 2 rows per landscape page */
-  /* Large Name + QR: 2-up per page without forcing page break after first item.
-    Strategy: no fixed heights; moderate padding; allow natural flow; remove break-inside avoidance. */
-  .pa-nameqr{ padding:.55in .7in .55in; display:block; }
-  .pa-nameqr .pa-item{ width:100%; display:grid; grid-template-columns:1fr auto; align-items:center; column-gap:.6in; min-height:3.1in; break-inside:auto; page-break-inside:auto; }
-  .pa-nameqr .pa-item + .pa-item{ margin-top:.55in; padding-top:.25in; border-top:0.03in dashed #e5e7eb; }
+  /* Large Name + QR deterministic 2-up: flex column with two equally shared rows.
+    Remove fixed heights; override global break-inside to allow both to fit. */
+  .pa-nameqr{ padding:.45in .6in .45in; display:flex; flex-direction:column; gap:0; }
+  .pa-nameqr .pa-item{ flex:1 1 0; display:grid; grid-template-columns:1fr auto; align-items:center; column-gap:.55in; break-inside:auto; page-break-inside:auto; }
+  .pa-nameqr .pa-item:first-child{ border-bottom:0.035in dashed #e5e7eb; margin-bottom:.18in; padding-bottom:.18in; }
   .pa-nameqr .pa-bigname{ display:flex; align-items:center; font-weight:900; font-size:48pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pa-nameqr .pa-qr{ justify-self:end; align-self:center; }
 
@@ -558,9 +558,9 @@
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
-          .pa-nameqr{padding:.55in .7in .55in;display:block;}
-          .pa-nameqr .pa-item{width:100%;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.6in;min-height:3.1in;break-inside:auto;page-break-inside:auto;}
-          .pa-nameqr .pa-item + .pa-item{margin-top:.55in;padding-top:.25in;border-top:0.03in dashed #e5e7eb;}
+          .pa-nameqr{padding:.45in .6in .45in;display:flex;flex-direction:column;gap:0;}
+          .pa-nameqr .pa-item{flex:1 1 0;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.55in;break-inside:auto;page-break-inside:auto;}
+          .pa-nameqr .pa-item:first-child{border-bottom:0.035in dashed #e5e7eb;margin-bottom:.18in;padding-bottom:.18in;}
           .pa-nameqr .pa-bigname{display:flex;align-items:center;font-weight:900;font-size:48pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
           .pa-nameqr .pa-qr{justify-self:end;align-self:center;}
           @page{size:letter landscape;margin:0;}
