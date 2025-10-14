@@ -42,6 +42,17 @@
     <section style="margin-top:34px; max-width:900px;">
       <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Session Metrics</h2>
       <div class="small muted" id="sessHint">Select a session above to load per-student metrics for that session.</div>
+      <div class="small" style="display:flex; align-items:center; gap:8px; margin:6px 0 8px;">
+        <label for="statsSort" class="sr-only">Sort session metrics</label>
+        <span class="muted">Sort</span>
+        <select id="statsSort" style="border:1px solid #e5e7eb; border-radius:8px; padding:.3rem .5rem;">
+          <option value="name">Name (A→Z)</option>
+          <option value="cte-asc">Fastest Called→EnRoute</option>
+          <option value="cte-desc">Slowest Called→EnRoute</option>
+          <option value="called-asc">Earliest Called (since start)</option>
+          <option value="called-desc">Latest Called</option>
+        </select>
+      </div>
       <div id="sessionMeta" class="small" style="margin:8px 0 10px;">—</div>
       <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:520px;">
         <table aria-label="Session student metrics" id="sessionStatsTable">
@@ -74,11 +85,14 @@
 
     function sessionDay(ts){ try { const d = ts?.toDate? ts.toDate(): (ts||new Date()); return d.toISOString().slice(0,10); } catch { return '—'; } }
   let selectedSessionId = null;
+  let sessionsRowsCache = [];
     function renderRows(rows){
+      sessionsRowsCache = rows;
       sessionsMeta.textContent = rows.length + ' sessions';
       sessBody.innerHTML = rows.map(r => {
         const ended = !!r.endedAt;
-        return `<tr data-id="${r.id}">
+        const isSel = selectedSessionId && r.id === selectedSessionId;
+        return `<tr data-id="${r.id}" ${isSel? 'style="background:#f8fafc;"':''}>
           <td>${sessionDay(r.startedAt)}</td>
           <td>${fmt(r.startedAt)}</td>
           <td>${fmt(r.endedAt)}</td>
@@ -158,6 +172,9 @@
   /* ---------------- Session Student Stats ---------------- */
   const sessionStatsBody = document.getElementById('sessionStatsBody');
   const sessionMeta = document.getElementById('sessionMeta');
+  const statsSortSel = document.getElementById('statsSort');
+  let statsRowsCache = [];
+  let selectedSessionStartedAt = null;
   let classMap = {};
     try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
 
@@ -171,6 +188,15 @@
         // Ensure tenant context
         const oid = window.SD?.orgId, sid = window.SD?.schoolId;
         if(!oid || !sid) throw new Error('Missing org/school context');
+        // Load session doc if not provided
+        try {
+          if (!sessionDoc) {
+            const sRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
+            const { getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const sSnap = await getDoc(sRef);
+            if (sSnap.exists()) sessionDoc = { id: sSnap.id, ...sSnap.data() };
+          }
+        } catch {}
         // Query all student events for this session across all students in this school
         let qy = query(
           collectionGroup(fs, 'events'),
@@ -242,27 +268,10 @@
           });
           rows.push({ id: sid, studentName: val.studentName, classId: val.classId, calledAt, enRouteAt, pickedUpAt });
         });
-        // Render table
-        rows.sort((a,b)=> (a.studentName||'').localeCompare(b.studentName||''));
-        const tr = [];
-        function toMs(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
-        function fmtMs(ms){ if(!ms) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
-        let totalCTE=0, nCTE=0, totalETP=0, nETP=0, totalCTP=0, nCTP=0;
-        rows.forEach(r => {
-          const c = toMs(r.calledAt), e = toMs(r.enRouteAt), p = toMs(r.pickedUpAt);
-          const cte = (c && e) ? (e - c) : 0;
-          const etp = (e && p) ? (p - e) : 0;
-          const ctp = (c && p) ? (p - c) : 0;
-          if(cte){ totalCTE+=cte; nCTE++; }
-          if(etp){ totalETP+=etp; nETP++; }
-          if(ctp){ totalCTP+=ctp; nCTP++; }
-          tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${cte? fmtMs(cte):'—'}</td><td>${etp? fmtMs(etp):'—'}</td><td>${ctp? fmtMs(ctp):'—'}</td></tr>`);
-        });
-        sessionStatsBody.innerHTML = tr.join('');
-  const avg = (t,n) => n? fmtMs(Math.round(t/n)) : '—';
-  const started = (sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate) ? sessionDoc.startedAt.toDate() : null;
-  const ended = (sessionDoc && sessionDoc.endedAt && sessionDoc.endedAt.toDate) ? sessionDoc.endedAt.toDate() : null;
-        sessionMeta.textContent = `${rows.length} students • Avg C→E ${avg(totalCTE,nCTE)} • Avg E→P ${avg(totalETP,nETP)} • Avg C→P ${avg(totalCTP,nCTP)}${started? ' • Started '+started.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}${ended? ' • Ended '+ended.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}`;
+        // Cache rows and session times; render via sorter
+        statsRowsCache = rows;
+        selectedSessionStartedAt = (sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate) ? sessionDoc.startedAt.toDate() : null;
+        renderSessionTable(sessionDoc);
       } catch(e){
         sessionMeta.textContent = 'Failed to load session metrics';
         sessionStatsBody.innerHTML = '';
@@ -270,14 +279,63 @@
       }
     }
 
+    function renderSessionTable(sessionDoc){
+      const rows = (statsRowsCache || []).slice();
+      const sortMode = (statsSortSel && statsSortSel.value) || 'name';
+      function tsToMs(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
+      const startedAt = selectedSessionStartedAt || ((sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate)? sessionDoc.startedAt.toDate(): null);
+      rows.forEach(r => {
+        r.cteMs = (r.calledAt && r.enRouteAt) ? (tsToMs(r.enRouteAt) - tsToMs(r.calledAt)) : null;
+        r.calledSinceMs = (startedAt && r.calledAt) ? (tsToMs(r.calledAt) - startedAt.getTime()) : null;
+      });
+      const byName = (a,b)=> (a.studentName||'').localeCompare(b.studentName||'');
+      const byCteAsc = (a,b)=> (a.cteMs ?? Infinity) - (b.cteMs ?? Infinity) || byName(a,b);
+      const byCteDesc = (a,b)=> (b.cteMs ?? -1) - (a.cteMs ?? -1) || byName(a,b);
+      const byCalledAsc = (a,b)=> (a.calledSinceMs ?? Infinity) - (b.calledSinceMs ?? Infinity) || byName(a,b);
+      const byCalledDesc = (a,b)=> (b.calledSinceMs ?? -1) - (a.calledSinceMs ?? -1) || byName(a,b);
+      if (sortMode==='cte-asc') rows.sort(byCteAsc);
+      else if (sortMode==='cte-desc') rows.sort(byCteDesc);
+      else if (sortMode==='called-asc') rows.sort(byCalledAsc);
+      else if (sortMode==='called-desc') rows.sort(byCalledDesc);
+      else rows.sort(byName);
+
+      // Render rows
+      const tr = [];
+      function fmtMsLocal(ms){ if(ms==null || ms<0) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
+      rows.forEach(r => {
+        const etp = (r.enRouteAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.enRouteAt)) : null;
+        const ctp = (r.calledAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.calledAt)) : null;
+        tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${r.cteMs!=null? fmtMsLocal(r.cteMs):'—'}</td><td>${etp!=null? fmtMsLocal(etp):'—'}</td><td>${ctp!=null? fmtMsLocal(ctp):'—'}</td></tr>`);
+      });
+      sessionStatsBody.innerHTML = tr.join('');
+
+      // Meta summary
+      let totalCTE=0, nCTE=0, totalETP=0, nETP=0, totalCTP=0, nCTP=0;
+      rows.forEach(r => {
+        const cte = r.cteMs || 0;
+        const etp = (r.enRouteAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.enRouteAt)) : 0;
+        const ctp = (r.calledAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.calledAt)) : 0;
+        if(cte){ totalCTE+=cte; nCTE++; }
+        if(etp){ totalETP+=etp; nETP++; }
+        if(ctp){ totalCTP+=ctp; nCTP++; }
+      });
+      const avg = (t,n) => n? fmtMsLocal(Math.round(t/n)) : '—';
+      const started = startedAt;
+      const ended = (sessionDoc && sessionDoc.endedAt && sessionDoc.endedAt.toDate) ? sessionDoc.endedAt.toDate() : null;
+      sessionMeta.textContent = `${rows.length} students • Avg C→E ${avg(totalCTE,nCTE)} • Avg E→P ${avg(totalETP,nETP)} • Avg C→P ${avg(totalCTP,nCTP)}${started? ' • Started '+started.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}${ended? ' • Ended '+ended.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}`;
+    }
+
     // Click a session row to load metrics for that session
     sessBody.addEventListener('click', (e) => {
       const tr = e.target.closest('tr[data-id]'); if(!tr) return;
       const id = tr.getAttribute('data-id'); if(!id) return;
-      const data = { id, startedAt: null, endedAt: null };
-      try { data.startedAt = tr.children[1]?.textContent; } catch {}
+      selectedSessionId = id;
+      renderRows(sessionsRowsCache||[]);
       loadSessionMetrics(id, null);
     });
+
+    // Sort control
+    statsSortSel?.addEventListener('change', ()=>{ renderSessionTable(); });
   </script>
 </body>
 </html>
