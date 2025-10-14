@@ -162,15 +162,30 @@
     try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
 
     function fmtMs(ms){ if(ms==null) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
-    // Build session metrics by querying collectionGroup('events') filtered on sessionId
+    // Build session metrics by querying collectionGroup('events') filtered on sessionId + orgId + schoolId (for rules + perf)
     async function loadSessionMetrics(sessionId, sessionDoc){
       if(!sessionId){ sessionMeta.textContent = 'Pick a session.'; sessionStatsBody.innerHTML=''; return; }
       selectedSessionId = sessionId;
       try {
         const fs = getFirestore();
-        // Query all student events for this session across all students
-        const qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
-        const snap = await getDocs(qy);
+        // Ensure tenant context
+        const oid = window.SD?.orgId, sid = window.SD?.schoolId;
+        if(!oid || !sid) throw new Error('Missing org/school context');
+        // Query all student events for this session across all students in this school
+        let qy = query(
+          collectionGroup(fs, 'events'),
+          where('orgId','==', oid),
+          where('schoolId','==', sid),
+          where('sessionId','==', sessionId)
+        );
+        let snap = await getDocs(qy);
+        // Back-compat: older events may not have orgId/schoolId fields; retry with sessionId only
+        if (snap.empty) {
+          try {
+            qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
+            snap = await getDocs(qy);
+          } catch {}
+        }
         const perStudent = new Map(); // id -> { studentName, classId, events: [{status, at}] }
         snap.docs.forEach(d => {
           const ev = d.data() || {};
@@ -217,7 +232,7 @@
       } catch(e){
         sessionMeta.textContent = 'Failed to load session metrics';
         sessionStatsBody.innerHTML = '';
-        console.warn('[analytics] loadSessionMetrics failed', e);
+        console.warn('[analytics] loadSessionMetrics failed', e?.message || e);
       }
     }
 

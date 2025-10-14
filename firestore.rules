@@ -16,6 +16,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Generic collection group rule for events to support any nested parent path.
+    // Uses orgId/schoolId embedded in the document to evaluate tenant scope.
+    match /{anyPath=**}/events/{eventId} {
+      allow get, list: if isAuthed() && isAtLeastViewer() && inSchool(resource.data.orgId, resource.data.schoolId);
+      allow create: if isAuthed()
+                     && isAtLeastViewer()
+                     && inSchool(request.resource.data.orgId, request.resource.data.schoolId)
+                     && request.resource.data.keys().hasOnly(['status','at','sessionId','orgId','schoolId','studentId','classId','studentName'])
+                     && (request.resource.data.status is string)
+                     && ('at' in request.resource.data);
+      allow update, delete: if false;
+    }
+
     // ───────────── Helpers ─────────────
     function isAuthed() { return request.auth != null; }
 
