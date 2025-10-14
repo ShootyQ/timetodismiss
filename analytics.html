@@ -178,7 +178,19 @@
           where('schoolId','==', sid),
           where('sessionId','==', sessionId)
         );
-        let snap = await getDocs(qy);
+        let snap;
+        try {
+          snap = await getDocs(qy);
+        } catch (e) {
+          // If composite index is missing, fall back to sessionId-only (rules will still scope by org/school)
+          console.warn('[analytics] constrained events query failed; retrying with sessionId only', e?.message || e);
+          try {
+            qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
+            snap = await getDocs(qy);
+          } catch (e2) {
+            throw e2; // bubble to outer catch to show error once
+          }
+        }
         // Back-compat: older events may not have orgId/schoolId fields; retry with sessionId only
         if (snap.empty) {
           try {
