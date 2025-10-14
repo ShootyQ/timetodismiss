@@ -481,8 +481,34 @@ export async function setStatusForGroup(groupId, status){
     const snap = await getDocs(qy);
     if (snap.empty) continue;
     const wb = writeBatch(db);
-    snap.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
+    const toLog = [];
+    snap.forEach(d => {
+      wb.update(d.ref, { status, updatedAt: serverTimestamp() });
+      total++;
+      toLog.push({ ref: d.ref, data: d.data() });
+    });
     await wb.commit();
+    // Log analytics events for each updated student
+    try {
+      const oid = globalThis.SD?.orgId || null;
+      const sid = globalThis.SD?.schoolId || null;
+      for (const it of toLog){
+        try {
+          const evtCol = collection(it.ref, 'events');
+          const data = it.data || {};
+          await addDoc(evtCol, {
+            status,
+            at: serverTimestamp(),
+            sessionId: ACTIVE_SESSION_ID || null,
+            orgId: oid,
+            schoolId: sid,
+            studentId: it.ref.id,
+            classId: data.classId || null,
+            studentName: data.name || ''
+          });
+        } catch(e){ /* ignore per-doc failures */ }
+      }
+    } catch {}
   }
   try { console.debug('[setStatusForGroup] applied', { groupId, status, total }); } catch {}
   return total;
@@ -507,8 +533,21 @@ export async function setStatusForTag(tag, status) {
     snap = await getDocs(qy);
     if (!snap.empty){
       const batch = writeBatch(db);
-      snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
+      const toLog = [];
+      snap.forEach(d => { batch.update(d.ref, { status, updatedAt: serverTimestamp() }); toLog.push({ ref: d.ref, data: d.data() }); });
       await batch.commit();
+      // Log events
+      try {
+        const oid = globalThis.SD?.orgId || null;
+        const sid = globalThis.SD?.schoolId || null;
+        for (const it of toLog){
+          try {
+            const evtCol = collection(it.ref, 'events');
+            const data = it.data || {};
+            await addDoc(evtCol, { status, at: serverTimestamp(), sessionId: ACTIVE_SESSION_ID || null, orgId: oid, schoolId: sid, studentId: it.ref.id, classId: data.classId || null, studentName: data.name || '' });
+          } catch {}
+        }
+      } catch {}
       try { console.debug('[setStatusForTag] updated original tag students', { tag: original, count: snap.size }); } catch {}
       return snap.size;
     }
@@ -519,8 +558,21 @@ export async function setStatusForTag(tag, status) {
       const snap2 = await getDocs(qy2);
       if (!snap2.empty){
         const batch2 = writeBatch(db);
-        snap2.forEach(d => batch2.update(d.ref, { status, updatedAt: serverTimestamp() }));
+        const toLog2 = [];
+        snap2.forEach(d => { batch2.update(d.ref, { status, updatedAt: serverTimestamp() }); toLog2.push({ ref: d.ref, data: d.data() }); });
         await batch2.commit();
+        // Log events
+        try {
+          const oid = globalThis.SD?.orgId || null;
+          const sid = globalThis.SD?.schoolId || null;
+          for (const it of toLog2){
+            try {
+              const evtCol = collection(it.ref, 'events');
+              const data = it.data || {};
+              await addDoc(evtCol, { status, at: serverTimestamp(), sessionId: ACTIVE_SESSION_ID || null, orgId: oid, schoolId: sid, studentId: it.ref.id, classId: data.classId || null, studentName: data.name || '' });
+            } catch {}
+          }
+        } catch {}
         try { console.debug('[setStatusForTag] updated compressed tag students', { tag: compressed, count: snap2.size }); } catch {}
         return snap2.size;
       }
@@ -540,8 +592,20 @@ export async function setStatusForExactTag(tag, status) {
   const snap = await getDocs(qy);
   if (snap.empty) return;
   const batch = writeBatch(db);
-  snap.forEach(d => batch.update(d.ref, { status, updatedAt: serverTimestamp() }));
+  const toLog = [];
+  snap.forEach(d => { batch.update(d.ref, { status, updatedAt: serverTimestamp() }); toLog.push({ ref: d.ref, data: d.data() }); });
   await batch.commit();
+  try {
+    const oid = globalThis.SD?.orgId || null;
+    const sid = globalThis.SD?.schoolId || null;
+    for (const it of toLog){
+      try {
+        const evtCol = collection(it.ref, 'events');
+        const data = it.data || {};
+        await addDoc(evtCol, { status, at: serverTimestamp(), sessionId: ACTIVE_SESSION_ID || null, orgId: oid, schoolId: sid, studentId: it.ref.id, classId: data.classId || null, studentName: data.name || '' });
+      } catch {}
+    }
+  } catch {}
 }
 
 // Set status for all students in all families that share the same rideShare key
@@ -567,8 +631,20 @@ export async function setStatusForRideShare(rideShare, status){
     const s2 = await getDocs(q2);
     if (s2.empty) continue;
     const wb = writeBatch(db);
-    s2.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; });
+    const toLog = [];
+    s2.forEach(d => { wb.update(d.ref, { status, updatedAt: serverTimestamp() }); total++; toLog.push({ ref: d.ref, data: d.data() }); });
     await wb.commit();
+    try {
+      const oid = globalThis.SD?.orgId || null;
+      const sid = globalThis.SD?.schoolId || null;
+      for (const it of toLog){
+        try {
+          const evtCol = collection(it.ref, 'events');
+          const data = it.data || {};
+          await addDoc(evtCol, { status, at: serverTimestamp(), sessionId: ACTIVE_SESSION_ID || null, orgId: oid, schoolId: sid, studentId: it.ref.id, classId: data.classId || null, studentName: data.name || '' });
+        } catch {}
+      }
+    } catch {}
   }
   try { console.debug('[setStatusForRideShare] applied', { rideShare: key, status, total }); } catch {}
   return total;

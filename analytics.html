@@ -9,6 +9,7 @@
   <meta http-equiv="Expires" content="0" />
   <link rel="stylesheet" href="/styles.css?v=2025-10-03-AN1" />
   <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     .ana-main{ padding:18px 0 40px; }
     table{ width:100%; border-collapse:separate; border-spacing:0; }
@@ -42,6 +43,17 @@
     <section style="margin-top:34px; max-width:900px;">
       <h2 class="page-title" style="font-size:1rem; margin:0 0 12px;">Session Metrics</h2>
       <div class="small muted" id="sessHint">Select a session above to load per-student metrics for that session.</div>
+      <div class="small" style="display:flex; align-items:center; gap:8px; margin:6px 0 8px;">
+        <label for="statsSort" class="sr-only">Sort session metrics</label>
+        <span class="muted">Sort</span>
+        <select id="statsSort" style="border:1px solid #e5e7eb; border-radius:8px; padding:.3rem .5rem;">
+          <option value="name">Name (A→Z)</option>
+          <option value="cte-asc">Fastest Called→EnRoute</option>
+          <option value="cte-desc">Slowest Called→EnRoute</option>
+          <option value="called-asc">Earliest Called (since start)</option>
+          <option value="called-desc">Latest Called</option>
+        </select>
+      </div>
       <div id="sessionMeta" class="small" style="margin:8px 0 10px;">—</div>
       <div style="overflow:auto; border:1px solid #e5e7eb; border-radius:12px; max-height:520px;">
         <table aria-label="Session student metrics" id="sessionStatsTable">
@@ -51,6 +63,34 @@
           </tr></thead>
           <tbody id="sessionStatsBody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:1100px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 10px;">Insights & Graphs</h2>
+      <div class="small muted">Aggregates computed from recent sessions for this school.</div>
+      <div style="display:flex; gap:10px; align-items:center; margin:8px 0 14px; flex-wrap:wrap;">
+        <label for="insightsRange" class="small muted">Range</label>
+        <select id="insightsRange" style="border:1px solid #e5e7eb; border-radius:8px; padding:.3rem .5rem;">
+          <option value="30">Last 30 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="7">Last 7 days</option>
+        </select>
+        <span class="small muted" id="insightsMeta">—</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr; gap:18px;">
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Avg Called→EnRoute by Class</div>
+          <canvas id="chartClassAvg" height="120"></canvas>
+        </div>
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Students Avg Called→EnRoute (Top 10)</div>
+          <canvas id="chartStudentAvg" height="140"></canvas>
+        </div>
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Daily Avg: Time to be Called after Start</div>
+          <canvas id="chartCalledSinceStart" height="140"></canvas>
+        </div>
       </div>
     </section>
   </main>
@@ -74,11 +114,14 @@
 
     function sessionDay(ts){ try { const d = ts?.toDate? ts.toDate(): (ts||new Date()); return d.toISOString().slice(0,10); } catch { return '—'; } }
   let selectedSessionId = null;
+  let sessionsRowsCache = [];
     function renderRows(rows){
+      sessionsRowsCache = rows;
       sessionsMeta.textContent = rows.length + ' sessions';
       sessBody.innerHTML = rows.map(r => {
         const ended = !!r.endedAt;
-        return `<tr data-id="${r.id}">
+        const isSel = selectedSessionId && r.id === selectedSessionId;
+        return `<tr data-id="${r.id}" ${isSel? 'style="background:#f8fafc;"':''}>
           <td>${sessionDay(r.startedAt)}</td>
           <td>${fmt(r.startedAt)}</td>
           <td>${fmt(r.endedAt)}</td>
@@ -158,19 +201,80 @@
   /* ---------------- Session Student Stats ---------------- */
   const sessionStatsBody = document.getElementById('sessionStatsBody');
   const sessionMeta = document.getElementById('sessionMeta');
+  const statsSortSel = document.getElementById('statsSort');
+  let statsRowsCache = [];
+  let selectedSessionStartedAt = null;
   let classMap = {};
     try { const cls = await getClasses(); classMap = Object.fromEntries(cls.map(c=>[c.id,c.name||c.id])); } catch{}
 
     function fmtMs(ms){ if(ms==null) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
-    // Build session metrics by querying collectionGroup('events') filtered on sessionId
+    // Build session metrics by querying collectionGroup('events') filtered on sessionId + orgId + schoolId (for rules + perf)
     async function loadSessionMetrics(sessionId, sessionDoc){
       if(!sessionId){ sessionMeta.textContent = 'Pick a session.'; sessionStatsBody.innerHTML=''; return; }
       selectedSessionId = sessionId;
       try {
         const fs = getFirestore();
-        // Query all student events for this session across all students
-        const qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
-        const snap = await getDocs(qy);
+        // Ensure tenant context
+        const oid = window.SD?.orgId, sid = window.SD?.schoolId;
+        if(!oid || !sid) throw new Error('Missing org/school context');
+        // Load session doc if not provided
+        try {
+          if (!sessionDoc) {
+            const sRef = doc(fs,'orgs',oid,'schools',sid,'callSessions',sessionId);
+            const { getDoc } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+            const sSnap = await getDoc(sRef);
+            if (sSnap.exists()) sessionDoc = { id: sSnap.id, ...sSnap.data() };
+          }
+        } catch {}
+        // Query all student events for this session across all students in this school
+        let qy = query(
+          collectionGroup(fs, 'events'),
+          where('orgId','==', oid),
+          where('schoolId','==', sid),
+          where('sessionId','==', sessionId)
+        );
+        let snap;
+        try {
+          snap = await getDocs(qy);
+        } catch (e) {
+          // If composite index is missing or rules block the constrained query, retry sessionId-only
+          console.warn('[analytics] constrained events query failed; retrying with sessionId only', e?.message || e);
+          try {
+            qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
+            snap = await getDocs(qy);
+          } catch (e2) {
+            // Final fallback: avoid collectionGroup rules entirely by scanning per-student events under this school
+            console.warn('[analytics] session-only collectionGroup failed; falling back to per-student events scan', e2?.message || e2);
+            const studentsSnap = await getDocs(colPath('students'));
+            const evts = [];
+            const docs = studentsSnap.docs || [];
+            // Limit concurrency to keep it responsive
+            const MAX_CONC = 10;
+            let i = 0;
+            async function nextBatch(){
+              const batch = docs.slice(i, i+MAX_CONC);
+              i += MAX_CONC;
+              await Promise.all(batch.map(async (sd) => {
+                try {
+                  const sRef = doc(fs, 'orgs', oid, 'schools', sid, 'students', sd.id);
+                  const evCol = collection(sRef, 'events');
+                  const sSnap = await getDocs(query(evCol, where('sessionId','==', sessionId)));
+                  sSnap.docs.forEach(d => { try { evts.push({ ...d.data() }); } catch {} });
+                } catch {}
+              }));
+            }
+            while (i < docs.length) { await nextBatch(); }
+            // Create a minimal snap-like structure for downstream
+            snap = { docs: evts.map(data => ({ data: () => data })) };
+          }
+        }
+        // Back-compat: older events may not have orgId/schoolId fields; retry with sessionId only
+        if (snap.empty) {
+          try {
+            qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
+            snap = await getDocs(qy);
+          } catch {}
+        }
         const perStudent = new Map(); // id -> { studentName, classId, events: [{status, at}] }
         snap.docs.forEach(d => {
           const ev = d.data() || {};
@@ -193,42 +297,194 @@
           });
           rows.push({ id: sid, studentName: val.studentName, classId: val.classId, calledAt, enRouteAt, pickedUpAt });
         });
-        // Render table
-        rows.sort((a,b)=> (a.studentName||'').localeCompare(b.studentName||''));
-        const tr = [];
-        function toMs(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
-        function fmtMs(ms){ if(!ms) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
-        let totalCTE=0, nCTE=0, totalETP=0, nETP=0, totalCTP=0, nCTP=0;
-        rows.forEach(r => {
-          const c = toMs(r.calledAt), e = toMs(r.enRouteAt), p = toMs(r.pickedUpAt);
-          const cte = (c && e) ? (e - c) : 0;
-          const etp = (e && p) ? (p - e) : 0;
-          const ctp = (c && p) ? (p - c) : 0;
-          if(cte){ totalCTE+=cte; nCTE++; }
-          if(etp){ totalETP+=etp; nETP++; }
-          if(ctp){ totalCTP+=ctp; nCTP++; }
-          tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${cte? fmtMs(cte):'—'}</td><td>${etp? fmtMs(etp):'—'}</td><td>${ctp? fmtMs(ctp):'—'}</td></tr>`);
-        });
-        sessionStatsBody.innerHTML = tr.join('');
-  const avg = (t,n) => n? fmtMs(Math.round(t/n)) : '—';
-  const started = (sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate) ? sessionDoc.startedAt.toDate() : null;
-  const ended = (sessionDoc && sessionDoc.endedAt && sessionDoc.endedAt.toDate) ? sessionDoc.endedAt.toDate() : null;
-        sessionMeta.textContent = `${rows.length} students • Avg C→E ${avg(totalCTE,nCTE)} • Avg E→P ${avg(totalETP,nETP)} • Avg C→P ${avg(totalCTP,nCTP)}${started? ' • Started '+started.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}${ended? ' • Ended '+ended.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}`;
+        // Cache rows and session times; render via sorter
+        statsRowsCache = rows;
+        selectedSessionStartedAt = (sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate) ? sessionDoc.startedAt.toDate() : null;
+        renderSessionTable(sessionDoc);
       } catch(e){
         sessionMeta.textContent = 'Failed to load session metrics';
         sessionStatsBody.innerHTML = '';
-        console.warn('[analytics] loadSessionMetrics failed', e);
+        console.warn('[analytics] loadSessionMetrics failed', e?.message || e);
       }
+    }
+
+    function renderSessionTable(sessionDoc){
+      const rows = (statsRowsCache || []).slice();
+      const sortMode = (statsSortSel && statsSortSel.value) || 'name';
+      function tsToMs(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
+      const startedAt = selectedSessionStartedAt || ((sessionDoc && sessionDoc.startedAt && sessionDoc.startedAt.toDate)? sessionDoc.startedAt.toDate(): null);
+      rows.forEach(r => {
+        r.cteMs = (r.calledAt && r.enRouteAt) ? (tsToMs(r.enRouteAt) - tsToMs(r.calledAt)) : null;
+        r.calledSinceMs = (startedAt && r.calledAt) ? (tsToMs(r.calledAt) - startedAt.getTime()) : null;
+      });
+      const byName = (a,b)=> (a.studentName||'').localeCompare(b.studentName||'');
+      const byCteAsc = (a,b)=> (a.cteMs ?? Infinity) - (b.cteMs ?? Infinity) || byName(a,b);
+      const byCteDesc = (a,b)=> (b.cteMs ?? -1) - (a.cteMs ?? -1) || byName(a,b);
+      const byCalledAsc = (a,b)=> (a.calledSinceMs ?? Infinity) - (b.calledSinceMs ?? Infinity) || byName(a,b);
+      const byCalledDesc = (a,b)=> (b.calledSinceMs ?? -1) - (a.calledSinceMs ?? -1) || byName(a,b);
+      if (sortMode==='cte-asc') rows.sort(byCteAsc);
+      else if (sortMode==='cte-desc') rows.sort(byCteDesc);
+      else if (sortMode==='called-asc') rows.sort(byCalledAsc);
+      else if (sortMode==='called-desc') rows.sort(byCalledDesc);
+      else rows.sort(byName);
+
+      // Render rows
+      const tr = [];
+      function fmtMsLocal(ms){ if(ms==null || ms<0) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? h+':'+String(rm).padStart(2,'0'):rm)+':'+String(rs).padStart(2,'0'); }
+      rows.forEach(r => {
+        const etp = (r.enRouteAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.enRouteAt)) : null;
+        const ctp = (r.calledAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.calledAt)) : null;
+        tr.push(`<tr><td>${(r.studentName||'').replace(/</g,'&lt;')}</td><td>${(classMap[r.classId]||'').replace(/</g,'&lt;')}</td><td>${r.cteMs!=null? fmtMsLocal(r.cteMs):'—'}</td><td>${etp!=null? fmtMsLocal(etp):'—'}</td><td>${ctp!=null? fmtMsLocal(ctp):'—'}</td></tr>`);
+      });
+      sessionStatsBody.innerHTML = tr.join('');
+
+      // Meta summary
+      let totalCTE=0, nCTE=0, totalETP=0, nETP=0, totalCTP=0, nCTP=0;
+      rows.forEach(r => {
+        const cte = r.cteMs || 0;
+        const etp = (r.enRouteAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.enRouteAt)) : 0;
+        const ctp = (r.calledAt && r.pickedUpAt) ? (tsToMs(r.pickedUpAt)-tsToMs(r.calledAt)) : 0;
+        if(cte){ totalCTE+=cte; nCTE++; }
+        if(etp){ totalETP+=etp; nETP++; }
+        if(ctp){ totalCTP+=ctp; nCTP++; }
+      });
+      const avg = (t,n) => n? fmtMsLocal(Math.round(t/n)) : '—';
+      const started = startedAt;
+      const ended = (sessionDoc && sessionDoc.endedAt && sessionDoc.endedAt.toDate) ? sessionDoc.endedAt.toDate() : null;
+      sessionMeta.textContent = `${rows.length} students • Avg C→E ${avg(totalCTE,nCTE)} • Avg E→P ${avg(totalETP,nETP)} • Avg C→P ${avg(totalCTP,nCTP)}${started? ' • Started '+started.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}${ended? ' • Ended '+ended.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : ''}`;
     }
 
     // Click a session row to load metrics for that session
     sessBody.addEventListener('click', (e) => {
       const tr = e.target.closest('tr[data-id]'); if(!tr) return;
       const id = tr.getAttribute('data-id'); if(!id) return;
-      const data = { id, startedAt: null, endedAt: null };
-      try { data.startedAt = tr.children[1]?.textContent; } catch {}
+      selectedSessionId = id;
+      renderRows(sessionsRowsCache||[]);
       loadSessionMetrics(id, null);
     });
+
+    // Sort control
+    statsSortSel?.addEventListener('change', ()=>{ renderSessionTable(); });
+
+  /* ---------------- Insights & Graphs (last N days) ---------------- */
+  const insightsRangeSel = document.getElementById('insightsRange');
+  const insightsMeta = document.getElementById('insightsMeta');
+  let chartClassAvg = null, chartStudentAvg = null, chartCalledSinceStart = null;
+
+  function destroyCharts(){ try{chartClassAvg?.destroy();}catch{} try{chartStudentAvg?.destroy();}catch{} try{chartCalledSinceStart?.destroy();}catch{} }
+  function color(i, alpha=0.8){ const pal = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16','#a855f7','#fb7185','#22c55e']; const c=pal[i%pal.length]; return c.replace(')',`, ${alpha})`).replace('#',''); }
+  function fmtMsShort(ms){ if(ms==null||ms<=0) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; return (m>0? m+'m ':'')+rs+'s'; }
+
+  async function buildInsights(days=30){
+    const ok = await waitForContext(); if(!ok) return;
+    const fs = getFirestore();
+    const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid) return;
+    destroyCharts();
+    insightsMeta.textContent = 'Loading…';
+
+    const since = new Date(Date.now() - days*24*60*60*1000);
+    // Fetch sessions in range (single collection query, no composite index needed)
+    const sessQ = query(collection(fs,'orgs',oid,'schools',sid,'callSessions'), where('startedAt','>=', since), orderBy('startedAt','asc'), limit(100));
+    let sessSnap; try { sessSnap = await getDocs(sessQ); } catch(e){ insightsMeta.textContent = 'Failed to load sessions'; console.warn('[insights] sessions query failed', e); return; }
+    const sessions = sessSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.startedAt);
+    if(sessions.length===0){ insightsMeta.textContent = 'No sessions in range'; return; }
+
+    // Aggregate by iterating sessions and pulling events via existing sessionId-based query
+    const byClass = new Map(); // classId -> { sumCteMs, n }
+    const byStudent = new Map(); // studentId -> { name, sumCteMs, n }
+    const byDayCalledSince = new Map(); // yyyy-mm-dd -> { sum, n }
+
+    function tsToDate(ts){ try{ return ts?.toDate?.() || null; }catch{ return null; } }
+    function ms(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
+
+    const MAX_CONC = 4; let i=0;
+    async function nextBatch(){
+      const batch = sessions.slice(i, i+MAX_CONC); i += MAX_CONC;
+      await Promise.all(batch.map(async (s) => {
+        try{
+          const sDate = tsToDate(s.startedAt);
+          if(!sDate) return;
+          // events for this session
+          let qy = query(collectionGroup(fs,'events'), where('orgId','==',oid), where('schoolId','==',sid), where('sessionId','==', s.id));
+          let evSnap;
+          try { evSnap = await getDocs(qy); }
+          catch(e1){ try { qy = query(collectionGroup(fs,'events'), where('sessionId','==', s.id)); evSnap = await getDocs(qy); } catch(e2) {
+            // fallback: per-student scan
+            const studentsSnap = await getDocs(colPath('students'));
+            const all = [];
+            await Promise.all(studentsSnap.docs.map(async sd=>{
+              try{
+                const sRef = doc(fs,'orgs',oid,'schools',sid,'students',sd.id);
+                const sCol = collection(sRef,'events');
+                const sSnap = await getDocs(query(sCol, where('sessionId','==', s.id)));
+                sSnap.docs.forEach(d=>all.push({ ...d.data() }));
+              }catch{}
+            }));
+            evSnap = { docs: all.map(x=>({ data:()=>x })) };
+          }}
+          const st = sDate.getTime();
+          const seen = new Map(); // studentId -> { calledAt, enRouteAt, classId, name }
+          evSnap.docs.forEach(d=>{
+            const ev = d.data()||{}; const sid2 = ev.studentId; if(!sid2) return;
+            const rec = seen.get(sid2) || { calledAt:null, enRouteAt:null, classId: ev.classId||'', name: ev.studentName||'' };
+            if(ev.status==='called' && !rec.calledAt) rec.calledAt = ev.at;
+            if((ev.status==='en_route'||ev.status==='enroute') && !rec.enRouteAt) rec.enRouteAt = ev.at;
+            seen.set(sid2, rec);
+          });
+          seen.forEach((rec, sid3) => {
+            const cMs = ms(rec.calledAt); const eMs = ms(rec.enRouteAt);
+            if(cMs){
+              const calledSince = cMs - st; if(calledSince>0){
+                const dayKey = sDate.toISOString().slice(0,10);
+                const cell = byDayCalledSince.get(dayKey) || { sum:0, n:0 };
+                cell.sum += calledSince; cell.n += 1; byDayCalledSince.set(dayKey, cell);
+              }
+            }
+            if(cMs && eMs && eMs>=cMs){
+              const cte = eMs - cMs;
+              // class agg
+              const cc = byClass.get(rec.classId)||{ sum:0, n:0 }; cc.sum += cte; cc.n += 1; byClass.set(rec.classId, cc);
+              // student agg
+              const ss = byStudent.get(sid3)||{ name: rec.name||sid3, sum:0, n:0 }; ss.sum += cte; ss.n += 1; byStudent.set(sid3, ss);
+            }
+          });
+        }catch(err){ console.warn('[insights] batch session failed', err); }
+      }));
+    }
+    while(i<sessions.length){ await nextBatch(); }
+
+    // Build datasets
+    const classEntries = Array.from(byClass.entries()).map(([cid,v])=>({ name: classMap[cid]||cid||'—', avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> b.avg-a.avg).slice(0,15);
+    const studentEntries = Array.from(byStudent.entries()).map(([sid2,v])=>({ name: v.name||sid2, avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> b.avg-a.avg).slice(0,10);
+    const dayEntries = Array.from(byDayCalledSince.entries()).map(([day,v])=>({ day, avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> a.day.localeCompare(b.day));
+
+    // Render charts
+    const ctx1 = document.getElementById('chartClassAvg').getContext('2d');
+    const ctx2 = document.getElementById('chartStudentAvg').getContext('2d');
+    const ctx3 = document.getElementById('chartCalledSinceStart').getContext('2d');
+    chartClassAvg = new Chart(ctx1, {
+      type:'bar',
+      data:{ labels: classEntries.map(x=>x.name), datasets:[{ label:'Avg C→E (s)', data: classEntries.map(x=> Math.round((x.avg||0)/1000)), backgroundColor:'#3b82f6' }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=> `${ctx.parsed.y}s` } } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+    chartStudentAvg = new Chart(ctx2, {
+      type:'bar',
+      data:{ labels: studentEntries.map(x=>x.name), datasets:[{ label:'Avg C→E (s)', data: studentEntries.map(x=> Math.round((x.avg||0)/1000)), backgroundColor:'#10b981' }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=> `${ctx.parsed.y}s` } } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+    chartCalledSinceStart = new Chart(ctx3, {
+      type:'line',
+      data:{ labels: dayEntries.map(x=>x.day), datasets:[{ label:'Avg seconds to first call', data: dayEntries.map(x=> Math.round((x.avg||0)/1000)), borderColor:'#f59e0b', backgroundColor:'rgba(245, 158, 11, 0.2)', fill:true, tension:.2 }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+
+    const totalStud = Array.from(byStudent.values()).reduce((a,v)=>a+v.n,0);
+    insightsMeta.textContent = `${sessions.length} sessions • ${totalStud} student records`;
+  }
+
+  insightsRangeSel?.addEventListener('change', ()=>{ const days = parseInt(insightsRangeSel.value||'30',10); buildInsights(days); });
+  // Build once on load
+  buildInsights(30);
   </script>
 </body>
 </html>

@@ -75,9 +75,15 @@
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
     /* Fluid grid (non label) auto paginate by browser */
-    .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
+  .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
     .pa-gridflow .pa-item{ width:100%; height:auto; }
     .pa-gridflow .pa-qr > div{ margin:0 auto; }
+
+  /* Large Name + QR rows (one per code), tuned for 2 rows per landscape page */
+  .pa-nameqr{ grid-template-columns: 1fr; padding: .6in; row-gap: .35in; }
+  .pa-nameqr .pa-item{ width:100%; height:auto; padding:.05in 0; display:grid; grid-template-columns: 1fr auto; align-items:center; column-gap: .35in; }
+  .pa-nameqr .pa-bigname{ font-weight:900; font-size: 54pt; line-height:1; letter-spacing:.5px; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pa-nameqr .pa-qr{ justify-self:end; }
 
     /* Print-time cleanup */
   .printing .qr-toolbar, .printing #helpers, .printing #errors, .printing #loading, .printing #grid, .printing #empty, .printing #countSummary{ display:none !important; }
@@ -132,6 +138,7 @@
         <option value="avery5163">Avery 5163 (10/pg)</option>
         <option value="square2">Square 2×2 in</option>
         <option value="square3">Square 3×3 in</option>
+        <option value="nameqr">Large Name + QR rows</option>
       </select>
       <label class="inline-flex">
         <input id="includeRideShares" type="checkbox" /> Ride Shares
@@ -211,6 +218,7 @@
     const showNames = document.getElementById('showNames');
     const layoutSel = document.getElementById('layout');
     const modeStudents = document.getElementById('modeStudents');
+  const includeRideShares = document.getElementById('includeRideShares');
     const btnAll = document.getElementById('selectAll');
     const btnClr = document.getElementById('clearSel');
     const btnPrint = document.getElementById('print');
@@ -281,7 +289,7 @@
       if (useStudents){
         return students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)));
       }
-      const includeRS = !!includeRideShares.checked;
+      const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
       if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
       return base.filter(x => {
@@ -397,6 +405,7 @@
         case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
         case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
         case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
+  case 'nameqr':    return { class: 'pa-nameqr',    qrIn: 2.4,  perPage: 2,   bigName: true, landscape: true };
         default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
     }
@@ -405,7 +414,7 @@
 
     function getAllItems(){
       if (modeStudents.checked) return students;
-      const includeRS = !!includeRideShares.checked;
+      const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
       if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
       return base;
@@ -432,23 +441,46 @@
       return str.substring(0, max-1) + '…';
     }
 
+    function uniqByPayload(items){
+      const seen = new Set();
+      const out = [];
+      for (const it of items){
+        const p = buildPayload(it, modeStudents.checked);
+        if (seen.has(p)) continue;
+        seen.add(p);
+        out.push(it);
+      }
+      return out;
+    }
+
+    function lastName(str){
+      const s = String(str||'').trim();
+      if (!s) return '';
+      // Expect either "Last, First" or full name; take last token or segment before comma.
+      if (s.includes(',')) return s.split(',')[0].trim();
+      const parts = s.split(/\s+/).filter(Boolean);
+      return parts.length ? parts[parts.length-1] : s;
+    }
+
     function buildPrintArea(items){
       const useStudents = modeStudents.checked;
       const preset = presetInfo(layoutSel.value);
       paPages.className = 'pa-pages';
       paPages.innerHTML = '';
       const qrPx = toPx(preset.qrIn || 1);
-      const perPage = preset.gridFlow ? items.length : (preset.perPage || items.length);
-      for (let i=0; i<items.length; i+=perPage){
-        const pageItems = items.slice(i, i+perPage);
-        const page = document.createElement('div');
-        page.className = 'pa-page ' + preset.class;
+      // If using name+qr layout, dedupe by the QR payload to avoid repeats
+      const source = (layoutSel.value === 'nameqr') ? uniqByPayload(items) : items;
+      const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
+      for (let i=0; i<source.length; i+=perPage){
+        const pageItems = source.slice(i, i+perPage);
+  const page = document.createElement('div');
+  page.className = 'pa-page ' + preset.class + (preset.landscape ? ' pa-landscape' : '');
         paPages.appendChild(page);
 
         for (const item of pageItems){
           const tag = useStudents ? (item.tag || '') : item.tag;
             const nameRaw = useStudents ? nameOf(item) : (item.name || '');
-            const name = (preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw;
+            const name = (preset.bigName ? lastName(nameRaw) : ((preset.trimNames && nameRaw) ? abbreviate(nameRaw, 22) : nameRaw));
             const id = useStudents ? (item.id || item.studentId || '') : null;
             const labelTextRaw = useStudents ? (tag || id || '') : tag;
             const labelText = (preset.maxLabelChars && labelTextRaw.length > preset.maxLabelChars)
@@ -458,11 +490,18 @@
 
             const div = document.createElement('div');
             div.className = 'pa-item';
-            div.innerHTML = `
-              <div class="pa-qr"></div>
-              <div class="pa-label">${labelText}</div>
-              ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
-            `;
+            if (layoutSel.value === 'nameqr'){
+              div.innerHTML = `
+                <div class="pa-bigname">${name || '&nbsp;'}</div>
+                <div class="pa-qr"></div>
+              `;
+            } else {
+              div.innerHTML = `
+                <div class="pa-qr"></div>
+                <div class="pa-label">${labelText}</div>
+                ${showNames.checked && name ? `<div class="pa-name">${name}</div>` : ''}
+              `;
+            }
             page.appendChild(div);
 
             const host = div.querySelector('.pa-qr');
@@ -499,6 +538,7 @@
           .pa-label{font-weight:800;font-family:inherit;}
           .pa-name{font-size:.8rem;color:#334155;text-align:center;}
           .pa-page{width:8.5in;min-height:11in;box-sizing:border-box;}
+          .pa-landscape{width:11in;min-height:8.5in;}
           .pa-avery5160{grid-template-columns:repeat(3,2.625in);column-gap:.125in;row-gap:0in;padding:.5in .1875in;}
           .pa-avery5160 .pa-item{width:2.625in;height:1in;padding:0;}
           .pa-avery5160 .pa-label{font-size:10px;line-height:1;margin-top:1px;}
@@ -512,7 +552,11 @@
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
-          @page{size:letter;margin:0;}
+          .pa-nameqr{grid-template-columns:1fr;padding:.6in;row-gap:.35in;}
+          .pa-nameqr .pa-item{width:100%;height:auto;padding:.05in 0;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.35in;}
+          .pa-nameqr .pa-bigname{font-weight:900;font-size:54pt;line-height:1;letter-spacing:.5px;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+          .pa-nameqr .pa-qr{justify-self:end;}
+          @page{size:letter landscape;margin:0;}
           @media print{body{background:#fff;}}
         </style>
       </head><body>${paPages.innerHTML}</body></html>`;
@@ -559,7 +603,7 @@
     q.addEventListener('input', renderList);
     tight.addEventListener('change', () => setTight(tight.checked));
   showNames.addEventListener('change', renderList);
-  includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
+  if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -677,7 +721,7 @@
           layout: layoutSel.value,
           modeStudents: !!modeStudents.checked,
           q: q.value || '',
-          includeRideShares: !!includeRideShares.checked
+          includeRideShares: !!(includeRideShares && includeRideShares.checked)
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -694,7 +738,7 @@
         if (o.layout) layoutSel.value = o.layout;
         if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
         if (typeof o.q === 'string') q.value = o.q;
-        if (typeof o.includeRideShares === 'boolean') includeRideShares.checked = o.includeRideShares;
+        if (typeof o.includeRideShares === 'boolean' && includeRideShares) includeRideShares.checked = o.includeRideShares;
       }catch{}
     }
 
