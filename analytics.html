@@ -9,6 +9,7 @@
   <meta http-equiv="Expires" content="0" />
   <link rel="stylesheet" href="/styles.css?v=2025-10-03-AN1" />
   <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     .ana-main{ padding:18px 0 40px; }
     table{ width:100%; border-collapse:separate; border-spacing:0; }
@@ -62,6 +63,34 @@
           </tr></thead>
           <tbody id="sessionStatsBody"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section style="margin-top:34px; max-width:1100px;">
+      <h2 class="page-title" style="font-size:1rem; margin:0 0 10px;">Insights & Graphs</h2>
+      <div class="small muted">Aggregates computed from recent sessions for this school.</div>
+      <div style="display:flex; gap:10px; align-items:center; margin:8px 0 14px; flex-wrap:wrap;">
+        <label for="insightsRange" class="small muted">Range</label>
+        <select id="insightsRange" style="border:1px solid #e5e7eb; border-radius:8px; padding:.3rem .5rem;">
+          <option value="30">Last 30 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="7">Last 7 days</option>
+        </select>
+        <span class="small muted" id="insightsMeta">—</span>
+      </div>
+      <div style="display:grid; grid-template-columns:1fr; gap:18px;">
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Avg Called→EnRoute by Class</div>
+          <canvas id="chartClassAvg" height="120"></canvas>
+        </div>
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Students Avg Called→EnRoute (Top 10)</div>
+          <canvas id="chartStudentAvg" height="140"></canvas>
+        </div>
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+          <div class="small muted" style="margin:0 0 8px;">Daily Avg: Time to be Called after Start</div>
+          <canvas id="chartCalledSinceStart" height="140"></canvas>
+        </div>
       </div>
     </section>
   </main>
@@ -336,6 +365,126 @@
 
     // Sort control
     statsSortSel?.addEventListener('change', ()=>{ renderSessionTable(); });
+
+  /* ---------------- Insights & Graphs (last N days) ---------------- */
+  const insightsRangeSel = document.getElementById('insightsRange');
+  const insightsMeta = document.getElementById('insightsMeta');
+  let chartClassAvg = null, chartStudentAvg = null, chartCalledSinceStart = null;
+
+  function destroyCharts(){ try{chartClassAvg?.destroy();}catch{} try{chartStudentAvg?.destroy();}catch{} try{chartCalledSinceStart?.destroy();}catch{} }
+  function color(i, alpha=0.8){ const pal = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f43f5e','#84cc16','#a855f7','#fb7185','#22c55e']; const c=pal[i%pal.length]; return c.replace(')',`, ${alpha})`).replace('#',''); }
+  function fmtMsShort(ms){ if(ms==null||ms<=0) return '—'; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; return (m>0? m+'m ':'')+rs+'s'; }
+
+  async function buildInsights(days=30){
+    const ok = await waitForContext(); if(!ok) return;
+    const fs = getFirestore();
+    const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid) return;
+    destroyCharts();
+    insightsMeta.textContent = 'Loading…';
+
+    const since = new Date(Date.now() - days*24*60*60*1000);
+    // Fetch sessions in range (single collection query, no composite index needed)
+    const sessQ = query(collection(fs,'orgs',oid,'schools',sid,'callSessions'), where('startedAt','>=', since), orderBy('startedAt','asc'), limit(100));
+    let sessSnap; try { sessSnap = await getDocs(sessQ); } catch(e){ insightsMeta.textContent = 'Failed to load sessions'; console.warn('[insights] sessions query failed', e); return; }
+    const sessions = sessSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.startedAt);
+    if(sessions.length===0){ insightsMeta.textContent = 'No sessions in range'; return; }
+
+    // Aggregate by iterating sessions and pulling events via existing sessionId-based query
+    const byClass = new Map(); // classId -> { sumCteMs, n }
+    const byStudent = new Map(); // studentId -> { name, sumCteMs, n }
+    const byDayCalledSince = new Map(); // yyyy-mm-dd -> { sum, n }
+
+    function tsToDate(ts){ try{ return ts?.toDate?.() || null; }catch{ return null; } }
+    function ms(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
+
+    const MAX_CONC = 4; let i=0;
+    async function nextBatch(){
+      const batch = sessions.slice(i, i+MAX_CONC); i += MAX_CONC;
+      await Promise.all(batch.map(async (s) => {
+        try{
+          const sDate = tsToDate(s.startedAt);
+          if(!sDate) return;
+          // events for this session
+          let qy = query(collectionGroup(fs,'events'), where('orgId','==',oid), where('schoolId','==',sid), where('sessionId','==', s.id));
+          let evSnap;
+          try { evSnap = await getDocs(qy); }
+          catch(e1){ try { qy = query(collectionGroup(fs,'events'), where('sessionId','==', s.id)); evSnap = await getDocs(qy); } catch(e2) {
+            // fallback: per-student scan
+            const studentsSnap = await getDocs(colPath('students'));
+            const all = [];
+            await Promise.all(studentsSnap.docs.map(async sd=>{
+              try{
+                const sRef = doc(fs,'orgs',oid,'schools',sid,'students',sd.id);
+                const sCol = collection(sRef,'events');
+                const sSnap = await getDocs(query(sCol, where('sessionId','==', s.id)));
+                sSnap.docs.forEach(d=>all.push({ ...d.data() }));
+              }catch{}
+            }));
+            evSnap = { docs: all.map(x=>({ data:()=>x })) };
+          }}
+          const st = sDate.getTime();
+          const seen = new Map(); // studentId -> { calledAt, enRouteAt, classId, name }
+          evSnap.docs.forEach(d=>{
+            const ev = d.data()||{}; const sid2 = ev.studentId; if(!sid2) return;
+            const rec = seen.get(sid2) || { calledAt:null, enRouteAt:null, classId: ev.classId||'', name: ev.studentName||'' };
+            if(ev.status==='called' && !rec.calledAt) rec.calledAt = ev.at;
+            if((ev.status==='en_route'||ev.status==='enroute') && !rec.enRouteAt) rec.enRouteAt = ev.at;
+            seen.set(sid2, rec);
+          });
+          seen.forEach((rec, sid3) => {
+            const cMs = ms(rec.calledAt); const eMs = ms(rec.enRouteAt);
+            if(cMs){
+              const calledSince = cMs - st; if(calledSince>0){
+                const dayKey = sDate.toISOString().slice(0,10);
+                const cell = byDayCalledSince.get(dayKey) || { sum:0, n:0 };
+                cell.sum += calledSince; cell.n += 1; byDayCalledSince.set(dayKey, cell);
+              }
+            }
+            if(cMs && eMs && eMs>=cMs){
+              const cte = eMs - cMs;
+              // class agg
+              const cc = byClass.get(rec.classId)||{ sum:0, n:0 }; cc.sum += cte; cc.n += 1; byClass.set(rec.classId, cc);
+              // student agg
+              const ss = byStudent.get(sid3)||{ name: rec.name||sid3, sum:0, n:0 }; ss.sum += cte; ss.n += 1; byStudent.set(sid3, ss);
+            }
+          });
+        }catch(err){ console.warn('[insights] batch session failed', err); }
+      }));
+    }
+    while(i<sessions.length){ await nextBatch(); }
+
+    // Build datasets
+    const classEntries = Array.from(byClass.entries()).map(([cid,v])=>({ name: classMap[cid]||cid||'—', avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> b.avg-a.avg).slice(0,15);
+    const studentEntries = Array.from(byStudent.entries()).map(([sid2,v])=>({ name: v.name||sid2, avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> b.avg-a.avg).slice(0,10);
+    const dayEntries = Array.from(byDayCalledSince.entries()).map(([day,v])=>({ day, avg: v.n? v.sum/v.n : 0 })).sort((a,b)=> a.day.localeCompare(b.day));
+
+    // Render charts
+    const ctx1 = document.getElementById('chartClassAvg').getContext('2d');
+    const ctx2 = document.getElementById('chartStudentAvg').getContext('2d');
+    const ctx3 = document.getElementById('chartCalledSinceStart').getContext('2d');
+    chartClassAvg = new Chart(ctx1, {
+      type:'bar',
+      data:{ labels: classEntries.map(x=>x.name), datasets:[{ label:'Avg C→E (s)', data: classEntries.map(x=> Math.round((x.avg||0)/1000)), backgroundColor:'#3b82f6' }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=> `${ctx.parsed.y}s` } } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+    chartStudentAvg = new Chart(ctx2, {
+      type:'bar',
+      data:{ labels: studentEntries.map(x=>x.name), datasets:[{ label:'Avg C→E (s)', data: studentEntries.map(x=> Math.round((x.avg||0)/1000)), backgroundColor:'#10b981' }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(ctx)=> `${ctx.parsed.y}s` } } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+    chartCalledSinceStart = new Chart(ctx3, {
+      type:'line',
+      data:{ labels: dayEntries.map(x=>x.day), datasets:[{ label:'Avg seconds to first call', data: dayEntries.map(x=> Math.round((x.avg||0)/1000)), borderColor:'#f59e0b', backgroundColor:'rgba(245, 158, 11, 0.2)', fill:true, tension:.2 }]},
+      options:{ responsive:true, plugins:{ legend:{ display:false } }, scales:{ y:{ title:{ display:true, text:'Seconds' }, beginAtZero:true } } }
+    });
+
+    const totalStud = Array.from(byStudent.values()).reduce((a,v)=>a+v.n,0);
+    insightsMeta.textContent = `${sessions.length} sessions • ${totalStud} student records`;
+  }
+
+  insightsRangeSel?.addEventListener('change', ()=>{ const days = parseInt(insightsRangeSel.value||'30',10); buildInsights(days); });
+  // Build once on load
+  buildInsights(30);
   </script>
 </body>
 </html>
