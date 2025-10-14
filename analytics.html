@@ -182,13 +182,35 @@
         try {
           snap = await getDocs(qy);
         } catch (e) {
-          // If composite index is missing, fall back to sessionId-only (rules will still scope by org/school)
+          // If composite index is missing or rules block the constrained query, retry sessionId-only
           console.warn('[analytics] constrained events query failed; retrying with sessionId only', e?.message || e);
           try {
             qy = query(collectionGroup(fs, 'events'), where('sessionId','==', sessionId));
             snap = await getDocs(qy);
           } catch (e2) {
-            throw e2; // bubble to outer catch to show error once
+            // Final fallback: avoid collectionGroup rules entirely by scanning per-student events under this school
+            console.warn('[analytics] session-only collectionGroup failed; falling back to per-student events scan', e2?.message || e2);
+            const studentsSnap = await getDocs(colPath('students'));
+            const evts = [];
+            const docs = studentsSnap.docs || [];
+            // Limit concurrency to keep it responsive
+            const MAX_CONC = 10;
+            let i = 0;
+            async function nextBatch(){
+              const batch = docs.slice(i, i+MAX_CONC);
+              i += MAX_CONC;
+              await Promise.all(batch.map(async (sd) => {
+                try {
+                  const sRef = doc(fs, 'orgs', oid, 'schools', sid, 'students', sd.id);
+                  const evCol = collection(sRef, 'events');
+                  const sSnap = await getDocs(query(evCol, where('sessionId','==', sessionId)));
+                  sSnap.docs.forEach(d => { try { evts.push({ ...d.data() }); } catch {} });
+                } catch {}
+              }));
+            }
+            while (i < docs.length) { await nextBatch(); }
+            // Create a minimal snap-like structure for downstream
+            snap = { docs: evts.map(data => ({ data: () => data })) };
           }
         }
         // Back-compat: older events may not have orgId/schoolId fields; retry with sessionId only
