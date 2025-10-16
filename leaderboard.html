@@ -13,7 +13,7 @@
     .lb-main{ padding:18px 0 28px; }
     .lb-toolbar{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:8px 0 14px; }
     .lb-toolbar select{ border:1px solid #e5e7eb; border-radius:10px; padding:.45rem .6rem; }
-    .lb-sections{ display:grid; grid-template-columns:1fr; gap:18px; }
+  .lb-sections{ display:grid; grid-template-columns:1fr; gap:18px; }
     .lb-card{ border:1px solid #e5e7eb; border-radius:14px; padding:14px; background:#fff; }
     .lb-title{ font-weight:800; font-size:1rem; margin:0 0 10px; display:flex; align-items:center; gap:8px; }
     .lb-meta{ color:var(--muted); font-size:.85rem; }
@@ -30,6 +30,19 @@
     .lb-bar > span{ display:block; height:100%; background:linear-gradient(90deg,#34d399,#10b981); }
     .lb-crown{ font-size:1.1rem; }
     .lb-empty{ color:var(--muted); }
+  .lb-badges{ display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:4px 0 2px; font-size:.9rem; }
+  .lb-badge{ display:inline-flex; align-items:center; gap:4px; padding:.2rem .45rem; border:1px solid #e5e7eb; border-radius:999px; background:#fff; font-weight:700; }
+  .lb-subtle{ color:#64748b; }
+
+  /* Podium */
+  .lb-podium{ display:grid; grid-template-columns:1fr; gap:12px; }
+  .lb-podium .pod{ border:1px solid #e5e7eb; border-radius:16px; padding:12px; background:linear-gradient(180deg,#fff,#f8fafc); display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px; }
+  .lb-podium .pod .who{ font-weight:900; font-size:1.1rem; }
+  .lb-podium .pod .info{ color:#6b7280; font-size:.9rem; }
+  .lb-podium .pod .time{ font-weight:900; font-size:1.2rem; }
+  .pod.gold{ box-shadow:0 0 0 2px #fde68a80 inset; }
+  .pod.silver{ box-shadow:0 0 0 2px #cbd5e180 inset; }
+  .pod.bronze{ box-shadow:0 0 0 2px #fbcfe880 inset; }
 
     @media (min-width: 900px){ .lb-sections{ grid-template-columns:1fr 1fr; } }
   </style>
@@ -42,12 +55,32 @@
     <div class="lb-toolbar">
       <label class="small muted">Range</label>
       <select id="range">
+        <option value="current">Current session</option>
         <option value="today">Today</option>
         <option value="7">Last 7 days</option>
         <option value="30" selected>Last 30 days</option>
       </select>
+      <label class="small muted">Min samples</label>
+      <select id="minSamples">
+        <option value="1">1</option>
+        <option value="2">2</option>
+        <option value="3" selected>3</option>
+        <option value="5">5</option>
+      </select>
+      <label class="inline-flex small"><input type="checkbox" id="liveMode" /> Live mode</label>
       <span class="lb-meta" id="lbMeta">Loading…</span>
     </div>
+
+    <section class="lb-sections" style="margin-bottom:8px;">
+      <div class="lb-card">
+        <div class="lb-title">Class Podium <span class="lb-crown">🏆</span></div>
+        <div class="lb-podium" id="classPodium"></div>
+      </div>
+      <div class="lb-card">
+        <div class="lb-title">Student Podium <span>🥇</span></div>
+        <div class="lb-podium" id="studentPodium"></div>
+      </div>
+    </section>
 
     <section class="lb-sections">
       <div class="lb-card">
@@ -59,6 +92,14 @@
         <div class="lb-title">Top Students — Fastest En Route <span>🌟</span></div>
         <div class="lb-meta" id="studentMeta">—</div>
         <ul id="studentList" class="lb-list"></ul>
+      </div>
+    </section>
+
+    <section class="lb-sections">
+      <div class="lb-card" style="grid-column:1/-1;">
+        <div class="lb-title">Hall of Fame — Fastest Single Runs <span>⚡</span></div>
+        <div class="lb-meta" id="hofMeta">—</div>
+        <ul id="hofList" class="lb-list"></ul>
       </div>
     </section>
   </main>
@@ -96,40 +137,68 @@
   const studentMeta = document.getElementById('studentMeta');
   const classList = document.getElementById('classList');
   const studentList = document.getElementById('studentList');
+  const classPodium = document.getElementById('classPodium');
+  const studentPodium = document.getElementById('studentPodium');
+  const minSamplesSel = document.getElementById('minSamples');
+  const liveModeCb = document.getElementById('liveMode');
+  const hofList = document.getElementById('hofList');
+  const hofMeta = document.getElementById('hofMeta');
 
   // Utilities
   function tsToDate(ts){ try{ return ts?.toDate?.() || null; }catch{ return null; } }
   function ms(ts){ try { return ts?.toDate?.()?.getTime?.() || 0; } catch { return 0; } }
   function fmtSec(sec){ if(sec==null) return '—'; const s=Math.round(sec); const m=Math.floor(s/60); const r=s%60; return (m>0? (m+'m '+r+'s') : (r+'s')); }
 
+  let liveTimer = null;
+  function setLiveMode(on){
+    if (liveTimer){ clearInterval(liveTimer); liveTimer = null; }
+    if (on){ liveTimer = setInterval(()=>{ buildLeaderboard().catch(()=>{}); }, 60000); }
+  }
+
   async function buildLeaderboard(){
     const fs = getFirestore();
     const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid){ lbMeta.textContent='Missing org/school context'; return; }
     lbMeta.textContent='Loading…'; classMeta.textContent='—'; studentMeta.textContent='—'; classList.innerHTML=''; studentList.innerHTML='';
+    classPodium.innerHTML=''; studentPodium.innerHTML=''; hofList.innerHTML=''; hofMeta.textContent='—';
 
     // Date range → sessions
     const val = rangeSel.value;
     const now = new Date();
     let since = null; let until = null; let label = '';
-    if (val === 'today'){
+    let sessions = [];
+    if (val === 'current'){
+      // Try to find an active session, else use the most recent
+      try {
+        const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+        let snap = await getDocs(query(coll, orderBy('startedAt','desc'), limit(8)));
+        const rows = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+        const active = rows.find(r => !('endedAt' in r) || r.endedAt == null);
+        const pick = active || rows[0] || null;
+        if (pick) sessions = [pick];
+        label = active? 'Current Session' : 'Latest Session';
+      } catch {}
+    } else if (val === 'today'){
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       since = start; until = new Date(start.getTime() + 24*60*60*1000); label = 'Today';
     } else {
       const days = parseInt(val||'30',10); since = new Date(Date.now() - days*24*60*60*1000); until = now; label = `Last ${days} days`;
     }
 
-    // Fetch sessions in range
-    const sessQ = query(collection(fs,'orgs',oid,'schools',sid,'callSessions'), where('startedAt','>=', since), where('startedAt','<=', until), orderBy('startedAt','asc'), limit(150));
-    let sessSnap; try { sessSnap = await getDocs(sessQ); } catch(e){ lbMeta.textContent='Failed to load sessions'; console.warn('[lb] sessions query failed', e); return; }
-    const sessions = sessSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.startedAt);
+    if (!sessions.length){
+      // Fetch sessions in range
+      const sessQ = query(collection(fs,'orgs',oid,'schools',sid,'callSessions'), where('startedAt','>=', since), where('startedAt','<=', until), orderBy('startedAt','asc'), limit(150));
+      let sessSnap; try { sessSnap = await getDocs(sessQ); } catch(e){ lbMeta.textContent='Failed to load sessions'; console.warn('[lb] sessions query failed', e); return; }
+      sessions = sessSnap.docs.map(d=>({ id:d.id, ...d.data() })).filter(s=>s.startedAt);
+    }
     if(sessions.length===0){ lbMeta.textContent = label+': no sessions'; classList.innerHTML = '<li class="lb-empty">No data</li>'; studentList.innerHTML = '<li class="lb-empty">No data</li>'; return; }
 
     // Build class map for display
     let classMap = {}; try { const cls = await getClasses(); classMap = Object.fromEntries((cls||[]).map(c=>[c.id, c.name||c.id])); } catch {}
 
     // Aggregate events per session → first called and en_route per student
-    const byClass = new Map(); // classId -> { sumMs, n }
-    const byStudent = new Map(); // studentId -> { name, classId, sumMs, n }
+  const byClass = new Map(); // classId -> { sumMs, n, bestMs, fast60 }
+  const byStudent = new Map(); // studentId -> { name, classId, sumMs, n, fast30, fast45, fast60 }
+  const hofRuns = []; // { name, classId, className, sec, sessionId }
 
     const MAX_CONC = 4; let i=0;
     async function nextBatch(){
@@ -175,9 +244,11 @@
             if(cMs && eMs && eMs>=cMs){
               const delta = eMs - cMs;
               // class agg
-              const cc = byClass.get(rec.classId)||{ sum:0, n:0 }; cc.sum += delta; cc.n += 1; byClass.set(rec.classId, cc);
+              const cc = byClass.get(rec.classId)||{ sum:0, n:0, bestMs:null, fast60:0 }; cc.sum += delta; cc.n += 1; if(cc.bestMs==null || delta<cc.bestMs) cc.bestMs = delta; if (delta<=60000) cc.fast60++; byClass.set(rec.classId, cc);
               // student agg
-              const ss = byStudent.get(sid3)||{ name: rec.name||sid3, classId: rec.classId||'', sum:0, n:0 }; ss.sum += delta; ss.n += 1; byStudent.set(sid3, ss);
+              const ss = byStudent.get(sid3)||{ name: rec.name||sid3, classId: rec.classId||'', sum:0, n:0, fast30:0, fast45:0, fast60:0 }; ss.sum += delta; ss.n += 1; if(delta<=30000) ss.fast30++; if(delta<=45000) ss.fast45++; if(delta<=60000) ss.fast60++; byStudent.set(sid3, ss);
+              // hall of fame run (student)
+              hofRuns.push({ name: rec.name||sid3, classId: rec.classId||'', className: '', sec: delta/1000, sessionId: s.id });
             }
           });
         }catch(err){ console.warn('[lb] batch session failed', err); }
@@ -186,13 +257,29 @@
     while(i<sessions.length){ await nextBatch(); }
 
     // Rank classes (min avg first)
-    const classRows = Array.from(byClass.entries()).map(([classId, v])=>({ classId, className: classMap[classId]||classId||'—', avgSec: (v.n? (v.sum/v.n)/1000 : null), n:v.n }))
-      .filter(r=> r.n>0 && r.avgSec!=null).sort((a,b)=> a.avgSec - b.avgSec).slice(0, 10);
+    const minSamples = parseInt(minSamplesSel.value||'3',10);
+    const classRows = Array.from(byClass.entries()).map(([classId, v])=>({ classId, className: classMap[classId]||classId||'—', avgSec: (v.n? (v.sum/v.n)/1000 : null), n:v.n, bestSec: (v.bestMs!=null? (v.bestMs/1000) : null), fast60: v.fast60||0 }))
+      .filter(r=> r.n>=minSamples && r.avgSec!=null).sort((a,b)=> a.avgSec - b.avgSec).slice(0, 10);
     // Rank students
-    const studentRows = Array.from(byStudent.entries()).map(([sid, v])=>({ id:sid, name: v.name||sid, classId: v.classId||'', className: classMap[v.classId]||v.classId||'', avgSec: (v.n? (v.sum/v.n)/1000 : null), n:v.n }))
-      .filter(r=> r.n>0 && r.avgSec!=null).sort((a,b)=> a.avgSec - b.avgSec).slice(0, 20);
+    const studentRows = Array.from(byStudent.entries()).map(([sid, v])=>({ id:sid, name: v.name||sid, classId: v.classId||'', className: classMap[v.classId]||v.classId||'', avgSec: (v.n? (v.sum/v.n)/1000 : null), n:v.n, fast30:v.fast30||0, fast45:v.fast45||0, fast60:v.fast60||0 }))
+      .filter(r=> r.n>=minSamples && r.avgSec!=null).sort((a,b)=> a.avgSec - b.avgSec).slice(0, 20);
+
+    // Hall of Fame (students)
+    hofRuns.forEach(r=>{ r.className = classMap[r.classId] || r.classId || ''; });
+    const hofTop = hofRuns.filter(r=>r.sec>0).sort((a,b)=> a.sec - b.sec).slice(0, 10);
 
     // Render
+    function timeBadge(sec){ if(sec<=30) return '<span class="lb-badge">⚡ Sub-30s</span>'; if(sec<=45) return '<span class="lb-badge">🚀 Sub-45s</span>'; if(sec<=60) return '<span class="lb-badge">🏃 Sub-60s</span>'; return ''; }
+    function renderPodium(host, rows, isClass){
+      if(!rows.length){ host.innerHTML='<div class="lb-empty">No contenders</div>'; return; }
+      const podium = rows.slice(0,3);
+      host.innerHTML = podium.map((r,i)=>{
+        const tier = i===0? 'gold' : i===1? 'silver' : 'bronze';
+        const who = isClass ? (r.className||'—') : (r.name||'—');
+        const sub = isClass ? `${r.n} samples • Best ${r.bestSec? fmtSec(r.bestSec):'—'}` : `${r.className||'—'} • ${r.n} samples`;
+        return `<div class="pod ${tier}"><div><div class="who">${who}</div><div class="info">${sub}</div><div class="lb-badges">${timeBadge(r.avgSec)}</div></div><div class="time">${fmtSec(r.avgSec)}</div></div>`;
+      }).join('');
+    }
     function renderList(host, rows, subfmt){
       if(!rows.length){ host.innerHTML = '<li class="lb-empty">No records in range.</li>'; return; }
       const fastest = rows[0]?.avgSec || 1;
@@ -205,6 +292,7 @@
             <div>
               <div class="lb-name">${r.className? (r.name? r.name : r.className) : (r.name||'—')}</div>
               <div class="lb-sub">${subfmt(r)}</div>
+              <div class="lb-badges">${timeBadge(r.avgSec)}</div>
               <div class="lb-bar" aria-hidden="true"><span style="width:${(pct*100).toFixed(0)}%"></span></div>
             </div>
             <div class="lb-time">${fmtSec(r.avgSec)}</div>
@@ -212,6 +300,8 @@
       }).join('');
     }
 
+    renderPodium(classPodium, classRows, true);
+    renderPodium(studentPodium, studentRows, false);
     renderList(classList, classRows, r=>`${r.className} • ${r.n} samples`);
     renderList(studentList, studentRows, r=>`${r.className||'—'} • ${r.n} samples`);
 
@@ -219,11 +309,23 @@
     classMeta.textContent = classRows.length ? `Top ${classRows.length}` : '—';
     studentMeta.textContent = studentRows.length ? `Top ${studentRows.length}` : '—';
 
+    // Hall of Fame render
+    if (!hofTop.length) { hofList.innerHTML='<li class="lb-empty">No single-run records yet.</li>'; }
+    else {
+      hofMeta.textContent = `Top ${hofTop.length} fastest runs`;
+      hofList.innerHTML = hofTop.map((r,i)=>{
+        const medalClass = i===0? 'rank-1' : i===1? 'rank-2' : i===2? 'rank-3' : '';
+        return `<li class="lb-row"><div class="lb-rank ${medalClass}">${i+1}</div><div><div class="lb-name">${r.name||'—'}</div><div class="lb-sub">${r.className||'—'}</div></div><div class="lb-time">${fmtSec(r.sec)}</div></li>`;
+      }).join('');
+    }
+
     // Celebrate if we have winners
     if (classRows.length || studentRows.length) { try { confettiBurst(); } catch {} }
   }
 
   rangeSel.addEventListener('change', buildLeaderboard);
+  minSamplesSel.addEventListener('change', buildLeaderboard);
+  liveModeCb.addEventListener('change', () => setLiveMode(!!liveModeCb.checked));
   buildLeaderboard();
   </script>
 </body>
