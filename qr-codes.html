@@ -213,7 +213,7 @@
     }
 
     api = await loadApi();
-    const { init, onCarGroups, onStudents } = api;
+  const { init, onCarGroups, onStudents, onCars } = api;
 
     // Elements
     const grid = document.getElementById('grid');
@@ -287,19 +287,14 @@
 
     function setTight(v){ grid.classList.toggle('qr-tight', !!v); }
 
-    function collectTags(groups){
-      const map = new Map();
-      for (const g of (groups||[])){
-        const family = g.name || g.family || '';
-        for (const t of (g.tags || g.tagList || [])){
-          const T = normTag(t);
-          if (!T) continue;
-          if (!map.has(T)) map.set(T, family);
-        }
+    // Legacy+groups: tags from onCars map (preferred over composing from groups only)
+    function tagsFromCarsMap(map){
+      const arr = [];
+      for (const [tag, name] of Object.entries(map || {})){
+        const T = normTag(tag);
+        if (!T) continue; arr.push({ tag: T, name: name || '' });
       }
-      return Array.from(map.entries())
-        .map(([tag, name]) => ({ tag, name }))
-        .sort((a,b)=>a.tag.localeCompare(b.tag));
+      return arr.sort((a,b)=>a.tag.localeCompare(b.tag));
     }
 
     function collectRideShares(groups){
@@ -1021,11 +1016,22 @@
       try { if (typeof init === 'function') await init(); } catch (e) { console.warn('init failed', e); }
 
       try {
+        // Families/tags from both legacy and groups
+        if (typeof onCars === 'function') {
+          onCars(map => {
+            try { tags = tagsFromCarsMap(map); } catch { tags = []; }
+            if (!modeStudents.checked) renderList();
+            updateCounts();
+          });
+        }
+      } catch (e) { console.warn('onCars failed', e); }
+
+      try {
+        // Ride shares still sourced from groups
         if (typeof onCarGroups === 'function') {
           onCarGroups(groups => {
-            tags = collectTags(groups);
             rideShares = collectRideShares(groups);
-            if (!modeStudents.checked) renderList();
+            if (!modeStudents.checked && includeRideShares?.checked) renderList();
             updateCounts();
           });
         }
