@@ -112,6 +112,9 @@
 
   <div class="qr-toolbar" role="toolbar" aria-label="QR options">
       <label class="inline-flex">
+        <input id="simpleMode" type="checkbox" checked /> Simple
+      </label>
+      <label class="inline-flex" id="wrapModeStudents">
         <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> All Students
       </label>
       <span id="modeHelp" class="sr-only">Toggle to list all students instead of car tags</span>
@@ -152,7 +155,10 @@
       <button id="downloadZip" class="btn btn-secondary" type="button" aria-label="Download ZIP of PNGs">Download ZIP</button>
       <button id="downloadPdf" class="btn btn-outline" type="button" aria-label="Download PDF of labels">Download PDF</button>
     </div>
-    <div class="small muted print-hint" style="margin:-4px 0 14px;">Printing tips: Set scale to 100% (no “fit to page”), disable headers/footers. For Avery labels use Chrome/Edge for most accurate alignment.</div>
+    <div class="small muted print-hint" style="margin:-4px 0 8px;">Printing tips: PDF is recommended for best alignment. If you use the browser’s Print, set scale 100% (no fit), disable headers/footers; Chrome/Edge align best for Avery.</div>
+    <div id="rsHelp" class="small muted" style="margin:-2px 0 14px;">
+      Ride Share codes: turn on “Ride Shares” above to list them, then Download PDF/ZIP. You can also encode a code manually using <code>rs=YOUR_TOKEN</code>.
+    </div>
     <div id="countSummary" class="small muted" aria-live="polite" style="margin:-6px 0 10px;">
       
     </div>
@@ -216,7 +222,9 @@
     const errors = document.getElementById('errors');
     const helpers = document.getElementById('helpers');
 
-    const q = document.getElementById('q');
+  const q = document.getElementById('q');
+  const simpleMode = document.getElementById('simpleMode');
+  const wrapModeStudents = document.getElementById('wrapModeStudents');
     const cols = document.getElementById('cols');
     const sizeSel = document.getElementById('size');
     const tight = document.getElementById('tight');
@@ -226,7 +234,7 @@
   const includeRideShares = document.getElementById('includeRideShares');
     const btnAll = document.getElementById('selectAll');
     const btnClr = document.getElementById('clearSel');
-    const btnPrint = document.getElementById('print');
+  const btnPrint = document.getElementById('print');
     const btnZip = document.getElementById('downloadZip');
     const btnPdf = document.getElementById('downloadPdf');
 
@@ -261,6 +269,22 @@
       grid.classList.remove('qr-cols-2','qr-cols-3','qr-cols-4');
       grid.classList.add('qr-cols-' + n);
     }
+    // Simple mode UI toggles
+    function applySimpleMode(){
+      const simple = !!(simpleMode && simpleMode.checked);
+      // Hide advanced layout controls when simple
+      wrapModeStudents?.classList.toggle('hidden', simple);
+      cols?.classList.toggle('hidden', simple);
+      sizeSel?.classList.toggle('hidden', simple);
+      tight?.closest('label')?.classList.toggle('hidden', simple);
+      showNames?.closest('label')?.classList.toggle('hidden', simple);
+      // Demote browser Print in simple mode
+      btnPrint?.classList.toggle('hidden', simple);
+      // CSV helpers are shown only when All Students mode AND not simple
+      if (simple) helpers.classList.add('hidden');
+      // Keep layout, includeRideShares, filter, selection, PDF/ZIP always visible
+    }
+
     function setTight(v){ grid.classList.toggle('qr-tight', !!v); }
 
     function collectTags(groups){
@@ -813,12 +837,13 @@
     }
 
     // UI wiring
-    cols.addEventListener('change', () => setCols(cols.value));
+  cols.addEventListener('change', () => setCols(cols.value));
     sizeSel.addEventListener('change', renderList);
     layoutSel.addEventListener('change', () => {/* used at print-time */});
     q.addEventListener('input', renderList);
     tight.addEventListener('change', () => setTight(tight.checked));
   showNames.addEventListener('change', renderList);
+  simpleMode.addEventListener('change', () => { applySimpleMode(); saveOpts(); });
   if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
     modeStudents.addEventListener('change', () => {
       selected.clear();
@@ -946,7 +971,7 @@
     }
 
     // Persist settings
-  const LSKEY = 'ttd.qr.opts.v2';
+    const LSKEY = 'ttd.qr.opts.v3';
     function saveOpts(){
       try{
         const o = {
@@ -957,7 +982,8 @@
           layout: layoutSel.value,
           modeStudents: !!modeStudents.checked,
           q: q.value || '',
-          includeRideShares: !!(includeRideShares && includeRideShares.checked)
+          includeRideShares: !!(includeRideShares && includeRideShares.checked),
+          simple: !!(simpleMode && simpleMode.checked)
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -975,6 +1001,7 @@
         if (typeof o.modeStudents === 'boolean') modeStudents.checked = o.modeStudents;
         if (typeof o.q === 'string') q.value = o.q;
         if (typeof o.includeRideShares === 'boolean' && includeRideShares) includeRideShares.checked = o.includeRideShares;
+        if (typeof o.simple === 'boolean' && simpleMode) simpleMode.checked = o.simple;
       }catch{}
     }
 
@@ -1029,13 +1056,15 @@
       }
     }
 
-    setCols(cols.value);
+  setCols(cols.value);
     setTight(tight.checked);
     updateCounts();
     whenClaimsReady(bootstrap);
+  // Apply simple mode after bootstrap of opts
+  applySimpleMode();
 
     // Persist on changes
-    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q, includeRideShares].forEach(el => {
+    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q, includeRideShares, simpleMode].forEach(el => {
       el.addEventListener('change', saveOpts);
       el.addEventListener('input', saveOpts);
     });

@@ -383,16 +383,21 @@
   // Removed sound feedback for callers (silent operations)
   function ding(){ /* no-op */ }
 
-    // Call Ride Share by tag — mirrors master.html fallback chain
+    // Call by identifier: prefers car tag, but recognizes ride share tokens too
     async function callRideShareByTag(tag){
       const TAG = String(tag||'').toUpperCase();
       const grp = tagToGroup[TAG];
+      const rsGrp = rideShareToGroup[TAG];
       ding();
+      // 1) If this matches a normal car tag, call that family/group first
       if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
       if (grp && Array.isArray(grp.tags) && grp.tags.length) {
         const tags = grp.tags.map(t => String(t||'').toUpperCase());
         return Promise.allSettled(tags.map(t => setStatusForTag(t, 'called')));
       }
+      // 2) If it looks like a ride share token, apply ride-share wide
+      if (rsGrp && setStatusForRideShare) return setStatusForRideShare(TAG, 'called');
+      // 3) Fallback: treat as plain tag
       if (grp?.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
       return setStatusForTag(TAG, 'called');
     }
@@ -715,8 +720,19 @@
 
       // 1. Ride share direct
       if(rideShare){
-        callRideShareByTag(rideShare)
-          .then(()=>showToast('Ride share called'))
+        const RS = rideShare.toUpperCase();
+        const grp = rideShareToGroup[RS];
+        (setStatusForRideShare ? setStatusForRideShare(RS, 'called') : Promise.resolve())
+          .then(() => {
+            // Optional: highlight tiles for a known ride share group
+            try {
+              if (grp && Array.isArray(grp.tags)) {
+                const toHi = grp.tags.map(t => normScanKey(String(t||'')));
+                for (const k of toHi) { (carTagIndex.get(k)||[]).forEach(st => highlightStudentTile(st.id)); }
+              }
+            } catch {}
+            showToast('Ride share called');
+          })
           .catch(err=>{ console.warn('[scan] ride share call failed', err); showToast('RS not found'); });
         return;
       }
