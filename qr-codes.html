@@ -115,7 +115,10 @@
         <input id="simpleMode" type="checkbox" checked /> Simple
       </label>
       <label class="inline-flex" id="wrapModeStudents">
-        <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> All Students
+        <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> Students
+      </label>
+      <label class="inline-flex" id="wrapRideShares">
+        <input id="includeRideShares" type="checkbox" /> Ride Shares
       </label>
       <span id="modeHelp" class="sr-only">Toggle to list all students instead of car tags</span>
 
@@ -146,14 +149,11 @@
         <option value="square3">Square 3×3 in</option>
         <option value="nameqr">Large Name + QR rows</option>
       </select>
-      <label class="inline-flex">
-        <input id="includeRideShares" type="checkbox" /> Ride Shares
-      </label>
       <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
       <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
-      <button id="downloadZip" class="btn btn-secondary" type="button" aria-label="Download ZIP of PNGs">Download ZIP</button>
-      <button id="downloadPdf" class="btn btn-outline" type="button" aria-label="Download PDF of labels">Download PDF</button>
+      <button id="downloadZip" class="btn btn-secondary" type="button" aria-label="Download ZIP of PNG images">Download ZIP (images)</button>
+      <button id="downloadPdf" class="btn btn-outline" type="button" aria-label="Download printable PDF of labels">Download PDF (printable)</button>
     </div>
     <div class="small muted print-hint" style="margin:-4px 0 8px;">Printing tips: PDF is recommended for best alignment. If you use the browser’s Print, set scale 100% (no fit), disable headers/footers; Chrome/Edge align best for Avery.</div>
     <div id="rsHelp" class="small muted" style="margin:-2px 0 14px;">
@@ -225,6 +225,7 @@
   const q = document.getElementById('q');
   const simpleMode = document.getElementById('simpleMode');
   const wrapModeStudents = document.getElementById('wrapModeStudents');
+  const wrapRideShares = document.getElementById('wrapRideShares');
     const cols = document.getElementById('cols');
     const sizeSel = document.getElementById('size');
     const tight = document.getElementById('tight');
@@ -273,7 +274,9 @@
     function applySimpleMode(){
       const simple = !!(simpleMode && simpleMode.checked);
       // Hide advanced layout controls when simple
-      wrapModeStudents?.classList.toggle('hidden', simple);
+      // Keep Students and Ride Shares visible in Simple mode
+      wrapModeStudents?.classList.toggle('hidden', false);
+      wrapRideShares?.classList.toggle('hidden', false);
       cols?.classList.toggle('hidden', simple);
       sizeSel?.classList.toggle('hidden', simple);
       tight?.closest('label')?.classList.toggle('hidden', simple);
