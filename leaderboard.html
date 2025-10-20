@@ -155,9 +155,21 @@
     if (on){ liveTimer = setInterval(()=>{ buildLeaderboard().catch(()=>{}); }, 60000); }
   }
 
+  // Wait until tenant context (orgId & schoolId) is ready
+  async function waitForContext(maxMs=15000){
+    const start = Date.now();
+    while (Date.now() - start < maxMs){
+      const ok = !!(window.SD?.orgId && window.SD?.schoolId);
+      if (ok) return true;
+      // Also break early after claims-ready event
+      await new Promise(r => setTimeout(r, 120));
+    }
+    return !!(window.SD?.orgId && window.SD?.schoolId);
+  }
+
   async function buildLeaderboard(){
     const fs = getFirestore();
-    const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid){ lbMeta.textContent='Missing org/school context'; return; }
+    const oid = window.SD?.orgId, sid = window.SD?.schoolId; if(!oid||!sid){ lbMeta.textContent='Waiting for school context…'; return; }
     lbMeta.textContent='Loading…'; classMeta.textContent='—'; studentMeta.textContent='—'; classList.innerHTML=''; studentList.innerHTML='';
     classPodium.innerHTML=''; studentPodium.innerHTML=''; hofList.innerHTML=''; hofMeta.textContent='—';
 
@@ -326,7 +338,11 @@
   rangeSel.addEventListener('change', buildLeaderboard);
   minSamplesSel.addEventListener('change', buildLeaderboard);
   liveModeCb.addEventListener('change', () => setLiveMode(!!liveModeCb.checked));
-  buildLeaderboard();
+  // Rebuild when context arrives or changes
+  document.addEventListener('sd:claims-ready', () => { buildLeaderboard().catch(()=>{}); });
+  document.addEventListener('sd:school-changed', () => { buildLeaderboard().catch(()=>{}); });
+  // Initial bootstrap once context is ready
+  (async () => { await waitForContext(15000); await buildLeaderboard(); })();
   </script>
 </body>
 </html>
