@@ -1,132 +1,228 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Time To Dismiss</title>
+  <title>Time To Dismiss — Dismissal, Organized</title>
 
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <link rel="stylesheet" href="/styles.css?v=2025-09-05-MC3" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
   <link rel="preconnect" href="https://www.gstatic.com" />
-  <script>
-    (function(){
-      try{
-  const KEY='SD_SW_PURGE_2025-09-05-HDR3';
-        if(!localStorage.getItem(KEY)){
-          if('serviceWorker' in navigator){ navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{}); }
-          if(window.caches&&caches.keys){ caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k)))).catch(()=>{}); }
-          localStorage.setItem(KEY,'1');
-        }
-      }catch(e){}
-    try{ console.log('[TTD] Page BUILD','2025-09-05-HDR3'); }catch{}
-    })();
-  </script>
   <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+
+  <!-- Scoped homepage styles matching Prototype 3 vibe -->
+  <style>
+    :root{
+      --hp-max: 1200px; --hp-gap:18px; --hp-radius:14px; --hp-border:#e5e7eb; --hp-muted:#475569;
+      --hp-accent: var(--primary, #4f46e5); --hp-accent-2:#4338ca; --hp-dark:#0f172a; --hp-shadow:0 8px 24px rgba(15,23,42,.08);
+    }
+    .wrap{ max-width: var(--hp-max); margin:0 auto; padding: 0 18px; }
+    .section{ padding: 64px 0; }
+    @media (min-width: 880px){ .section{ padding: 88px 0; } }
+    .center{ text-align:center; }
+
+    /* HERO (borrowed from Prototype 3 with glass + glow) */
+  .hero{ position:relative; min-height:64vh; display:grid; place-items:center; color:#fff; overflow:hidden; }
+  /* Softer overlay */
+  .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(2,6,23,.35) 0%, rgba(2,6,23,.42) 35%, rgba(2,6,23,.62) 100%); z-index:1; }
+  /* Aurora color wash */
+  .hero::after{ content:''; position:absolute; inset:-20% -20% -10% -20%; background: conic-gradient(from 180deg at 50% 35%, rgba(79,70,229,.28), rgba(99,102,241,.18), rgba(56,189,248,.22), rgba(16,185,129,.16), rgba(79,70,229,.28)); filter: blur(70px) saturate(140%); opacity:.8; z-index:1; animation: aurora 22s ease-in-out infinite; }
+    .hero-bg{ position:absolute; inset:0; background-image:url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670'); background-size:cover; background-position:center; transform: scale(1.1); z-index:0; }
+    .hero-inner{ position:relative; z-index:2; max-width: 980px; padding: 22px; text-align:center; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); border-radius:18px; box-shadow: 0 20px 50px rgba(2,6,23,.25); }
+    .eyebrow{ display:inline-block; background: rgba(255,255,255,.14); padding:6px 12px; border-radius:999px; font-weight:700; letter-spacing:.02em; }
+    .hero h1{ font-size: clamp(2rem, 2.4vw + 1rem, 3rem); line-height:1.08; margin:10px 0 8px; text-shadow:0 2px 12px rgba(0,0,0,.25); }
+    .lead{ color: rgba(255,255,255,.92); font-weight:600; max-width:68ch; margin: 0 auto; text-shadow: 0 1px 6px rgba(0,0,0,.18); }
+    .cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px; }
+    .btn{ appearance:none; border:1px solid transparent; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+    .btn.primary{ background:var(--hp-accent); color:#fff; }
+    .btn.primary:hover{ background:var(--hp-accent-2); }
+    .btn.ghost{ background:#fff; color:var(--hp-accent); border-color:var(--hp-border); }
+
+    /* Icon strip */
+    .icon-strip{ display:grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap:16px; border:1px solid var(--hp-border); border-radius:14px; padding:16px; background:#fff; box-shadow: var(--hp-shadow); }
+    .icon-pill{ display:flex; flex-direction:column; align-items:center; gap:8px; font-weight:800; color:#0f172a; }
+    .icon{ width:54px; height:54px; border-radius:50%; display:grid; place-items:center; background:#eef2ff; color:#3730a3; border:1px solid #e0e7ff; font-size:24px; }
+
+    /* Benefits band */
+    .band{ background: linear-gradient(180deg, #0b1220, #111827); color:#cbd5e1; margin:40px 0; padding: 48px 0; }
+    .benefits{ display:grid; gap:18px; }
+    @media (min-width: 900px){ .benefits{ grid-template-columns: repeat(3,1fr);} }
+    .benefit{ border:1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.15); border-radius:14px; padding:18px; }
+    .benefit h3{ margin:0 0 6px; color:#fff; }
+
+    /* Feature grid */
+    .grid{ display:grid; gap:18px; }
+    @media (min-width: 900px){ .grid.cols-3{ grid-template-columns: repeat(3,1fr);} .grid.cols-4{ grid-template-columns: repeat(4,1fr);} }
+    .card{ background:#fff; border:1px solid var(--hp-border); border-radius:var(--hp-radius); padding:16px; box-shadow: var(--hp-shadow); }
+    .card img{ width:100%; height:auto; border-radius:12px; margin-top:10px; }
+    .muted{ color:var(--hp-muted); }
+
+    /* Split section */
+    .split{ display:grid; gap:28px; align-items:center; }
+    @media (min-width: 980px){ .split{ grid-template-columns: 1fr 1.1fr; } }
+    .split-image{ border-radius:16px; overflow:hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,.5); height: 420px; background:#000; }
+    .split-image img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+    /* CTA band */
+    .cta-band{ background:#0b1220; color:#fff; border-radius:16px; padding:24px; text-align:center; }
+
+    /* Motion */
+    .animatable{ opacity:0; transform: translateY(26px); transition: opacity .9s ease, transform .9s ease; }
+    .animatable.is-visible{ opacity:1; transform:none; }
+    [data-delay="1"]{ transition-delay:.1s; }
+    [data-delay="2"]{ transition-delay:.2s; }
+    [data-delay="3"]{ transition-delay:.3s; }
+
+    @keyframes aurora{ 0%{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1.05);} 50%{ transform: translate3d(4%, 1%, 0) rotate(8deg) scale(1.08);} 100%{ transform: translate3d(-4%, -2%, 0) rotate(0deg) scale(1.05);} }
+    @media (prefers-reduced-motion: reduce){ .hero::after{ animation: none; } }
+    /* Curved divider to white */
+    .hero-wave{ position:absolute; bottom:-1px; left:0; right:0; height:110px; z-index:2; pointer-events:none; }
+    @media (max-width: 760px){ .icon-strip{ grid-template-columns: repeat(3, minmax(0,1fr)); } }
+  </style>
 </head>
 <body class="sd-body">
-  <!-- Universal header injected by /site-header.js -->
+  <!-- Header injected by site-header.js -->
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="container hero-inner">
-      <h1>Fast, calm, and organized dismissal.</h1>
-      <p>Call once. Every classroom sees the update immediately — no shouting, no chaos. A smooth, silent flow to the end of day.</p>
-      <!-- Streamlined: remove redundant mid-page CTAs; go straight into features -->
-    </div>
-  </section>
-
-  <!-- Features promoted directly under hero -->
-  <section class="features" id="features">
-    <div class="container">
-  <h2 class="section-title">Available now</h2>
-      <div class="grid">
-        <article class="card">
-          <h3>One Tap Calling</h3>
-          <p>From the master caller page, mark a car and push. Every class page refreshes instantly.</p>
-        </article>
-        <article class="card">
-          <h3>Classroom-Ready</h3>
-          <p>Large, clean layout built for projectors or TVs. Students see exactly when their ride arrives.</p>
-        </article>
-        <article class="card">
-          <h3>Ride Share Groups</h3>
-          <p>Group related tags into ride shares and call them together when needed.</p>
-        </article>
-        <article class="card">
-          <h3>Secure Access</h3>
-          <p>Staff log in to manage calls. Public class pages display status only — no sensitive data.</p>
-        </article>
-        <article class="card">
-          <h3>QR Code Scanning</h3>
-          <p>Scan with a Bluetooth barcode scanner or your device camera — fast calls with no extra setup.</p>
-        </article>
-        <article class="card">
-          <h3>Printable QR Tags</h3>
-          <p>Generate and print car/ride-share QR codes sized for common label sheets.</p>
-        </article>
-        <article class="card">
-          <h3>Bulk Import Tools</h3>
-          <p>CSV import for students, classes, and ride shares to get up and running fast.</p>
-        </article>
-        <article class="card">
-          <h3>Role-Based Admin</h3>
-          <p>Assign caller, teacher, and admin roles to keep access simple and safe.</p>
-        </article>
-      </div>
-
-  <h2 class="section-title section-title--spaced">Coming soon</h2>
-      <div class="grid">
-        <article class="card">
-          <h3>Buses & Lanes</h3>
-          <p>Dedicated bus workflows and lane assignment/wayfinding for complex pickup zones.</p>
-        </article>
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-bg" id="hero-bg"></div>
+    <div class="hero-inner animatable">
+      <span class="eyebrow">Dismissal, Organized</span>
+      <h1>Fast, calm, and coordinated school pick‑up</h1>
+      <p class="lead">Call once and every classroom updates instantly. No shouting, no walkies — just a smooth, silent end‑of‑day flow.</p>
+      <div class="cta">
+        <a class="btn primary" href="#overview">See how it works</a>
+        <a class="btn ghost" href="/contact.html">Request a demo</a>
       </div>
     </div>
-  </section>
+    <div class="hero-wave" aria-hidden="true">
+      <svg viewBox="0 0 1440 120" preserveAspectRatio="none" width="100%" height="100%">
+        <path d="M0,96 C240,48 480,144 720,96 C960,48 1200,0 1440,72 L1440,120 L0,120 Z" fill="#ffffff" opacity="1"></path>
+      </svg>
+    </div>
+  </header>
 
-  <!-- How it works -->
-  <section class="how">
-    <div class="container">
-      <h2>How it works</h2>
-      <ol class="steps">
-  <li><strong>Caller opens</strong> the master page.</li>
-        <li><strong>Caller selects</strong> a car, student, or group.</li>
-        <li><strong>Class pages update</strong> in real time — students head out calmly.</li>
-      </ol>
-      <div class="how-cta">
-  <a class="btn btn-primary" href="/how-it-works.html">See full walkthrough</a>
-  <a class="btn btn-outline" href="mailto:info@timetodismiss.com">Contact us</a>
+  <main>
+    <!-- ICON STRIP -->
+    <section class="section">
+      <div class="wrap">
+        <div class="icon-strip animatable">
+          <div class="icon-pill"><div class="icon">🚗</div><div>Carline</div></div>
+          <div class="icon-pill"><div class="icon">🚌</div><div>Bus</div></div>
+          <div class="icon-pill"><div class="icon">🚶‍♂️</div><div>Walker</div></div>
+          <div class="icon-pill"><div class="icon">🚴‍♀️</div><div>Bike</div></div>
+          <div class="icon-pill"><div class="icon">🤝</div><div>Carpool</div></div>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Status disclaimer moved to bottom for less friction while still visible -->
-  <section>
-    <div class="container mt-14">
-      <div class="banner-warning">
-        <strong>Under development, but functioning:</strong> Actively used in pilots while we continue to polish features. The first 3 schools get the first year free.
+    <!-- BENEFITS BAND -->
+    <section class="band">
+      <div class="wrap">
+        <h2 class="center animatable">Why schools choose Time To Dismiss</h2>
+        <div class="benefits" style="margin-top:14px;">
+          <article class="benefit animatable" data-delay="1"><h3>Speed without stress</h3><p>Scan a tag or select a ride share; students appear instantly on every classroom display.</p></article>
+          <article class="benefit animatable" data-delay="2"><h3>One source of truth</h3><p>Master view prevents duplicate calls and keeps everyone aligned.</p></article>
+          <article class="benefit animatable" data-delay="3"><h3>Works anywhere</h3><p>Laptops, tablets, projectors, TVs — just open a link, no app installs required.</p></article>
+        </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Footer -->
-  <footer class="site-footer">
-    <div class="container footer-inner">
-      <p>© <span id="year"></span> Time To Dismiss. All rights reserved.</p>
-      <nav class="footer-nav" aria-label="Footer">
-        <a href="/privacy.html">Privacy</a>
-        <a href="/terms.html">Terms</a>
-  <a href="mailto:info@timetodismiss.com">Contact</a>
-      </nav>
-    </div>
-  </footer>
+    <!-- OVERVIEW / FEATURES -->
+    <section id="overview" class="section" aria-labelledby="features-h">
+      <div class="wrap">
+        <h2 id="features-h" class="animatable">Everything you need for dismissal</h2>
+        <div class="grid cols-3" style="margin-top:14px;">
+          <article class="card animatable" data-delay="1">
+            <img src="/Pictures/calling1.png" alt="Master caller page" />
+            <h3 style="margin:10px 0 4px;">One‑click sessions</h3>
+            <p class="muted">Start a dismissal and sync every classroom instantly.</p>
+          </article>
+          <article class="card animatable" data-delay="2">
+            <img src="/Pictures/calling2.png" alt="Search and filters" />
+            <h3 style="margin:10px 0 4px;">Smart calling & scanning</h3>
+            <p class="muted">Device camera or Bluetooth scanner — plus fast search and class filters.</p>
+          </article>
+          <article class="card animatable" data-delay="3">
+            <img src="/Pictures/calling3.png" alt="Ride share groups" />
+            <h3 style="margin:10px 0 4px;">Ride share groups</h3>
+            <p class="muted">Call siblings and carpools together in a single tap.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLASSROOM SPLIT -->
+    <section class="section" aria-labelledby="classroom-h">
+      <div class="wrap">
+        <div class="split animatable">
+          <div class="split-image"><img src="/Pictures/classroom1.png" alt="Projector‑friendly classroom display" /></div>
+          <div>
+            <span class="eyebrow" style="background: rgba(0,0,0,.1); color:#0f172a;">Classroom</span>
+            <h2 id="classroom-h">Projector‑friendly, calm classrooms</h2>
+            <p class="muted">Large, high‑contrast names and real‑time updates keep rooms quiet and students moving calmly to the right place.</p>
+            <ul class="muted" style="margin:12px 0 0; padding-left:18px;">
+              <li>Real‑time updates highlighted at the top</li>
+              <li>Works on TVs, tablets, and laptops</li>
+              <li>One source of truth for every room</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ROLES -->
+    <section class="section" aria-labelledby="roles-h">
+      <div class="wrap">
+        <h2 id="roles-h" class="animatable">Built for every role</h2>
+        <div class="grid cols-4" style="margin-top:14px;">
+          <article class="card center animatable" data-delay="1"><img src="/admin.png" alt="Admin icon" style="width:64px; height:64px;" /><h3>Administrators</h3><p class="muted">Roster imports, simple setup, clear oversight.</p></article>
+          <article class="card center animatable" data-delay="2"><img src="/caller.png" alt="Caller icon" style="width:64px; height:64px;" /><h3>Callers</h3><p class="muted">Search, filter, or scan — fast and reliable.</p></article>
+          <article class="card center animatable" data-delay="3"><img src="/classicon.png" alt="Teacher icon" style="width:64px; height:64px;" /><h3>Teachers</h3><p class="muted">Quiet flow with big, readable displays.</p></article>
+          <article class="card center animatable" data-delay="3"><img src="/superintendent.png" alt="District icon" style="width:64px; height:64px;" /><h3>Districts</h3><p class="muted">Consistency across campuses, browser‑based.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <!-- QUICK LINKS / CTA -->
+    <section class="section" aria-label="Next steps">
+      <div class="wrap">
+        <div class="cta-band animatable">
+          <h2 style="margin:0 0 6px;">Ready to simplify dismissal?</h2>
+          <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">See a short walkthrough or talk with us about your pickup flow.</p>
+          <div class="cta" style="justify-content:center; margin:0;">
+            <a class="btn primary" href="/how-it-works-prototype-3.html">See how it works</a>
+            <a class="btn ghost" href="/contact.html">Request a demo</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <script>
-    // Year
-    const y = document.getElementById('year');
-    if (y) y.textContent = new Date().getFullYear();
+    // Parallax hero background
+    const heroBg = document.getElementById('hero-bg');
+    window.addEventListener('scroll', () => {
+      const y = window.pageYOffset || 0;
+      if(heroBg){ heroBg.style.transform = `translate3d(0, ${y * 0.4}px, 0) scale(1.1)`; }
+    }, { passive:true });
+
+    // IntersectionObserver to reveal animatables
+    const animatables = document.querySelectorAll('.animatable');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
+    }, { threshold: 0.12 });
+    animatables.forEach(a => obs.observe(a));
+
+    // Smooth scroll for internal anchors
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', (e) => {
+        const id = a.getAttribute('href');
+        if(id && id.startsWith('#') && id.length > 1){ e.preventDefault(); const el = document.querySelector(id); if(el) el.scrollIntoView({ behavior:'smooth', block:'start' }); }
+      });
+    });
   </script>
 </body>
 </html>
