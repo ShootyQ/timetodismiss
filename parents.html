@@ -211,17 +211,43 @@
       function setSignedIn(){ out.style.display = 'none'; }
 
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
-      function applyFromClaims(claims){
+      async function loadLinkedStudents(uid){
+        try {
+          const { getFirestore, collectionGroup, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const fs = getFirestore();
+          const qy = query(collectionGroup(fs, 'guardians'), where('uid', '==', uid));
+          const snap = await getDocs(qy);
+          const results = [];
+          for (const d of snap.docs){
+            try {
+              const studentRef = d.ref.parent.parent; // .../students/{studentId}
+              if (!studentRef) continue;
+              const sSnap = await studentRef.get();
+              if (!sSnap.exists) continue;
+              const s = sSnap.data() || {};
+              const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
+              results.push({ id: studentRef.id, name });
+            } catch {}
+          }
+          return results;
+        } catch (e) {
+          console.warn('[parents] loadLinkedStudents failed', e);
+          return [];
+        }
+      }
+
+      async function applyFromClaims(claims){
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
-        // Placeholder sample data until backend is wired
-        renderPasses([
-          { student: 'Ava Johnson', status: 'Valid now', window: '2:30–4:00 PM' },
-          { student: 'Micah Johnson', status: 'Not yet valid', window: '2:30–4:00 PM' }
-        ]);
-        renderGrants([
-          { name: 'Grandpa Joe', students: 'Ava · Micah', window: 'Wed only · 2:30–4:00 PM' }
-        ]);
+        const uid = claims.uid;
+        const linked = await loadLinkedStudents(uid);
+        if (!linked.length){
+          document.getElementById('passesSubtitle').textContent = 'No linked students yet. Once you claim an invite, your passes will appear here on pickup days.';
+          renderPasses([]);
+          return;
+        }
+        // Render a simple card per linked student for now; status/window to be populated when passes are issued
+        renderPasses(linked.map(s => ({ student: s.name, status: 'Linked', window: '' })));
       }
 
       // Listen for claims from site-header.js

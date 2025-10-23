@@ -37,8 +37,8 @@
         <div id="formCard" class="card" style="margin-top:10px;">
           <div class="grid">
             <div class="row">
-              <label>Student ID
-                <input id="studentId" placeholder="e.g., stu_123 or SIS ID" />
+              <label>Student (doc ID or SIS ID)
+                <input id="studentId" placeholder="e.g., student doc id or SIS ID" />
               </label>
               <label>Relationship
                 <select id="rel">
@@ -110,17 +110,44 @@
       const canAdmin = !!(roles && roles.admin);
       if (!canAdmin || !orgId || !schoolId){ setGuard(true); return; }
 
+      async function resolveStudentId(orgId, schoolId, input){
+        try{
+          const { getFirestore, doc, getDoc, collection, query, where, limit, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const fs = getFirestore();
+          // Try treating input as the student document id
+          try {
+            const ds = await getDoc(doc(fs,'orgs',orgId,'schools',schoolId,'students',input));
+            if (ds.exists()) { const d=ds.data()||{}; return { id: ds.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || ds.id }; }
+          } catch {}
+          // Try SIS id field
+          try {
+            const qy = query(collection(fs,'orgs',orgId,'schools',schoolId,'students'), where('id','==', input), limit(2));
+            const snap = await getDocs(qy);
+            if (snap.size === 1) { const doc0 = snap.docs[0]; const d=doc0.data()||{}; return { id: doc0.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || doc0.id, via:'sis' }; }
+            if (snap.size > 1) return { error: 'multiple' };
+          } catch {}
+          return { error: 'not-found' };
+        } catch(e){ return { error: 'lookup-failed', message: e?.message || String(e) }; }
+      }
+
       async function create(){
         const studentId = document.getElementById('studentId').value.trim();
         const email = document.getElementById('email').value.trim();
         const relationshipType = document.getElementById('rel').value;
         const daysValid = Number(document.getElementById('days').value) || 14;
         if (!studentId){ alert('Enter a student ID'); return; }
-        status.textContent = 'Creating…';
+        status.textContent = 'Looking up student…';
         try {
+          // Resolve the entered value to a real student document id
+          const resolved = await resolveStudentId(orgId, schoolId, studentId);
+          if (resolved?.error === 'not-found') { status.textContent=''; alert('Student not found. Enter the student document ID or the SIS ID from the roster.'); return; }
+          if (resolved?.error === 'multiple') { status.textContent=''; alert('Multiple students matched that SIS ID. Please use the student document ID instead.'); return; }
+          if (resolved?.error) { status.textContent=''; alert('Lookup failed. ' + (resolved.message || 'Try again.')); return; }
+
+          status.textContent = 'Creating…';
           const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('createGuardianInvite') : null;
           if (!call) throw new Error('Backend unavailable.');
-          const resp = await call({ orgId, schoolId, studentId, email: email||null, relationshipType, daysValid });
+          const resp = await call({ orgId, schoolId, studentId: resolved.id, email: email||null, relationshipType, daysValid });
           const data = (resp && resp.data) || resp || {};
           if (!data.ok) throw new Error('Failed to create invite');
           const link = location.origin + (data.link || '/claim.html');
