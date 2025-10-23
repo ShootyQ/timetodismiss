@@ -194,11 +194,14 @@
         try { await waitForContext(); } catch {}
         // Try backend callable first
         const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
-        const fns = getFunctions();
+        // Prefer compat helper wired to region from site-header, else force region in modular API
+        const compatCall = (globalThis.SD && typeof globalThis.SD.httpsCallable === 'function') ? globalThis.SD.httpsCallable : null;
+        const fns = compatCall ? null : getFunctions(undefined, 'us-central1');
         const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
         if (!orgId || !schoolId) throw new Error('Missing context for reset');
-        const resetFn = httpsCallable(fns, 'resetAllToWaiting');
-        const res = await resetFn({ orgId, schoolId });
+        const res = compatCall
+          ? await compatCall('resetAllToWaiting')({ orgId, schoolId })
+          : await httpsCallable(fns, 'resetAllToWaiting')({ orgId, schoolId });
         const changed = Number(res?.data?.changed || 0);
         return { changed };
       } catch (e) {
@@ -233,11 +236,13 @@
         try { await waitForContext(); } catch {}
         // Try backend callable first
         const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js');
-        const fns = getFunctions();
+        const compatCall = (globalThis.SD && typeof globalThis.SD.httpsCallable === 'function') ? globalThis.SD.httpsCallable : null;
+        const fns = compatCall ? null : getFunctions(undefined, 'us-central1');
         const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
         if (!orgId || !schoolId) throw new Error('Missing context for reset');
-        const resetFn = httpsCallable(fns, 'resetAllToWaiting');
-        const res = await resetFn({ orgId, schoolId });
+        const res = compatCall
+          ? await compatCall('resetAllToWaiting')({ orgId, schoolId })
+          : await httpsCallable(fns, 'resetAllToWaiting')({ orgId, schoolId });
         const changed = Number(res?.data?.changed || 0);
         return { changed };
       } catch (e) {

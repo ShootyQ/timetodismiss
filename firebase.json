@@ -13,6 +13,9 @@
   "/node_modules/"
 ],
     "cleanUrls": true,
+    "redirects": [
+      { "source": "/oldindex.html", "destination": "/index.html", "type": 301 }
+    ],
     "headers": [
       {
         "source": "**/*.{html,htm}",
