@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -31,7 +32,7 @@
 
     /* Utility */
     .hidden{ display:none !important; }
-    .qr-main{ padding:18px 0 28px; }
+    .q{ padding:18px 0 28px; }
     .qr-title{ margin:0 0 .4rem 0; }
     .qr-desc{ margin:.25rem 0 1rem; }
     .inline-flex{ display:flex; align-items:center; gap:6px; cursor:pointer; }
@@ -553,6 +554,7 @@
       }
       // Return the exact sequence used so caller (printNow) can mirror payload ordering
       return source;
+
     }
 
     // On-demand loaders
@@ -752,6 +754,7 @@
       doc.setFont('helvetica','bold'); doc.setFontSize((fonts.labelFont ? fonts.labelFont*72 : 12));
       doc.text(String(labelText||''), x + w/2, qrY + qrW + 0.12, { align: 'center', baseline: 'top', maxWidth: w*0.95 });
       if (rawName){ doc.setFont('helvetica','normal'); doc.setFontSize((fonts.nameFont ? fonts.nameFont*72 : 10)); doc.text(String(rawName), x + w/2, qrY + qrW + 0.35, { align: 'center', baseline: 'top', maxWidth: w*0.95 }); }
+
     }
 
     function printNow(printWin, items){
