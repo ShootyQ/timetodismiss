@@ -109,6 +109,9 @@
               <a href="/class.html" class="nav-icon" data-requires="viewer" aria-label="Classes" title="Classes">
                 <img src="/classicon.png" alt="Classes" width="26" height="26" decoding="async" style="display:block;" />
               </a>
+                <a href="/leaderboard.html" class="nav-icon" data-requires="viewer" aria-label="Leaderboard" title="Leaderboard">
+                  <img src="/leaderboard.png" alt="Leaderboard" width="26" height="26" decoding="async" style="display:block;" />
+                </a>
               <a href="/callerhub.html?stay=1"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
