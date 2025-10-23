@@ -171,6 +171,7 @@
             <a href="/callerhub.html?stay=1" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
             <a href="/leaderboard.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Leaderboard</a>
             <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
+            <a href="/guardian-invites.html" data-requires="admin" title="Guardian Invites" style="display:block !important; opacity:1 !important; visibility:visible !important;">Guardian Invites</a>
             <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
             <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
           </nav>
