@@ -142,8 +142,12 @@
       newInvite.addEventListener('click', () => { res.style.display = 'none'; status.textContent=''; document.getElementById('studentId').focus(); });
     }
 
-    window.addEventListener('sd:claims-ready', ready, { once: true });
-    if (window.SD && window.SD.claims) ready();
+    // Listen on document (site-header dispatches on document)
+    document.addEventListener('sd:claims-ready', ready, { once: true });
+    // If claims already present (fast path), initialize immediately
+    if (window.SD && window.SD.claims) {
+      try { ready(); } catch {}
+    }
   </script>
 </body>
 </html>
