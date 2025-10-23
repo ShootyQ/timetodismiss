@@ -111,20 +111,28 @@
       if (!canAdmin || !orgId || !schoolId){ setGuard(true); return; }
 
       async function resolveStudentId(orgId, schoolId, input){
+        // Use compat Firestore already initialized by site-header.js to avoid version mismatch
         try{
-          const { getFirestore, doc, getDoc, collection, query, where, limit, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-          const fs = getFirestore();
-          // Try treating input as the student document id
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (!db) return { error: 'no-db' };
+          // Try direct document id
           try {
-            const ds = await getDoc(doc(fs,'orgs',orgId,'schools',schoolId,'students',input));
-            if (ds.exists()) { const d=ds.data()||{}; return { id: ds.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || ds.id }; }
+            const ds = await db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students').doc(input).get();
+            if (ds.exists){
+              const d = ds.data() || {};
+              return { id: ds.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || ds.id };
+            }
           } catch {}
-          // Try SIS id field
+          // Try SIS id field (id)
           try {
-            const qy = query(collection(fs,'orgs',orgId,'schools',schoolId,'students'), where('id','==', input), limit(2));
-            const snap = await getDocs(qy);
-            if (snap.size === 1) { const doc0 = snap.docs[0]; const d=doc0.data()||{}; return { id: doc0.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || doc0.id, via:'sis' }; }
-            if (snap.size > 1) return { error: 'multiple' };
+            const qy = await db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students')
+              .where('id','==', input).limit(2).get();
+            if (qy.size === 1){
+              const doc0 = qy.docs[0];
+              const d = doc0.data() || {};
+              return { id: doc0.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || doc0.id, via:'sis' };
+            }
+            if (qy.size > 1){ return { error: 'multiple' }; }
           } catch {}
           return { error: 'not-found' };
         } catch(e){ return { error: 'lookup-failed', message: e?.message || String(e) }; }

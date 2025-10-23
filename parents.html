@@ -213,10 +213,9 @@
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
       async function loadLinkedStudents(uid){
         try {
-          const { getFirestore, collectionGroup, query, where, getDocs } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
-          const fs = getFirestore();
-          const qy = query(collectionGroup(fs, 'guardians'), where('uid', '==', uid));
-          const snap = await getDocs(qy);
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (!db) return [];
+          const snap = await db.collectionGroup('guardians').where('uid','==', uid).get();
           const results = [];
           for (const d of snap.docs){
             try {
