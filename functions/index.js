@@ -9,6 +9,7 @@ const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
 const { initializeApp }            = require('firebase-admin/app');
 const { getAuth }                  = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const crypto = require('crypto');
 
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
@@ -711,3 +712,131 @@ async function computeClaims(uid, email) {
       await orgRef.set({ usedSchools: docs.length, updatedAt: ts() }, { merge: true });
     }
   );
+
+  // ───────────────── Guardian Invites & Claims ─────────────────
+  function randomToken(bytes = 16){
+    try { return crypto.randomBytes(bytes).toString('base64url'); }
+    catch { return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); }
+  }
+  function shortCode8(){
+    const alphabet = 'ABCDEFGHJKMNPqrstuvwxyz23456789abcdefghjkmnpQRSTUVWXYZ';
+    let s = '';
+    for (let i = 0; i < 8; i++) s += alphabet[Math.floor(Math.random()*alphabet.length)];
+    return (s.slice(0,4) + '-' + s.slice(4)).toUpperCase();
+  }
+  function parseInvitePath(p){
+    // orgs/{orgId}/schools/{schoolId}/invites/{inviteId}
+    const seg = String(p||'').split('/');
+    if (seg.length < 6) return { orgId: null, schoolId: null, inviteId: null };
+    return { orgId: seg[1], schoolId: seg[3], inviteId: seg[5] };
+  }
+
+  // Admin/staff: create a guardian claim invite for a student
+  // Input: { orgId, schoolId, studentId, email?, relationshipType? }
+  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const { orgId, schoolId, studentId, email = null, relationshipType = 'primary', daysValid = 14 } = req.data || {};
+    if (!orgId || !schoolId || !studentId) throw new HttpsError('invalid-argument', 'orgId, schoolId, studentId required.');
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin for this school required.');
+
+    const invitesCol = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('invites');
+    const token = 'PT-' + randomToken(16); // Prefix avoids tag collisions
+    const code8 = shortCode8();
+    const inviteRef = invitesCol.doc();
+    const expiresAt = FieldValue.serverTimestamp(); // set placeholder, then backfill with absolute date in an extra write not needed — keep server TS and store daysValid
+
+    const payload = {
+      type: 'guardian-claim',
+      studentId: String(studentId),
+      relationshipType: String(relationshipType || 'primary'),
+      email: email ? String(email).trim() : null,
+      code8,
+      code8Lower: code8.replace(/-/g,'').toLowerCase(),
+      token,
+      status: 'pending',
+      orgId, schoolId,
+      daysValid: Math.max(1, Math.min(60, Number(daysValid)||14)),
+      createdAt: ts(),
+      expiresAt: FieldValue.increment(0) // purely to keep shape; validity enforced as createdAt + daysValid on read
+    };
+    await inviteRef.set(payload, { merge: true });
+
+    // Return link (client-host agnostic: relative path)
+    const inviteId = inviteRef.id;
+    const link = `/claim.html?inv=${encodeURIComponent(inviteId)}&token=${encodeURIComponent(token)}`;
+    return { ok: true, inviteId, code8, token, link };
+  });
+
+  // Signed-in guardian: claim invite via inv+token OR code
+  // Input: { inv, token } OR { code }
+  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const { inv, token, code } = req.data || {};
+
+    // Locate the invite doc
+    let docSnap = null; let docRef = null;
+    if (code) {
+      const codeKey = String(code).replace(/-/g,'').toLowerCase();
+      const q = await db.collectionGroup('invites')
+        .where('code8Lower','==', codeKey)
+        .where('status','==','pending')
+        .limit(1).get();
+      if (!q.empty) { docSnap = q.docs[0]; docRef = docSnap.ref; }
+    } else if (token) {
+      const q = await db.collectionGroup('invites')
+        .where('token','==', String(token))
+        .where('status','==','pending')
+        .limit(1).get();
+      if (!q.empty) { docSnap = q.docs[0]; docRef = docSnap.ref; }
+    }
+    if (!docSnap || !docRef) throw new HttpsError('not-found', 'Invite not found or already used.');
+
+    const invite = docSnap.data() || {};
+    if (inv && docRef.id !== String(inv)) throw new HttpsError('permission-denied', 'Invite mismatch.');
+    if (token && invite.token !== String(token)) throw new HttpsError('permission-denied', 'Token mismatch.');
+    if ((invite.status || 'pending') !== 'pending') throw new HttpsError('failed-precondition', 'Invite is not pending.');
+    if (invite.type !== 'guardian-claim') throw new HttpsError('failed-precondition', 'Wrong invite type.');
+
+    const { orgId, schoolId, inviteId } = parseInvitePath(docRef.path);
+    if (!orgId || !schoolId) throw new HttpsError('internal', 'Malformed invite path.');
+
+    // Enforce daysValid from createdAt
+    let createdAtMs = Date.now();
+    try { const t = invite.createdAt; if (t && typeof t.toMillis === 'function') createdAtMs = t.toMillis(); } catch {}
+    const daysValid = Math.max(1, Math.min(60, Number(invite.daysValid)||14));
+    const expiresMs = createdAtMs + daysValid * 24*60*60*1000;
+    if (Date.now() > expiresMs) throw new HttpsError('deadline-exceeded', 'Invite expired.');
+
+    const studentId = String(invite.studentId || '');
+    if (!studentId) throw new HttpsError('invalid-argument', 'Invite missing studentId.');
+
+    const studentRef = db.doc(`orgs/${orgId}/schools/${schoolId}/students/${studentId}`);
+    const linkRef    = studentRef.collection('guardians').doc(uid);
+
+    await db.runTransaction(async (tx) => {
+      const curInvite = await tx.get(docRef);
+      if (!curInvite.exists) throw new HttpsError('not-found', 'Invite missing.');
+      const cur = curInvite.data() || {};
+      if ((cur.status || 'pending') !== 'pending') throw new HttpsError('failed-precondition', 'Invite already used or revoked.');
+      // Idempotent: if link already exists, proceed quietly
+      const linkSnap = await tx.get(linkRef);
+      const linkPayload = {
+        uid,
+        relationshipType: String(cur.relationshipType || 'primary'),
+        verifiedAt: ts(),
+        createdAt: linkSnap.exists ? (linkSnap.get('createdAt') || ts()) : ts(),
+        orgId, schoolId,
+      };
+      tx.set(linkRef, linkPayload, { merge: true });
+      tx.update(docRef, { status: 'consumed', consumedByUid: uid, consumedAt: ts(), updatedAt: ts() });
+      tx.set(db.doc(`users/${uid}`), { guardian: true, updatedAt: ts() }, { merge: true });
+    });
+
+    // Force token refresh so UI updates immediately
+    await bumpUserTokens(uid, { reason: 'guardian-claim-consumed' });
+
+    return { ok: true, orgId, schoolId, studentId };
+  });
