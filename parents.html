@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Parent Portal — Time To Dismiss</title>
+
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+
+  <!-- Scoped page styles to match index/how-it-works look -->
+  <style>
+    :root{
+      --ux-max: 1180px; --ux-gap: 18px; --ux-radius: 14px; --ux-border:#e5e7eb;
+      --ux-dark:#0f172a; --ux-accent: var(--primary, #4f46e5); --ux-accent-2:#4338ca; --ux-muted:#475569; --ux-card:#fff;
+      --ux-shadow: 0 8px 24px rgba(15,23,42,.08);
+    }
+    .ux-wrap{ max-width: var(--ux-max); margin: 0 auto; padding: 0 18px; }
+    .section{ padding: 64px 0; }
+    @media (min-width: 860px){ .section{ padding: 84px 0; } }
+    .center{ text-align:center; }
+
+    /* Hero styling with subtle glass background */
+    .hero{ position:relative; min-height: 40vh; display:grid; place-items:center; color:#fff; overflow:hidden; }
+    .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(2,6,23,.34) 0%, rgba(2,6,23,.42) 35%, rgba(2,6,23,.62) 100%); z-index:1; }
+    .hero::after{ content:''; position:absolute; inset:-20% -20% -10% -20%; background: conic-gradient(from 180deg at 50% 35%, rgba(79,70,229,.28), rgba(99,102,241,.18), rgba(56,189,248,.22), rgba(16,185,129,.16), rgba(79,70,229,.28)); filter: blur(70px) saturate(140%); opacity:.7; z-index:1; }
+    .hero-bg{ position:absolute; inset:0; background-image:url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670'); background-size:cover; background-position:center; transform: scale(1.08); z-index:0; }
+    .hero-inner{ position:relative; z-index:2; max-width: 960px; padding: 22px; text-align:center; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); border-radius:18px; box-shadow: 0 20px 50px rgba(2,6,23,.25); }
+    .eyebrow{ display:inline-block; background: rgba(255,255,255,.14); padding:6px 12px; border-radius:999px; font-weight:700; letter-spacing:.02em; }
+    .hero h1{ font-size: clamp(1.8rem, 2.2vw + 1rem, 2.8rem); line-height:1.08; margin:10px 0 8px; text-shadow: 0 2px 12px rgba(0,0,0,.25); }
+    .lead{ color: rgba(255,255,255,.92); font-weight:600; max-width:68ch; margin: 0 auto; text-shadow: 0 1px 6px rgba(0,0,0,.18); }
+    .cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px; }
+    .btn{ appearance:none; border:1px solid transparent; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
+    .btn.primary{ background:var(--ux-accent); color:#fff; }
+    .btn.primary:hover{ background:var(--ux-accent-2); }
+    .btn.ghost{ background:#fff; color:var(--ux-accent); border-color:var(--ux-border); }
+
+    /* Cards, grid, and carousel */
+    .grid{ display:grid; gap:18px; }
+    .cards{ display:grid; gap:18px; }
+    @media (min-width: 860px){ .cards.cols-3{ grid-template-columns: repeat(3,1fr);} }
+    .card{ background:#fff; border:1px solid var(--ux-border); border-radius:var(--ux-radius); padding:16px; box-shadow: var(--ux-shadow); }
+    .muted{ color: var(--ux-muted); }
+    .passes-carousel{ display:flex; gap:14px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
+    .pass{ min-width: 290px; max-width: 320px; background:#fff; border:1px solid var(--ux-border); border-radius:16px; box-shadow: var(--ux-shadow); padding:14px; }
+    .pass .hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .pass .std{ font-weight:800; font-size:1.05rem; color:#0f172a; }
+    .pass .win{ font-weight:700; font-size:.85rem; color:#334155; }
+    .qr{ margin-top:10px; border:1px dashed #e2e8f0; border-radius:12px; height:180px; display:grid; place-items:center; color:#64748b; }
+    .badge{ display:inline-block; font-weight:800; font-size:.72rem; padding:4px 8px; border-radius:999px; border:1px solid #e2e8f0; color:#0f172a; background:#f8fafc; }
+
+    .list{ display:grid; gap:12px; }
+    .row{ display:flex; align-items:center; gap:12px; justify-content:space-between; border:1px solid var(--ux-border); border-radius:12px; background:#fff; padding:12px; }
+    .row .who{ font-weight:700; color:#0f172a; }
+    .row .meta{ color:#64748b; font-size:.9rem; }
+
+    .cta-band{ background:#0b1220; color:#fff; border-radius:16px; padding:24px; text-align:center; }
+
+    .animatable{ opacity:0; transform: translateY(18px); transition: opacity .8s ease, transform .8s ease; }
+    .animatable.is-visible{ opacity:1; transform:none; }
+
+    @media (max-width:760px){ .passes-carousel{ scroll-snap-type: x mandatory; } .pass{ scroll-snap-align:start; }
+    }
+  </style>
+</head>
+<body class="sd-body">
+  <!-- Header injected by site-header.js -->
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-inner animatable">
+      <span class="eyebrow">Parent Portal</span>
+      <h1>Your passes and pickup permissions</h1>
+      <p class="lead">View today's boarding passes and manage who can pick up your student. QR codes rotate for security and scan fast at dismissal.</p>
+      <div class="cta">
+        <a class="btn primary" href="#today">See today's passes</a>
+        <a class="btn ghost" href="#permissions">Manage permissions</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- TODAY'S PASSES -->
+    <section id="today" class="section" aria-labelledby="today-h">
+      <div class="ux-wrap">
+        <h2 id="today-h" class="animatable">Today's passes</h2>
+        <p class="muted animatable" data-delay="1" id="passesSubtitle">Swipe between students. Each pass shows a scannable QR during your pickup window.</p>
+
+        <div id="signedOutCallout" class="card animatable" style="display:none;">
+          <strong>Sign in to view your passes</strong>
+          <p class="muted" style="margin:6px 0 0;">Use the Sign in button in the header. If you're new, you'll receive an invite to claim your student.</p>
+        </div>
+
+        <div id="noPasses" class="card animatable" style="display:none;">
+          <strong>No passes yet</strong>
+          <p class="muted" style="margin:6px 0 0;">You don't have any passes for today. If you expect one, check your pickup permissions below.</p>
+        </div>
+
+        <div id="passesWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
+          <!-- Cards injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- MANAGE PERMISSIONS -->
+    <section id="permissions" class="section" aria-labelledby="perm-h">
+      <div class="ux-wrap">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <h2 id="perm-h" class="animatable">Manage pickup permissions</h2>
+          <button id="addTrusted" class="btn" type="button" title="Add trusted adult">Add trusted adult</button>
+        </div>
+        <p class="muted animatable" data-delay="1">Grant one-time or recurring pickup access to trusted adults. You can revoke anytime.</p>
+
+        <div id="grantsEmpty" class="card animatable" style="display:none;">
+          <strong>No pickup permissions yet</strong>
+          <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view their passes on pickup days.</p>
+        </div>
+        <div id="grantsList" class="list animatable" style="display:none; margin-top:12px;">
+          <!-- Grants injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA BAND -->
+    <section class="section" aria-label="Need help?">
+      <div class="ux-wrap">
+        <div class="cta-band animatable">
+          <h2 style="margin:0 0 6px;">Need help with pickup?</h2>
+          <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">Questions about passes or permissions? Reach out and we'll get you set up.</p>
+          <div class="cta" style="justify-content:center; margin:0;">
+            <a class="btn ghost" href="/contact.html">Contact support</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Simple reveal-on-scroll
+    const animatables = document.querySelectorAll('.animatable');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
+    }, { threshold: 0.12 });
+    animatables.forEach(a => obs.observe(a));
+
+    // Minimal client logic (placeholder):
+    // - Toggle signed-in/out prompts
+    // - Render example passes/grants until backend is wired
+    document.addEventListener('DOMContentLoaded', () => {
+      const out   = document.getElementById('signedOutCallout');
+      const none  = document.getElementById('noPasses');
+      const wrap  = document.getElementById('passesWrap');
+      const grantsList = document.getElementById('grantsList');
+      const grantsEmpty= document.getElementById('grantsEmpty');
+
+      function renderPasses(passes){
+        wrap.innerHTML = '';
+        if (!passes || !passes.length) {
+          wrap.style.display = 'none';
+          none.style.display = '';
+          return;
+        }
+        none.style.display = 'none';
+        wrap.style.display = 'flex';
+        for (const p of passes){
+          const card = document.createElement('div');
+          card.className = 'pass';
+          card.innerHTML = `
+            <div class="hdr">
+              <div class="std">${p.student}</div>
+              <span class="badge" title="Status">${p.status}</span>
+            </div>
+            <div class="win" aria-label="Pickup window">${p.window}</div>
+            <div class="qr" aria-label="QR code placeholder">QR will appear here</div>
+          `;
+          wrap.appendChild(card);
+        }
+      }
+      function renderGrants(grants){
+        grantsList.innerHTML = '';
+        if (!grants || !grants.length) {
+          grantsList.style.display = 'none';
+          grantsEmpty.style.display = '';
+          return;
+        }
+        grantsEmpty.style.display = 'none';
+        grantsList.style.display = 'grid';
+        for (const g of grants){
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.innerHTML = `
+            <div>
+              <div class="who">${g.name}</div>
+              <div class="meta">${g.students} · ${g.window}</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" title="Edit">Edit</button>
+              <button class="btn" type="button" title="Revoke">Revoke</button>
+            </div>
+          `;
+          grantsList.appendChild(row);
+        }
+      }
+
+      function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
+      function setSignedIn(){ out.style.display = 'none'; }
+
+      // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
+      function applyFromClaims(claims){
+        if (!claims || !claims.uid) { setSignedOut(); return; }
+        setSignedIn();
+        // Placeholder sample data until backend is wired
+        renderPasses([
+          { student: 'Ava Johnson', status: 'Valid now', window: '2:30–4:00 PM' },
+          { student: 'Micah Johnson', status: 'Not yet valid', window: '2:30–4:00 PM' }
+        ]);
+        renderGrants([
+          { name: 'Grandpa Joe', students: 'Ava · Micah', window: 'Wed only · 2:30–4:00 PM' }
+        ]);
+      }
+
+      // Listen for claims from site-header.js
+      document.addEventListener('sd:claims-ready', (e) => {
+        const claims = (e && e.detail && e.detail.claims) || null;
+        // Augment with uid if available
+        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch {}
+        applyFromClaims(claims);
+      });
+
+      // If already signed in before this page loads, try to apply immediately
+      try {
+        if (window.firebase?.auth()?.currentUser) {
+          const u = window.firebase.auth().currentUser;
+          applyFromClaims({ uid: u.uid, ...(window.SD?.claims || {}) });
+        } else {
+          setSignedOut();
+        }
+      } catch { setSignedOut(); }
+
+      document.getElementById('addTrusted')?.addEventListener('click', () => {
+        alert('Coming soon: Add trusted adult flow');
+      });
+    });
+  </script>
+</body>
+</html>
