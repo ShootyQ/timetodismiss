@@ -66,6 +66,11 @@ service cloud.firestore {
       );
     }
 
+    // Allow a signed-in guardian to access their student's doc even if they don't have school membership claims
+    function isGuardianOfStudent(orgId, schoolId, studentId) {
+      return isAuthed() && exists(/databases/$(database)/documents/orgs/$(orgId)/schools/$(schoolId)/students/$(studentId)/guardians/$(request.auth.uid));
+    }
+
     // Viewer-limited flip: called → en_route with server time only
     function canViewerFlipToEnRoute() {
       return resource.data.status == 'called' &&
@@ -153,7 +158,10 @@ service cloud.firestore {
 
         // STUDENTS
         match /students/{studentId} {
-          allow get, list: if isAuthed() && inSchool(orgId, schoolId);
+          // Viewers/callers/admins in school OR the student's linked guardians may read the student doc
+          allow get:  if isAuthed() && (inSchool(orgId, schoolId) || isGuardianOfStudent(orgId, schoolId, studentId));
+          // Listing restricted to staff scoped to school
+          allow list: if isAuthed() && inSchool(orgId, schoolId);
           // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
           allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId));
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
@@ -200,6 +208,14 @@ service cloud.firestore {
     match /invites/{inviteId} {
       allow get: if isOwner() || (isAuthed() && request.auth.token.email == resource.data.email);
       allow list, create, update, delete: if false;
+    }
+
+    // Guardians: allow a signed-in user to read their own guardian links via collection group
+    // Guardians docs store { uid, orgId, schoolId, ... } so we can scope access
+    match /{anyPath=**}/guardians/{uid} {
+      // Guardians may read their own link docs regardless of school membership claims
+      allow get, list: if isAuthed() && request.auth.uid == uid;
+      allow create, update, delete: if false;
     }
 
     // Domain mapping (used by header fallback)

@@ -212,11 +212,24 @@
 
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
       async function loadLinkedStudents(uid){
+        // Prefer backend callable to avoid rules/index friction; fall back to client query
+        const results = [];
+        try {
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyLinkedStudents') : null;
+          if (call) {
+            const resp = await call({});
+            const data = (resp && resp.data) || resp || {};
+            if (data && data.ok && Array.isArray(data.students)) {
+              for (const s of data.students) { results.push({ id: s.studentId, name: s.name }); }
+              return results;
+            }
+          }
+        } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
+        // Fallback direct read using compat Firestore
         try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (!db) return [];
+          if (!db) return results;
           const snap = await db.collectionGroup('guardians').where('uid','==', uid).get();
-          const results = [];
           for (const d of snap.docs){
             try {
               const studentRef = d.ref.parent.parent; // .../students/{studentId}
@@ -228,11 +241,10 @@
               results.push({ id: studentRef.id, name });
             } catch {}
           }
-          return results;
         } catch (e) {
-          console.warn('[parents] loadLinkedStudents failed', e);
-          return [];
+          console.warn('[parents] fallback loadLinkedStudents failed', e);
         }
+        return results;
       }
 
       async function applyFromClaims(claims){

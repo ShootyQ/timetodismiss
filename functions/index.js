@@ -840,3 +840,33 @@ async function computeClaims(uid, email) {
 
     return { ok: true, orgId, schoolId, studentId };
   });
+
+  // Guardian helper: list students linked to current user
+  // Returns [{ orgId, schoolId, studentId, name }]
+  exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const out = [];
+    try {
+      const snap = await db.collectionGroup('guardians').where('uid','==', uid).limit(100).get();
+      for (const d of snap.docs){
+        try {
+          const guardiansColl = d.ref.parent;                 // .../students/{studentId}/guardians
+          const studentRef = guardiansColl.parent;            // .../students/{studentId}
+          const seg = studentRef.path.split('/');             // orgs/{orgId}/schools/{schoolId}/students/{studentId}
+          if (seg.length < 6) continue;
+          const orgId = seg[1];
+          const schoolId = seg[3];
+          const studentId = seg[5];
+          const sSnap = await studentRef.get();
+          if (!sSnap.exists) continue;
+          const s = sSnap.data() || {};
+          const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+          out.push({ orgId, schoolId, studentId, name });
+        } catch (_) { /* skip */ }
+      }
+    } catch (e) {
+      throw new HttpsError('internal', 'guardian-list-failed');
+    }
+    return { ok: true, students: out };
+  });
