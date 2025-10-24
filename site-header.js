@@ -284,7 +284,7 @@
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     } catch (e1) {
       try { await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }
-      catch (e2) { try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch {} }
+      catch (e2) { /* leave default persistence as-is; do NOT force NONE which would cause sign-outs on reload */ }
     }
     return auth;
   }
@@ -1002,7 +1002,8 @@
         // If we're on a protected page, send to login quietly (no alerts)
         try {
           const path = location.pathname.replace(/\/+$/, '');
-      if (PROTECTED.has(path)) scheduleLoginRedirect(1800); // defer instead of immediate
+          // Give auth hydration ample time before redirecting to login to avoid "random" logouts on slower networks/devices
+          if (PROTECTED.has(path)) scheduleLoginRedirect(9000);
         } catch {}
         return;
       }
