@@ -158,10 +158,12 @@ async function computeClaims(uid, email) {
   async function applyClaims(uid, email, reason = 'recompute', opts = {}) {
     const claims = await computeClaims(uid, email);
     await auth.setCustomUserClaims(uid, claims);
-    if (opts && opts.revoke === false) {
-      await bumpClaimsVersion(uid, { reason });
-    } else {
+    // Default: do NOT revoke refresh tokens on every claim change, to avoid bouncing user sessions.
+    // Only revoke when explicitly requested (e.g., admin actions) to force a full re-auth.
+    if (opts && opts.revoke === true) {
       await bumpUserTokens(uid, { reason });
+    } else {
+      await bumpClaimsVersion(uid, { reason });
     }
     return claims;
   }
