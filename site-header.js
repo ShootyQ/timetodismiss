@@ -1046,11 +1046,11 @@
   try { if (hdrAccountPop && !hdrAccountPop.hidden) refreshHdrAccountPop(user); } catch {}
 
   try {
-        // Step B: ensure claims exist (may call CF and refresh token)
-        await ensureClaims(user);
+  // Step B: ensure claims exist (may call CF and refresh token)
+  await ensureClaims(user);
 
-        // Now read fresh token with claims
-        let token = await user.getIdTokenResult(true);
+  // Now read fresh token with claims
+  let token = await user.getIdTokenResult(true);
 
         // If this is a bootstrapped owner email but the token lacks owner,
         // auto-invoke the secured ownerGrant callable to restore the claim.
@@ -1069,17 +1069,25 @@
           try { console.warn('[hdr] ownerGrant auto-call failed:', e?.message || e); } catch {}
         }
 
-    // One-time per session: ask backend to recompute claims to drop any stale access
-    // Track whether we explicitly requested a refresh so the first user doc snapshot forces a token reload
-    let pendingClaimsRefresh = false;
+        // One-time per session: optionally ask backend to recompute claims.
+        // IMPORTANT: only do this when the token appears to lack any role/school claims to avoid cold-start slowness after deploys.
+        // If token already has roles/school, fire-and-forget a refresh in background at most once per session.
+        let pendingClaimsRefresh = false;
         try {
-          if (!sessionStorage.getItem('SD_CLAIMS_REFRESHED')) {
-            const call = window.SD?.httpsCallable ? window.SD.httpsCallable('refreshMyClaims') : null;
-            if (call) {
-      pendingClaimsRefresh = true; // ensure first snapshot triggers token reload even if version already bumped
-      await call();
-      // Wait for new claims to actually appear (bounded poll)
-      token = await waitForEffectiveClaims(user, 8000);
+          const already = sessionStorage.getItem('SD_CLAIMS_REFRESHED') === '1';
+          const c0 = token?.claims || {};
+          const hasRoleish = !!(c0.owner || c0.superintendent || c0.admin || c0.caller || c0.viewer || (Array.isArray(c0.roles) && c0.roles.length));
+          const hasSchool = !!(c0.schoolId || (Array.isArray(c0.schoolIds) && c0.schoolIds.length));
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('refreshMyClaims') : null;
+          if (!already && call) {
+            if (!hasRoleish && !hasSchool) {
+              // Truly missing claims: block briefly and wait for effective roles
+              pendingClaimsRefresh = true;
+              await call();
+              token = await waitForEffectiveClaims(user, 6000) || token; // shorter bounded wait
+            } else {
+              // We already have useful claims – do not block UI; refresh in background
+              call().catch(()=>{});
             }
             sessionStorage.setItem('SD_CLAIMS_REFRESHED', '1');
           }
