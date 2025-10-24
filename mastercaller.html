@@ -258,7 +258,9 @@
   const tilesSessionMode = document.getElementById('tilesSessionMode');
   const tilesSessionElapsed = document.getElementById('tilesSessionElapsed');
   const tilesSessionAutoEnd = document.getElementById('tilesSessionAutoEnd');
-  let tilesStartedAt = null; let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
+  let tilesStartedAt = null; // Date object from Firestore startedAt
+  let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
+  function stopTilesTimer(){ try{ if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch{} }
   let current = null;
 
   // Highlight helper for scanned/updated students
@@ -339,7 +341,15 @@
         onSnapshot(sRef,(snap)=>{
           if(!snap.exists()) return;
           const data = snap.data();
-          if(data.startedAt && !tilesStartedAt){ tilesStartedAt = data.startedAt.toDate(); startTilesTimer(); }
+          // Restart timer if startedAt first arrives or changes (defensive: avoid multiple intervals)
+          if (data.startedAt){
+            const dt = data.startedAt.toDate();
+            if (!tilesStartedAt || (tilesStartedAt && dt.getTime() !== tilesStartedAt.getTime())){
+              tilesStartedAt = dt;
+              stopTilesTimer();
+              startTilesTimer();
+            }
+          }
           if(data.mode) tilesSessionMode.textContent = 'Session ('+(data.mode||'tiles')+')';
           if(data.endedAt && !tilesEnded){ tilesEnded=true; endSessionBtn.textContent='Dismissal Ended'; endSessionBtn.disabled=true; if(tilesSessionElapsed && tilesStartedAt){ tilesSessionElapsed.textContent = tilesFmt(data.endedAt.toDate()-tilesStartedAt); } }
         }, (err)=> console.warn('[tiles] session snapshot error', err));
@@ -365,7 +375,7 @@
         await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
       } catch(sigErr){ console.warn('[tiles] dismissal signal failed', sigErr); }
       tilesEnded=true;
-      try { if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch {}
+  try { stopTilesTimer(); } catch {}
       if(tilesStartedAt && tilesSessionElapsed){ const ms = Date.now() - tilesStartedAt.getTime(); tilesSessionElapsed.textContent = tilesFmt(ms); }
       endSessionBtn.textContent='Dismissal Ended';
     } catch(e){ console.warn('[tiles] end session failed', e); if(!skipConfirm) alert('Could not end dismissal here. Try Analytics → End Now.'); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
@@ -378,7 +388,26 @@
 
   function tilesFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
   async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
-  function startTilesTimer(){ if(!tilesStartedAt) return; function tick(){ const now=new Date(); const elapsed= now - tilesStartedAt; if(tilesSessionElapsed) tilesSessionElapsed.textContent=tilesFmt(elapsed); const limit = autoEndMinutes*60000; if(!tilesEnded){ const remain = limit - elapsed; if(remain<=0){ autoEndTiles(); } else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent=' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); tilesTimer=setInterval(tick,1000); }
+  function startTilesTimer(){
+    if(!tilesStartedAt) return;
+    stopTilesTimer(); // ensure single ticker
+    const startMs = tilesStartedAt.getTime();
+    function tick(){
+      const nowMs = Date.now();
+      const elapsed = Math.max(0, nowMs - startMs);
+      if(tilesSessionElapsed) tilesSessionElapsed.textContent = tilesFmt(elapsed);
+      const limit = (autoEndMinutes>0 ? autoEndMinutes : 0) * 60000;
+      if(!tilesEnded && limit>0){
+        const remain = Math.max(0, limit - elapsed);
+        if(remain<=0){ autoEndTiles(); }
+        else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent = ' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; }
+      } else if (tilesSessionAutoEnd) {
+        tilesSessionAutoEnd.textContent = '';
+      }
+    }
+    tick();
+    tilesTimer = setInterval(tick, 1000);
+  }
   async function autoEndTiles(){ if(tilesEnded || tilesEnding) return; try{ await endSession({ skipConfirm:true }); }catch{} }
 
   // Removed sound feedback for callers (silent operations)
