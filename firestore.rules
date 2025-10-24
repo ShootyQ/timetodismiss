@@ -205,6 +205,12 @@ service cloud.firestore {
       allow get: if isOwner() || (isAuthed() && request.auth.uid == userId);
       allow list, create, update, delete: if false;
     }
+    // Reverse index for guardian links written by Cloud Functions at claim time
+    // Path: users/{uid}/guardianLinks/{orgId__schoolId__studentId}
+    match /users/{userId}/guardianLinks/{linkId} {
+      allow get, list: if isAuthed() && request.auth.uid == userId;
+      allow create, update, delete: if false; // server-only (admin SDK bypasses rules)
+    }
     match /invites/{inviteId} {
       allow get: if isOwner() || (isAuthed() && request.auth.token.email == resource.data.email);
       allow list, create, update, delete: if false;

@@ -833,6 +833,27 @@ async function computeClaims(uid, email) {
       tx.set(linkRef, linkPayload, { merge: true });
       tx.update(docRef, { status: 'consumed', consumedByUid: uid, consumedAt: ts(), updatedAt: ts() });
       tx.set(db.doc(`users/${uid}`), { guardian: true, updatedAt: ts() }, { merge: true });
+
+      // Also write a reverse lookup so guardians can be listed without collectionGroup
+      // Key format keeps it unique and readable; values denormalize minimal fields for client
+      const reverseKey = `${orgId}__${schoolId}__${studentId}`;
+      const reverseRef = db.doc(`users/${uid}/guardianLinks/${reverseKey}`);
+      // Try to denormalize a display name for convenience (best-effort, not required)
+      let studentName = studentId;
+      try {
+        const sSnap = await tx.get(studentRef);
+        if (sSnap.exists) {
+          const s = sSnap.data() || {};
+          studentName = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+        }
+      } catch (_) {}
+      tx.set(reverseRef, {
+        orgId,
+        schoolId,
+        studentId,
+        name: studentName,
+        linkedAt: ts(),
+      }, { merge: true });
     });
 
     // Force token refresh so UI updates immediately
@@ -848,6 +869,24 @@ async function computeClaims(uid, email) {
     const uid = req.auth.uid;
     const out = [];
     try {
+      // Preferred: read reverse index written at claim time
+      const revSnap = await db.collection(`users/${uid}/guardianLinks`).limit(100).get();
+      if (!revSnap.empty) {
+        revSnap.docs.forEach(d => {
+          const x = d.data() || {};
+          const orgId = String(x.orgId || '');
+          const schoolId = String(x.schoolId || '');
+          const studentId = String(x.studentId || d.id);
+          const name = x.name || studentId;
+          if (orgId && schoolId && studentId) out.push({ orgId, schoolId, studentId, name });
+        });
+        return { ok: true, students: out };
+      }
+    } catch (e) {
+      console.error('[listMyLinkedStudents] reverse index read failed', e);
+    }
+    try {
+      // Fallback: collection group scan of guardians
       const snap = await db.collectionGroup('guardians').where('uid','==', uid).limit(100).get();
       for (const d of snap.docs){
         try {
@@ -859,14 +898,17 @@ async function computeClaims(uid, email) {
           const schoolId = seg[3];
           const studentId = seg[5];
           const sSnap = await studentRef.get();
-          if (!sSnap.exists) continue;
-          const s = sSnap.data() || {};
+          const s = sSnap.exists ? (sSnap.data() || {}) : {};
           const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
           out.push({ orgId, schoolId, studentId, name });
-        } catch (_) { /* skip */ }
+        } catch (inner) {
+          console.error('[listMyLinkedStudents] doc parse failed', inner);
+        }
       }
     } catch (e) {
-      throw new HttpsError('internal', 'guardian-list-failed');
+      console.error('[listMyLinkedStudents] guardians group query failed', e);
+      // Don't surface 500s to the client; return empty list so UI can degrade gracefully
+      return { ok: true, students: out };
     }
     return { ok: true, students: out };
   });

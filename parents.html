@@ -212,7 +212,7 @@
 
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
       async function loadLinkedStudents(uid){
-        // Prefer backend callable to avoid rules/index friction; fall back to client query
+        // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
         const results = [];
         try {
           const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyLinkedStudents') : null;
@@ -225,7 +225,19 @@
             }
           }
         } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
-        // Fallback direct read using compat Firestore
+        // Fallback A: direct read from reverse index users/{uid}/guardianLinks
+        try {
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (db) {
+            const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
+            snap.docs.forEach(d => {
+              const x = d.data() || {}; const id = String(x.studentId || d.id);
+              const name = x.name || id; results.push({ id, name });
+            });
+            if (results.length) return results;
+          }
+        } catch (e) { console.warn('[parents] reverse index read failed', e); }
+        // Fallback B: collectionGroup read using compat Firestore
         try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (!db) return results;
