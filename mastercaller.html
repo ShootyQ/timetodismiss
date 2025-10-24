@@ -419,7 +419,7 @@
         
         // Determine the letter grouping based on sort method (suppress groups for callAvg)
         if (sortBy !== 'callAvg'){
-          let sortName, initial, letter;
+          let sortName, initial;
           if (sortBy === 'last') {
             // Use last name for letter grouping
             sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
