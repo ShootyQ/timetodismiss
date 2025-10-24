@@ -1052,6 +1052,23 @@
         // Now read fresh token with claims
         let token = await user.getIdTokenResult(true);
 
+        // If this is a bootstrapped owner email but the token lacks owner,
+        // auto-invoke the secured ownerGrant callable to restore the claim.
+        // This is safe because the function itself hard-checks the allowed email.
+        try {
+          const emailLower = (user.email || '').toLowerCase();
+          if (!token?.claims?.owner && TEMP_ADMIN_EMAILS && TEMP_ADMIN_EMAILS.has(emailLower)) {
+            const call = window.SD?.httpsCallable ? window.SD.httpsCallable('ownerGrant') : null;
+            if (call) {
+              await call();
+              // Wait for the new claim to take effect
+              token = await waitForEffectiveClaims(user, 8000) || token;
+            }
+          }
+        } catch (e) {
+          try { console.warn('[hdr] ownerGrant auto-call failed:', e?.message || e); } catch {}
+        }
+
     // One-time per session: ask backend to recompute claims to drop any stale access
     // Track whether we explicitly requested a refresh so the first user doc snapshot forces a token reload
     let pendingClaimsRefresh = false;

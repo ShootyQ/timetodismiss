@@ -62,6 +62,15 @@ const bumpUserTokens = async (uid, extra = {}) => {
   }, { merge: true });
 };
 
+// Bump only the claimsVersion to notify clients, without revoking tokens
+const bumpClaimsVersion = async (uid, extra = {}) => {
+  await db.doc(`users/${uid}`).set({
+    claimsVersion: FieldValue.increment(1),
+    updatedAt: ts(),
+    ...extra,
+  }, { merge: true });
+};
+
 // ───────────────── Claims aggregation (single source of truth) ─────────────────
 async function computeClaims(uid, email) {
   const emailLower = norm(email);
@@ -146,10 +155,14 @@ async function computeClaims(uid, email) {
     return base;
   }
 
-  async function applyClaims(uid, email, reason = 'recompute') {
+  async function applyClaims(uid, email, reason = 'recompute', opts = {}) {
     const claims = await computeClaims(uid, email);
     await auth.setCustomUserClaims(uid, claims);
-    await bumpUserTokens(uid, { reason });
+    if (opts && opts.revoke === false) {
+      await bumpClaimsVersion(uid, { reason });
+    } else {
+      await bumpUserTokens(uid, { reason });
+    }
     return claims;
   }
 
@@ -653,7 +666,8 @@ async function computeClaims(uid, email) {
   exports.refreshMyClaims = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const user = await auth.getUser(req.auth.uid);
-    const claims = await applyClaims(user.uid, user.email || '', 'manual-refresh');
+    // IMPORTANT: Do not revoke on self-service refresh to avoid bouncing other sessions/devices
+    const claims = await applyClaims(user.uid, user.email || '', 'manual-refresh', { revoke: false });
     return { ok: true, claims };
   });
 
