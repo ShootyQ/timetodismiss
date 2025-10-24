@@ -974,9 +974,10 @@
         } else if (act === 'absent') {
           (async () => {
             try { cancelEnrouteCountdown(id, false); } catch{}
-            // Optimistically remove from UI immediately
+            // Optimistically remove from UI immediately (snapshot will confirm or revert)
             try { host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`)?.remove(); } catch{}
-            try { await setStudentStatus(id, 'absent'); } catch{}
+            try { await setStudentStatus(id, 'absent'); }
+            catch(e){ console.warn('[class] absent update failed', e); try{ showToast('Not allowed to mark absent'); }catch{} }
           })();
         }
       });

@@ -88,6 +88,15 @@ service cloud.firestore {
              request.resource.data.diff(resource.data).changedKeys().hasOnly(['preferredName','callSound','updatedAt']);
     }
 
+    // Allow a classroom teacher to mark a student Absent for their own class.
+    // Restricts the write to only the 'status' field (set to 'absent') plus 'updatedAt'.
+    function canTeacherMarkAbsent(orgId, schoolId) {
+      return isAuthed() && inSchool(orgId, schoolId) &&
+             get(/databases/$(database)/documents/orgs/$(orgId)/schools/$(schoolId)/members/$(request.auth.uid)).data.teacher.classIds.hasAny([resource.data.classId]) &&
+             request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']) &&
+             request.resource.data.status == 'absent';
+    }
+
     // ───────────── Orgs & Schools ─────────────
     match /orgs/{orgId} {
       // Owner can always see; others must be scoped to the org
@@ -163,7 +172,7 @@ service cloud.firestore {
           // Listing restricted to staff scoped to school
           allow list: if isAuthed() && inSchool(orgId, schoolId);
           // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
-          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId));
+          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId) || canTeacherMarkAbsent(orgId, schoolId));
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
 
           // Per-student events subcollection used for analytics (collectionGroup queries)
