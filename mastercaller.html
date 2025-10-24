@@ -193,6 +193,7 @@
           <select id="sortSel" aria-label="Sort by">
             <option value="first" selected>First Name</option>
             <option value="last">Last Name</option>
+            <option value="callAvg">Typical (Avg vs start)</option>
           </select>
         </label>
         <label class="small" style="display:flex; align-items:center; gap:4px;">
@@ -230,7 +231,7 @@
   <div id="qrSheet" hidden></div>
 
   <script type="module">
-  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
+  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setActiveSession, getStudentStatsForDay } from '/app.js?v=23';
     await init();
 
     const classFilter = document.getElementById('classFilter');
@@ -416,22 +417,23 @@
         const fam = grp?.name || s.groupName || s.carName || '';
         const statusCls = s.status ? String(s.status) : '';
         
-        // Determine the letter grouping based on sort method
-        let sortName, initial, letter;
-        if (sortBy === 'last') {
-          // Use last name for letter grouping
-          sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
-        } else {
-          // Use first name for letter grouping
-          sortName = (s.firstName || '').trim() || (s.name || '').trim().split(/\s+/)[0] || '';
-        }
-        initial = sortName.charAt(0).toUpperCase();
-        letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
-        
-        const isHead = letter !== prevLetter;
-        if (isHead) {
-          rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
-          prevLetter = letter;
+        // Determine the letter grouping based on sort method (suppress groups for callAvg)
+        if (sortBy !== 'callAvg'){
+          let sortName, initial, letter;
+          if (sortBy === 'last') {
+            // Use last name for letter grouping
+            sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
+          } else {
+            // Use first name for letter grouping
+            sortName = (s.firstName || '').trim() || (s.name || '').trim().split(/\s+/)[0] || '';
+          }
+          initial = sortName.charAt(0).toUpperCase();
+          const letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
+          const isHead = letter !== prevLetter;
+          if (isHead) {
+            rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
+            prevLetter = letter;
+          }
         }
         const hasRS = !!grp?.rideShare || (grp && (grp.tags||[]).length>0);
         rows.push(`<li role="listitem">
@@ -448,6 +450,65 @@
       tiles.innerHTML = rows.join('');
     }
 
+    // --- Typical-start sorting support (avg offset from session start) ---
+    // Map of studentId -> average milliseconds after dismissal start when 'called'
+    const studentAvgOffset = new Map();
+    let avgOffsetsLoading = false;
+    let avgOffsetsPromise = null;
+
+    async function ensureAvgOffsets(options){
+      // Build once per page load; refresh if explicitly requested
+      if (avgOffsetsPromise && !options?.force) return avgOffsetsPromise;
+      avgOffsetsPromise = (async () => {
+        avgOffsetsLoading = true;
+        try {
+          // Wait for tenant
+          await waitForContext();
+          const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if(!oid||!sid) return;
+          // Fetch recent sessions to get startedAt per day
+          const mod = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const { getFirestore, collection, query: qy, orderBy: ob, limit: lim, getDocs: gds } = mod;
+          const fs = getFirestore();
+          const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+          const snap = await gds(qy(coll, ob('startedAt','desc'), lim(10)));
+          const sessions = [];
+          snap.forEach(d => { const data = d.data()||{}; const startedAt = data.startedAt?.toDate?.(); if(startedAt) sessions.push({ id:d.id, startedAt }); });
+          if (!sessions.length) return;
+          // Unique days (UTC) to reduce duplicate fetches
+          const dayToStart = new Map();
+          for (const s of sessions){ const day = s.startedAt.toISOString().slice(0,10); if(!dayToStart.has(day)) dayToStart.set(day, s.startedAt); }
+          // Build a set of students in view to constrain work
+          const targetIds = new Set((allStudents||[]).map(s=>s.id));
+          // Accumulators
+          const sums = new Map(); // id -> total ms
+          const counts = new Map(); // id -> n
+          // For each day, fetch stats and accumulate deltas
+          for (const [day, startAt] of dayToStart.entries()){
+            try{
+              const stats = await getStudentStatsForDay(day).catch(()=>[]);
+              for (const st of (stats||[])){
+                const sid2 = st.id?.split(':')[1] || st.studentId || null;
+                if (!sid2 || !targetIds.has(sid2)) continue;
+                const calledAt = st.calledAt?.toDate?.();
+                if (!calledAt || !startAt) continue;
+                const delta = Math.max(0, calledAt - startAt);
+                if (!isFinite(delta)) continue;
+                sums.set(sid2, (sums.get(sid2)||0) + delta);
+                counts.set(sid2, (counts.get(sid2)||0) + 1);
+              }
+            }catch(e){ /* ignore per-day failures */ }
+          }
+          // Finalize averages
+          studentAvgOffset.clear();
+          for (const [id, total] of sums.entries()){
+            const c = counts.get(id)||0; if (c>0) studentAvgOffset.set(id, Math.round(total/c));
+          }
+        } catch (e){ console.warn('[tiles] avg offsets build failed', e); }
+        finally { avgOffsetsLoading = false; }
+      })();
+      return avgOffsetsPromise;
+    }
+
     function applyFilters(){
       const q = (search?.value || '').trim().toLowerCase();
       const sortBy = sortSel?.value || 'first';
@@ -462,6 +523,15 @@
         const as = order[a.status] ?? 0;
         const bs = order[b.status] ?? 0;
         if (as !== bs) return as - bs;
+        if (sortBy === 'callAvg'){
+          const ai = studentAvgOffset.has(a.id) ? studentAvgOffset.get(a.id) : Number.POSITIVE_INFINITY;
+          const bi = studentAvgOffset.has(b.id) ? studentAvgOffset.get(b.id) : Number.POSITIVE_INFINITY;
+          if (ai !== bi) return ai - bi;
+          // tie-breaker by name
+          const an = (a.name||'').toLowerCase();
+          const bn = (b.name||'').toLowerCase();
+          return an.localeCompare(bn);
+        }
         
         // Sort by first name or last name based on selection
         let aSortKey, bSortKey;
@@ -506,6 +576,8 @@
       unsub = onStudents(classId, (list) => {
         allStudents = Array.isArray(list) ? list : [];
         rebuildScanIndexes();
+        // If sorting by callAvg, (re)build averages once students are loaded
+        if ((sortSel?.value || '') === 'callAvg') { ensureAvgOffsets().then(()=>applyFilters()).catch(()=>applyFilters()); return; }
         applyFilters();
       });
     }
@@ -835,7 +907,14 @@
 
     classFilter?.addEventListener('change', resubscribe);
     search?.addEventListener('input', applyFilters);
-    sortSel?.addEventListener('change', applyFilters);
+    sortSel?.addEventListener('change', () => {
+      const mode = sortSel?.value || 'first';
+      if (mode === 'callAvg') {
+        ensureAvgOffsets().then(()=>applyFilters()).catch(()=>applyFilters());
+      } else {
+        applyFilters();
+      }
+    });
 
     // Direct ride share QR scan (rs=TOKEN)
     document.addEventListener('scan:ride-share', async (e) => {
