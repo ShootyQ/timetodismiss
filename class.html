@@ -439,6 +439,25 @@
     const enrouteTimers = new Map(); // id -> { tId, ivId, endAt }
     // Short-lived mask to treat a student as en_route locally while waiting for Firestore
     const enrouteMask = new Map(); // id -> expireAt
+    // Interaction lock to prevent list reordering while the user is interacting
+    let interactionLock = false;
+    let _lockTimer = null;
+    const queuedHtml = new Map(); // Element -> pending HTML
+    function safeSetInnerHTML(el, html){
+      if (!el) return;
+      if (!interactionLock) {
+        el.innerHTML = html;
+      } else {
+        queuedHtml.set(el, html);
+      }
+    }
+    function flushQueued(){
+      if (interactionLock) return;
+      for (const [el, html] of Array.from(queuedHtml.entries())){
+        try { el.innerHTML = html; } catch {}
+      }
+      queuedHtml.clear();
+    }
     function maskEnroute(id, ms=8000){
       const until = Date.now() + ms;
       enrouteMask.set(id, until);
@@ -585,8 +604,8 @@
       if (!useGlobal) { setGlobalVisible(false); return; }
       ensureGlobalSection();
       const rows = Array.from(globalCalledMap.values())
-        .sort((a,b) => (a.name||'').localeCompare(b.name||''));
-      globalSec.ul.innerHTML = rows.map(s => {
+        .sort((a,b) => (b.calledAtMs||0) - (a.calledAtMs||0) || (a.name||'').localeCompare(b.name||''));
+      const html = rows.map(s => {
         const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
         const isPending = enrouteTimers.has(s.id);
         const actionHtml = isPending
@@ -607,6 +626,7 @@
             ${barHtml}
           </li>`;
       }).join('');
+      safeSetInnerHTML(globalSec.ul, html);
       setGlobalVisible(rows.length > 0);
     }
 
@@ -807,7 +827,12 @@
             else rest.push({ ...s, status: effStatus });
           }
           const byName = (a,b) => ((a.displayName||a.name||'').localeCompare(b.displayName||b.name||''));
-          called.sort(byName);
+          const byCalledAtDesc = (a,b) => {
+            const ta = calledAt.get(a.id) || 0;
+            const tb = calledAt.get(b.id) || 0;
+            return (tb - ta) || byName(a,b);
+          };
+          called.sort(byCalledAtDesc);
       // Waiting, then Picked Up, then En Route at very bottom (free up space)
           rest.sort((a,b) => {
             const rank = (st) => {
@@ -829,14 +854,14 @@
               if (row.classId === id && !currentIds.has(sid)) globalCalledMap.delete(sid);
             }
             called.forEach(s => {
-              globalCalledMap.set(s.id, { id: s.id, name: s.displayName || s.name, carTag: s.carTag, classId: id, className: meta?.name || id });
+              globalCalledMap.set(s.id, { id: s.id, name: s.displayName || s.name, carTag: s.carTag, classId: id, className: meta?.name || id, calledAtMs: (calledAt.get(s.id) || Date.now()) });
             });
             renderGlobalCalled();
             // Hide per-class called shelf to save space
-            calledUl.innerHTML = '';
+            safeSetInnerHTML(calledUl, '');
           } else {
             // Single-class mode: show called shelf within the section
-            calledUl.innerHTML = called.map(s => {
+            const html = called.map(s => {
             const before = prevStatus.get(s.id);
             const enter = before && before !== 'called' ? ' enter' : '';
             const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
@@ -856,6 +881,7 @@
                 ${barHtml}
               </li>`;
             }).join('');
+            safeSetInnerHTML(calledUl, html);
           }
 
           // Render waiting/picked list (compact) unless in called-only mode
@@ -961,6 +987,12 @@
         try { filterBtn.textContent = initial.size > 1 ? `Filter (${initial.size})` : `Filter (${Array.from(initial)[0] || ''})`; } catch {}
       }
       // En Route actions (event delegation)
+      // Guard reflows during pointer interactions to avoid list "bounce"
+      host.addEventListener('pointerdown', () => { interactionLock = true; if (_lockTimer) { try{ clearTimeout(_lockTimer); }catch{} _lockTimer=null; } });
+      const endInteract = () => { if (_lockTimer) { try{ clearTimeout(_lockTimer); }catch{} } _lockTimer = setTimeout(() => { interactionLock = false; flushQueued(); }, 150); };
+      host.addEventListener('pointerup', endInteract);
+      host.addEventListener('pointercancel', endInteract);
+
       host.addEventListener('click', (e) => {
         const btn = e.target.closest('button');
         if (!btn) return;
@@ -974,6 +1006,13 @@
         } else if (act === 'absent') {
           (async () => {
             try { cancelEnrouteCountdown(id, false); } catch{}
+            // Confirm to avoid accidental misclicks
+            let ok = true;
+            try {
+              const nm = host.querySelector(`.student[data-id="${CSS.escape(id)}"] .name`)?.textContent?.trim();
+              ok = window.confirm(nm ? `Mark ${nm} as Absent?` : 'Mark as Absent?');
+            } catch { ok = window.confirm('Mark as Absent?'); }
+            if (!ok) return;
             // Optimistically remove from UI immediately (snapshot will confirm or revert)
             try { host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`)?.remove(); } catch{}
             try { await setStudentStatus(id, 'absent'); }
