@@ -14,6 +14,7 @@ const crypto = require('crypto');
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
 const db   = getFirestore();
+const ENABLE_BEFORE_SIGNIN = String(process.env.ENABLE_BEFORE_SIGNIN || '').toLowerCase() === 'true';
 
 // ───────────────── Small helpers ─────────────────
 const ts        = () => FieldValue.serverTimestamp();
@@ -154,16 +155,18 @@ async function computeClaims(uid, email) {
 
   // ───────────────── Auth Blocking (instant claims on first token) ─────────────────
   // Runs BEFORE a session starts; puts final roles/orgs/schools into the first ID token.
-  exports.beforeSignIn = beforeUserSignedIn(async (event) => {
-    const { uid, email } = event.data || {};
-    if (!uid) return {};
-    const claims = await computeClaims(uid, email || '');
-    return { customClaims: claims };
-  });
+  if (ENABLE_BEFORE_SIGNIN) {
+    exports.beforeSignIn = beforeUserSignedIn(async (event) => {
+      const { uid, email } = event.data || {};
+      if (!uid) return {};
+      const claims = await computeClaims(uid, email || '');
+      return { customClaims: claims };
+    });
+  }
 
   // ───────────────── Triggers (recompute after writes) ─────────────────
   exports.onSchoolMemberWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/schools/{schoolId}/members/{uid}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/schools/{schoolId}/members/{uid}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const after  = event.data.after?.data();
       const before = event.data.before?.data();
@@ -176,7 +179,7 @@ async function computeClaims(uid, email) {
   );
 
   exports.onOrgMemberWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/members/{uid}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/members/{uid}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const uid = event.params.uid;
       const user = await auth.getUser(uid).catch(() => null);
@@ -187,7 +190,7 @@ async function computeClaims(uid, email) {
 
   // Optional: if you edit org.superEmails manually, keep claims in sync
   exports.onOrgDocWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const before = event.data.before?.data() || {};
       const after  = event.data.after?.data()  || {};
@@ -225,7 +228,7 @@ async function computeClaims(uid, email) {
   // ───────────────── Callables ─────────────────
 
   // Owner bootstrap (one-time)
-  exports.ownerGrant = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerGrant = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (norm(req.auth.token.email) !== 'carlsonandy85@gmail.com') {
       throw new HttpsError('permission-denied', 'Nope.');
@@ -250,7 +253,7 @@ async function computeClaims(uid, email) {
   });
 
   // Create org + superintendent (owner only)
-  exports.createSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.createSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
 
@@ -295,7 +298,7 @@ async function computeClaims(uid, email) {
   });
 
   // Owner: add/remove superintendent
-  exports.ownerAddSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerAddSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
     const { orgId, email } = req.data || {};
@@ -327,7 +330,7 @@ async function computeClaims(uid, email) {
     return { ok: true, uid: user.uid };
   });
 
-  exports.ownerRemoveSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerRemoveSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
     const { orgId, uid, email } = req.data || {};
@@ -346,7 +349,7 @@ async function computeClaims(uid, email) {
   });
 
   // Reset all students in a school to 'waiting' (admin or caller for that school)
-  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const uid = req.auth.uid;
@@ -393,7 +396,7 @@ async function computeClaims(uid, email) {
     schedule: 'every 5 minutes',
     region: 'us-central1',
     timeZone: 'America/Chicago', // adjust to your primary tenant timezone if needed
-    minInstances: 1,
+    minInstances: 0,
   }, async () => {
     const nowMs = Date.now();
     const ended = [];
@@ -447,7 +450,7 @@ async function computeClaims(uid, email) {
   });
 
   // Add a school (owner or superintendent of that org)
-  exports.addSchool = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.addSchool = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolName } = req.data || {};
@@ -484,7 +487,7 @@ async function computeClaims(uid, email) {
   });
 
   // Set roles for a school member (canonical write = members/)
-  exports.setSchoolMemberRoles = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.setSchoolMemberRoles = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId, user = {}, roles = {} } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -535,7 +538,7 @@ async function computeClaims(uid, email) {
   });
 
   // List school members
-  exports.listSchoolMembers = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.listSchoolMembers = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -566,7 +569,7 @@ async function computeClaims(uid, email) {
   });
 
   // List classes for a school (ordered) — lightweight read used by roles UI
-  exports.listSchoolClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.listSchoolClasses = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -599,7 +602,7 @@ async function computeClaims(uid, email) {
 
   // Assign classes to a teacher/member
   // Stores at members/{uid}.teacher.classIds (array)
-  exports.setTeacherClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.setTeacherClasses = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId, memberId, classIds } = req.data || {};
     if (!orgId || !schoolId || !memberId) throw new HttpsError('invalid-argument', 'orgId, schoolId, memberId required.');
@@ -616,7 +619,7 @@ async function computeClaims(uid, email) {
   });
 
   // Invite then set initial role (writes members/; claims applied immediately)
-  exports.inviteUser = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.inviteUser = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { email, orgId, schoolId, role = 'admin' } = req.data || {};
@@ -647,7 +650,7 @@ async function computeClaims(uid, email) {
   });
 
   // Recompute claims for the current user (self-service)
-  exports.refreshMyClaims = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.refreshMyClaims = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const user = await auth.getUser(req.auth.uid);
     const claims = await applyClaims(user.uid, user.email || '', 'manual-refresh');
@@ -655,7 +658,7 @@ async function computeClaims(uid, email) {
   });
 
   // Admin: force revoke a user’s tokens (owner or any superintendent)
-  exports.adminRevokeUserTokens = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.adminRevokeUserTokens = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { uid, reason = 'admin-revoke' } = req.data || {};
@@ -666,7 +669,7 @@ async function computeClaims(uid, email) {
   });
 
   // Delete a school and all nested data, then recompute usedSchools
-  exports.deleteSchool = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.deleteSchool = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId } = req.data || {};
@@ -703,7 +706,7 @@ async function computeClaims(uid, email) {
 
   // Keep org.usedSchools in sync when schools are created/deleted (safety net)
   exports.onSchoolsWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/schools/{schoolId}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/schools/{schoolId}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const orgId = event.params.orgId;
       if (!orgId) return;
@@ -733,7 +736,7 @@ async function computeClaims(uid, email) {
 
   // Admin/staff: create a guardian claim invite for a student
   // Input: { orgId, schoolId, studentId, email?, relationshipType? }
-  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId, studentId, email = null, relationshipType = 'primary', daysValid = 14 } = req.data || {};
@@ -771,7 +774,7 @@ async function computeClaims(uid, email) {
 
   // Signed-in guardian: claim invite via inv+token OR code
   // Input: { inv, token } OR { code }
-  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const uid = req.auth.uid;
     const { inv, token, code } = req.data || {};
@@ -840,11 +843,14 @@ async function computeClaims(uid, email) {
       const reverseRef = db.doc(`users/${uid}/guardianLinks/${reverseKey}`);
       // Try to denormalize a display name for convenience (best-effort, not required)
       let studentName = studentId;
+      let studentTag = '';
       try {
         const sSnap = await tx.get(studentRef);
         if (sSnap.exists) {
           const s = sSnap.data() || {};
           studentName = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+          const rawTag = s.carTag || s.tag || '';
+          studentTag = String(rawTag || '').toUpperCase().trim();
         }
       } catch (_) {}
       tx.set(reverseRef, {
@@ -852,6 +858,7 @@ async function computeClaims(uid, email) {
         schoolId,
         studentId,
         name: studentName,
+        tag: studentTag || null,
         linkedAt: ts(),
       }, { merge: true });
     });
@@ -864,7 +871,7 @@ async function computeClaims(uid, email) {
 
   // Guardian helper: list students linked to current user
   // Returns [{ orgId, schoolId, studentId, name }]
-  exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const uid = req.auth.uid;
     const out = [];
@@ -878,7 +885,8 @@ async function computeClaims(uid, email) {
           const schoolId = String(x.schoolId || '');
           const studentId = String(x.studentId || d.id);
           const name = x.name || studentId;
-          if (orgId && schoolId && studentId) out.push({ orgId, schoolId, studentId, name });
+          const tag = String(x.tag || '').toUpperCase().trim();
+          if (orgId && schoolId && studentId) out.push({ orgId, schoolId, studentId, name, tag });
         });
         return { ok: true, students: out };
       }
@@ -900,7 +908,8 @@ async function computeClaims(uid, email) {
           const sSnap = await studentRef.get();
           const s = sSnap.exists ? (sSnap.data() || {}) : {};
           const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
-          out.push({ orgId, schoolId, studentId, name });
+          const tag = String(s.carTag || s.tag || '').toUpperCase().trim();
+          out.push({ orgId, schoolId, studentId, name, tag });
         } catch (inner) {
           console.error('[listMyLinkedStudents] doc parse failed', inner);
         }

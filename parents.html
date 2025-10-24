@@ -148,9 +148,10 @@
     }, { threshold: 0.12 });
     animatables.forEach(a => obs.observe(a));
 
-    // Minimal client logic (placeholder):
+    // Minimal client logic:
     // - Toggle signed-in/out prompts
-    // - Render example passes/grants until backend is wired
+    // - Load linked students (callable -> reverse index -> collectionGroup)
+    // - Render passes with formatted names and rotating QR payloads
     document.addEventListener('DOMContentLoaded', () => {
       const out   = document.getElementById('signedOutCallout');
       const none  = document.getElementById('noPasses');
@@ -158,8 +159,52 @@
       const grantsList = document.getElementById('grantsList');
       const grantsEmpty= document.getElementById('grantsEmpty');
 
+      // Ensure QRCode library (qrcodejs) is available
+      (function ensureQRCode(){
+        if (window.QRCode) return;
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        s.crossOrigin = 'anonymous';
+        document.head.appendChild(s);
+      })();
+
+      function formatName(name){
+        const raw = String(name||'').trim();
+        if (!raw) return '';
+        let first = '', last = '';
+        if (raw.includes(',')){
+          // "Last, First [Middle]"
+          const [l, r] = raw.split(',');
+          last = (l||'').trim();
+          first = (r||'').trim().split(/\s+/)[0] || '';
+        } else {
+          const parts = raw.split(/\s+/).filter(Boolean);
+          if (parts.length === 1) { first = parts[0]; last = ''; }
+          else { first = parts[0]; last = parts[parts.length-1]; }
+        }
+        const li = last ? (last[0].toUpperCase() + '.') : '';
+        return [first, li].filter(Boolean).join(' ');
+      }
+
+      function drawQrInto(el, basePayload){
+        if (!el) return;
+        // Rotate every 30s to vary the code visually while keeping scanners compatible
+        const rot = Math.floor(Date.now()/30000); // changes every 30s
+        const payload = basePayload + '&r=' + rot;
+        el.innerHTML = '';
+        const host = document.createElement('div');
+        host.style.width = '180px'; host.style.height = '180px';
+        el.appendChild(host);
+        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M)||2 }); } catch {} };
+        if (window.QRCode) draw(); else {
+          const t = setInterval(()=>{ if (window.QRCode){ clearInterval(t); draw(); } }, 60);
+        }
+      }
+
+      let qrTimer = null;
       function renderPasses(passes){
         wrap.innerHTML = '';
+        if (qrTimer) { try { clearInterval(qrTimer); } catch{} qrTimer = null; }
         if (!passes || !passes.length) {
           wrap.style.display = 'none';
           none.style.display = '';
@@ -172,14 +217,27 @@
           card.className = 'pass';
           card.innerHTML = `
             <div class="hdr">
-              <div class="std">${p.student}</div>
+              <div class="std">${formatName(p.student)}</div>
               <span class="badge" title="Status">${p.status}</span>
             </div>
             <div class="win" aria-label="Pickup window">${p.window}</div>
-            <div class="qr" aria-label="QR code placeholder">QR will appear here</div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload||''}"></div></div>
           `;
           wrap.appendChild(card);
         }
+
+        // Initial draw
+        wrap.querySelectorAll('.qr-host').forEach(host => {
+          const base = host.getAttribute('data-base') || '';
+          drawQrInto(host, base);
+        });
+        // Rotate every 30s
+        qrTimer = setInterval(() => {
+          wrap.querySelectorAll('.qr-host').forEach(host => {
+            const base = host.getAttribute('data-base') || '';
+            drawQrInto(host, base);
+          });
+        }, 30000);
       }
       function renderGrants(grants){
         grantsList.innerHTML = '';
@@ -220,7 +278,9 @@
             const resp = await call({});
             const data = (resp && resp.data) || resp || {};
             if (data && data.ok && Array.isArray(data.students)) {
-              for (const s of data.students) { results.push({ id: s.studentId, name: s.name }); }
+              for (const s of data.students) {
+                results.push({ id: s.studentId, name: s.name, tag: (s.tag||'') || '', orgId: s.orgId, schoolId: s.schoolId });
+              }
               return results;
             }
           }
@@ -232,7 +292,9 @@
             const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
             snap.docs.forEach(d => {
               const x = d.data() || {}; const id = String(x.studentId || d.id);
-              const name = x.name || id; results.push({ id, name });
+              const name = x.name || id; const tag = String(x.tag||'');
+              const orgId = x.orgId || null; const schoolId = x.schoolId || null;
+              results.push({ id, name, tag, orgId, schoolId });
             });
             if (results.length) return results;
           }
@@ -250,7 +312,11 @@
               if (!sSnap.exists) continue;
               const s = sSnap.data() || {};
               const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
-              results.push({ id: studentRef.id, name });
+              const tag = (s.carTag || s.tag || '').toString();
+              // Parse org/school from path if available
+              const seg = studentRef.path.split('/');
+              const orgId = seg[1] || null; const schoolId = seg[3] || null;
+              results.push({ id: studentRef.id, name, tag, orgId, schoolId });
             } catch {}
           }
         } catch (e) {
@@ -269,8 +335,13 @@
           renderPasses([]);
           return;
         }
-        // Render a simple card per linked student for now; status/window to be populated when passes are issued
-        renderPasses(linked.map(s => ({ student: s.name, status: 'Linked', window: '' })));
+        // Build base payload for QR: prefer car tag else student id
+        const passes = linked.map(s => {
+          const tag = (s.tag||'').toString().trim();
+          const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(s.id));
+          return { student: s.name, status: 'Linked', window: '', basePayload: base };
+        });
+        renderPasses(passes);
       }
 
       // Listen for claims from site-header.js
