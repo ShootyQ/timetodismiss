@@ -888,6 +888,21 @@ async function computeClaims(uid, email) {
           const tag = String(x.tag || '').toUpperCase().trim();
           if (orgId && schoolId && studentId) out.push({ orgId, schoolId, studentId, name, tag });
         });
+        // Enrich names/tags if missing or clearly an ID (best-effort, avoids client reads)
+        const needEnrich = out.filter(s => !s.name || s.name === s.studentId || /^(?:[A-Za-z0-9_-]{6,})$/.test(s.name));
+        for (const s of needEnrich){
+          try {
+            const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.studentId}`);
+            const snap = await ref.get();
+            if (snap.exists){
+              const d = snap.data() || {};
+              const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
+              if (nm) s.name = nm;
+              const tg = String(d.carTag || d.tag || '').toUpperCase().trim();
+              if (tg) s.tag = tg;
+            }
+          } catch (e) { /* ignore */ }
+        }
         return { ok: true, students: out };
       }
     } catch (e) {

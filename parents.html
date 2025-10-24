@@ -329,7 +329,26 @@
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
         const uid = claims.uid;
-        const linked = await loadLinkedStudents(uid);
+        let linked = await loadLinkedStudents(uid);
+        // Hydrate friendly names if they look like IDs and we have org/school
+        try{
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (db){
+            const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId && s.schoolId);
+            for (const s of needs){
+              try{
+                const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
+                const snap = await ref.get();
+                if (snap.exists){
+                  const d = snap.data() || {};
+                  const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
+                  if (nm) s.name = nm;
+                  if (!s.tag){ const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
+                }
+              } catch{}
+            }
+          }
+        } catch{}
         if (!linked.length){
           document.getElementById('passesSubtitle').textContent = 'No linked students yet. Once you claim an invite, your passes will appear here on pickup days.';
           renderPasses([]);
