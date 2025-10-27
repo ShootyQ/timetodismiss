@@ -118,6 +118,9 @@
       <label class="inline-flex" id="wrapModeStudents">
         <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> Students
       </label>
+      <label class="inline-flex" id="wrapGroupByTag">
+        <input id="groupByTag" type="checkbox" /> One per family (per tag)
+      </label>
       <label class="inline-flex" id="wrapRideShares">
         <input id="includeRideShares" type="checkbox" /> Ride Shares
       </label>
@@ -141,6 +144,9 @@
       </label>
       <label class="inline-flex">
         <input id="showNames" type="checkbox" checked /> Show names
+      </label>
+      <label class="inline-flex" id="wrapSortLastName">
+        <input id="sortLastName" type="checkbox" /> Sort by last name
       </label>
       <select id="layout" aria-label="Label layout">
         <option value="grid" selected>Responsive Grid</option>
@@ -227,6 +233,8 @@
   const simpleMode = document.getElementById('simpleMode');
   const wrapModeStudents = document.getElementById('wrapModeStudents');
   const wrapRideShares = document.getElementById('wrapRideShares');
+  const wrapGroupByTag = document.getElementById('wrapGroupByTag');
+  const wrapSortLastName = document.getElementById('wrapSortLastName');
     const cols = document.getElementById('cols');
     const sizeSel = document.getElementById('size');
     const tight = document.getElementById('tight');
@@ -234,6 +242,8 @@
     const layoutSel = document.getElementById('layout');
     const modeStudents = document.getElementById('modeStudents');
   const includeRideShares = document.getElementById('includeRideShares');
+  const groupByTag = document.getElementById('groupByTag');
+  const sortLastName = document.getElementById('sortLastName');
     const btnAll = document.getElementById('selectAll');
     const btnClr = document.getElementById('clearSel');
   const btnPrint = document.getElementById('print');
@@ -278,6 +288,8 @@
       // Keep Students and Ride Shares visible in Simple mode
       wrapModeStudents?.classList.toggle('hidden', false);
       wrapRideShares?.classList.toggle('hidden', false);
+      wrapGroupByTag?.classList.toggle('hidden', false);
+      wrapSortLastName?.classList.toggle('hidden', false);
       cols?.classList.toggle('hidden', simple);
       sizeSel?.classList.toggle('hidden', simple);
       tight?.closest('label')?.classList.toggle('hidden', simple);
@@ -316,8 +328,15 @@
     function currentFilterList(){
       const filter = (q.value||'').toLowerCase();
       const useStudents = !!modeStudents.checked;
+      // Consolidated view: one per family/tag while in Students mode
+      if (useStudents && groupByTag?.checked){
+        const grouped = studentsToFamilyTags(students);
+        return grouped.filter(x => x.tag.toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+      }
       if (useStudents){
-        return students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)));
+        const base = students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || (String(s.id||'').toLowerCase().includes(filter)));
+        if (sortLastName?.checked){ base.sort((a,b)=> lastName(nameOf(a)).localeCompare(lastName(nameOf(b)))); }
+        return base;
       }
       const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
@@ -443,7 +462,12 @@
     function toPx(inches){ return Math.round(inches * 96); }
 
     function getAllItems(){
-      if (modeStudents.checked) return students;
+      if (modeStudents.checked){
+        if (groupByTag?.checked) return studentsToFamilyTags(students);
+        const base = students.slice();
+        if (sortLastName?.checked){ base.sort((a,b)=> lastName(nameOf(a)).localeCompare(lastName(nameOf(b)))); }
+        return base;
+      }
       const includeRS = !!(includeRideShares && includeRideShares.checked);
       const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
       if (includeRS) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
@@ -498,7 +522,7 @@
     }
 
     function buildPrintArea(items){
-      const useStudents = modeStudents.checked;
+      const useStudents = modeStudents.checked && !(groupByTag?.checked);
       const preset = presetInfo(layoutSel.value);
       paPages.className = 'pa-pages';
       paPages.innerHTML = '';
@@ -619,13 +643,13 @@
     }
 
     // ZIP export
-    async function downloadAsZip(items){
+  async function downloadAsZip(items){
       const JSZip = await ensureJSZip();
       await ensureFileSaver();
       const zip = new JSZip();
       const preset = presetInfo(layoutSel.value);
       const px = toPx(preset.qrIn || (parseInt(sizeSel.value,10)||200)/96);
-      const useStudents = !!modeStudents.checked;
+  const useStudents = !!(modeStudents.checked && !(groupByTag?.checked));
 
       const manifest = [];
       for (const it of items){
@@ -644,12 +668,12 @@
     }
 
     // PDF export (letter). Honors current preset layout where practical.
-    async function downloadAsPdf(items){
+  async function downloadAsPdf(items){
       const jsPDF = await ensureJSPDF();
       const preset = presetInfo(layoutSel.value);
       const isLandscape = !!preset.landscape;
       const doc = new jsPDF({ unit: 'in', format: 'letter', orientation: isLandscape ? 'landscape' : 'portrait' });
-      const useStudents = !!modeStudents.checked;
+  const useStudents = !!(modeStudents.checked && !(groupByTag?.checked));
       const qrIn = preset.qrIn || 2; // default 2in
 
       function addPageIfNeeded(pageIndex){ if (pageIndex>0) doc.addPage('letter', isLandscape ? 'landscape' : 'portrait'); }
@@ -810,14 +834,14 @@
         w.document.close();
       } catch(e){ console.error('Print window write failed', e); }
 
-      const tryInjectQR = () => {
+  const tryInjectQR = () => {
         // For each .pa-qr placeholder, re-generate QR because canvases weren't serialized.
         const qrs = w.document.querySelectorAll('.pa-qr');
         let idx=0;
         const preset = presetInfo(layoutSel.value);
         const qrPx = toPx(preset.qrIn || 1);
         // Use the items actually rendered (usedItems) so QR codes align with names after de-dupe
-        const payloads = (usedItems||items).map(it => buildPayload(it, modeStudents.checked));
+  const payloads = (usedItems||items).map(it => buildPayload(it, (modeStudents.checked && !(groupByTag?.checked))));
         qrs.forEach(host => {
           const holder = w.document.createElement('div');
           holder.style.width = qrPx+'px'; holder.style.height = qrPx+'px';
@@ -846,6 +870,8 @@
   showNames.addEventListener('change', renderList);
   simpleMode.addEventListener('change', () => { applySimpleMode(); saveOpts(); });
   if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
+  if (groupByTag) groupByTag.addEventListener('change', () => { selected.clear(); renderList(); saveOpts(); });
+  if (sortLastName) sortLastName.addEventListener('change', () => { if (modeStudents.checked && !groupByTag.checked){ renderList(); saveOpts(); } });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -854,6 +880,9 @@
       } else if (!modeStudents.checked) {
         helpers.classList.add('hidden');
       }
+      // Show per-family and sorting controls only in Students mode
+      if (wrapGroupByTag) wrapGroupByTag.classList.toggle('hidden', !modeStudents.checked);
+      if (wrapSortLastName) wrapSortLastName.classList.toggle('hidden', !modeStudents.checked);
     });
 
     document.addEventListener('click', (e) => {
@@ -963,7 +992,12 @@
     function updateCounts(){
       try{
         const useStudents = !!modeStudents.checked;
-        const total = (useStudents ? students.length : tags.length) || 0;
+        let total = 0;
+        if (useStudents){
+          total = groupByTag?.checked ? studentsToFamilyTags(students).length : (students.length || 0);
+        } else {
+          total = tags.length || 0;
+        }
         const visible = currentFilterList().length;
         const sel = selected.size;
         const target = sel ? `${sel} selected` : `${visible} shown`;
@@ -972,7 +1006,7 @@
     }
 
     // Persist settings
-    const LSKEY = 'ttd.qr.opts.v3';
+    const LSKEY = 'ttd.qr.opts.v4';
     function saveOpts(){
       try{
         const o = {
@@ -984,7 +1018,9 @@
           modeStudents: !!modeStudents.checked,
           q: q.value || '',
           includeRideShares: !!(includeRideShares && includeRideShares.checked),
-          simple: !!(simpleMode && simpleMode.checked)
+          simple: !!(simpleMode && simpleMode.checked),
+          groupByTag: !!(groupByTag && groupByTag.checked),
+          sortLastName: !!(sortLastName && sortLastName.checked)
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -1003,6 +1039,8 @@
         if (typeof o.q === 'string') q.value = o.q;
         if (typeof o.includeRideShares === 'boolean' && includeRideShares) includeRideShares.checked = o.includeRideShares;
         if (typeof o.simple === 'boolean' && simpleMode) simpleMode.checked = o.simple;
+        if (typeof o.groupByTag === 'boolean' && groupByTag) groupByTag.checked = o.groupByTag;
+        if (typeof o.sortLastName === 'boolean' && sortLastName) sortLastName.checked = o.sortLastName;
       }catch{}
     }
 
@@ -1050,7 +1088,13 @@
               id: s.id || s.studentId || s.uid || '',
               name: nameOf(s),
               tag: s.tag ? normTag(s.tag) : (s.carTag ? normTag(s.carTag) : '')
-            })).sort((a,b)=> (nameOf(a)||'').localeCompare(nameOf(b)||''));
+            }));
+            // Apply preferred sort
+            if (sortLastName?.checked){
+              students.sort((a,b)=> lastName(nameOf(a)).localeCompare(lastName(nameOf(b))));
+            } else {
+              students.sort((a,b)=> (nameOf(a)||'').localeCompare(nameOf(b)||''));
+            }
             if (modeStudents.checked) renderList();
             updateCounts();
           });
@@ -1080,6 +1124,27 @@
       el.addEventListener('change', saveOpts);
       el.addEventListener('input', saveOpts);
     });
+
+    // Helpers: consolidate students into unique family tags
+    function studentsToFamilyTags(list){
+      const byTag = new Map();
+      for (const s of (list||[])){
+        const tag = normTag(s.tag || '');
+        if (!tag) continue; // only consolidate those with tags
+        if (!byTag.has(tag)) byTag.set(tag, []);
+        byTag.get(tag).push(s);
+      }
+      const out = [];
+      for (const [tag, arr] of byTag.entries()){
+        // Choose a display name: if all share last name, show that; else show first student's last name + ' +' count
+        const lastNames = Array.from(new Set(arr.map(s => lastName(nameOf(s))).filter(Boolean)));
+        let display = '';
+        if (lastNames.length === 1){ display = lastNames[0] + ' family'; }
+        else if (arr.length){ display = lastName(nameOf(arr[0])) + ' +' + (arr.length-1); }
+        out.push({ type:'tag', tag, name: display });
+      }
+      return out.sort((a,b)=> a.tag.localeCompare(b.tag));
+    }
   </script>
 </body>
 </html>
