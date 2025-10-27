@@ -15,8 +15,13 @@
 
   const ZX = { ready: false, reader: null, controls: null };
   const hasBarcodeDetector = 'BarcodeDetector' in window;
+  const ua = navigator.userAgent || navigator.vendor || '';
+  const isiOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  // iOS Safari BarcodeDetector can be flaky on some versions; prefer ZXing there.
+  const preferZXing = isiOS && isSafari;
   let detector = null;
-  if (hasBarcodeDetector) {
+  if (hasBarcodeDetector && !preferZXing) {
     try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
   }
 
@@ -39,7 +44,8 @@
           </div>
           <div id="qrStatus" style="color:#fff;opacity:.9;text-align:center;padding:8px 12px;min-height:24px"></div>
         </div>`;
-      video = document.getElementById('qrVideo');
+  video = document.getElementById('qrVideo');
+  try { if (video) { video.setAttribute('playsinline',''); video.muted = true; video.setAttribute('muted',''); } } catch {}
       statusEl = document.getElementById('qrStatus');
       closeBtn = document.getElementById('qrClose');
       flipBtn  = document.getElementById('qrFlip');
@@ -147,9 +153,10 @@
       stream = await navigator.mediaDevices.getUserMedia(constraints);
       track = stream.getVideoTracks()[0] || null;
       if (video) video.srcObject = stream;
+      try { if (video) { video.muted = true; video.setAttribute('muted',''); } } catch {}
       await video?.play?.();
       status('Point camera at QR');
-      scanLoopNative();
+      if (detector && !preferZXing) scanLoopNative(); else await startZXing();
     }catch(e){
       status('Camera unavailable');
       console.error('[scanner] getUserMedia failed', e);
@@ -249,7 +256,7 @@
     showSheet(true);
     // Escape closes
     document.addEventListener('keydown', escCloseOnce, { once: true });
-    if (hasBarcodeDetector && detector) await startCamera(); else await startZXing();
+    if (!preferZXing && hasBarcodeDetector && detector) await startCamera(); else await startZXing();
   }
 
   function escCloseOnce(ev){ if (ev.key === 'Escape') close(); }
@@ -273,6 +280,8 @@
 })();
 // /scanner.js
 // Standalone camera scanner. Emits 'scan:car-tag' events with { tag } only — never student names.
+// If the primary scanner (window.TTDScanner) is present, disable this legacy block to avoid conflicts.
+if (!window.TTDScanner) {
 
 let sheet, video, statusEl, flipBtn, flashBtn;
 let stream = null, track = null, useBack = true, torchOn = false;
@@ -479,3 +488,5 @@ function close(){
   visible(false);
   stopCamera();
 }
+
+} // end legacy guard
