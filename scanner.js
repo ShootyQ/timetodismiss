@@ -40,7 +40,7 @@
             </div>
           </div>
           <div class="qr-video-wrap" style="flex:1 1 auto;display:grid;place-items:center;padding:10px">
-            <video id="qrVideo" playsinline autoplay style="max-width:96vw;max-height:70vh;border-radius:12px;background:#000"></video>
+            <video id="qrVideo" playsinline webkit-playsinline autoplay style="max-width:96vw;max-height:70vh;border-radius:12px;background:#000"></video>
           </div>
           <div id="qrStatus" style="color:#fff;opacity:.9;text-align:center;padding:8px 12px;min-height:24px"></div>
         </div>`;
@@ -137,19 +137,11 @@
   async function startCamera(){
     stopCamera();
     try{
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: useBack ? { ideal: 'environment' } : { ideal: 'user' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await getStreamWithFallbacks();
       track = stream.getVideoTracks()[0] || null;
       if (video) video.srcObject = stream;
-      try { if (video) { video.muted = true; video.setAttribute('muted',''); } } catch {}
-      await video?.play?.();
+      try { if (video) { video.muted = true; video.setAttribute('muted',''); video.setAttribute('playsinline',''); video.setAttribute('webkit-playsinline',''); } } catch {}
+      try { await video?.play?.(); } catch {}
       status('Point camera at QR');
       // Prefer native detector when available; otherwise try ZXing
       if (detector) {
@@ -158,9 +150,33 @@
         await startZXing(/*fallbackFromNative*/true);
       }
     }catch(e){
-      status('Camera unavailable');
+      const name = (e && (e.name||e.code)) || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+        status('Camera blocked. Allow camera access in Safari settings.');
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError'){
+        status('No suitable camera found. Try flipping cameras or check permissions.');
+      } else if (name === 'SecurityError'){
+        status('Camera unavailable on this page. Use HTTPS and allow camera access.');
+      } else {
+        status('Camera unavailable');
+      }
       console.error('[scanner] getUserMedia failed', e);
     }
+  }
+
+  async function getStreamWithFallbacks(){
+    const tries = [
+      { audio:false, video: { facingMode: useBack ? { ideal: 'environment' } : { ideal: 'user' }, width:{ ideal:1280 }, height:{ ideal:720 } } },
+      { audio:false, video: { facingMode: useBack ? 'environment' : 'user' } },
+      { audio:false, video: { facingMode: 'environment' } },
+      { audio:false, video: { facingMode: 'user' } },
+      { audio:false, video: true }
+    ];
+    let lastErr = null;
+    for (const c of tries){
+      try { return await navigator.mediaDevices.getUserMedia(c); } catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('getUserMedia failed');
   }
 
   function stopCamera(){
