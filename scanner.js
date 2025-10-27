@@ -13,7 +13,7 @@
   const DETECT_INTERVAL = 120; // ms between detect attempts
   const DUP_MS = 1200;         // minimal interval to accept same payload twice
 
-  const ZX = { ready: false, reader: null, controls: null };
+  const ZX = { ready: false, reader: null, controls: null, tried: false };
   const hasBarcodeDetector = 'BarcodeDetector' in window;
   const ua = navigator.userAgent || navigator.vendor || '';
   const isiOS = /iPad|iPhone|iPod/.test(ua);
@@ -54,12 +54,7 @@
       closeBtn?.addEventListener('click', close);
       flipBtn?.addEventListener('click', async () => {
         useBack = !useBack;
-        if (hasBarcodeDetector) {
-          await startCamera();
-        } else {
-          // ZXing fallback: re-init with preferred device if possible
-          await startZXing();
-        }
+        await chooseAndStart();
       });
       flashBtn?.addEventListener('click', () => setTorch(!torchOn));
       sheet.dataset.wired = '1';
@@ -156,7 +151,12 @@
       try { if (video) { video.muted = true; video.setAttribute('muted',''); } } catch {}
       await video?.play?.();
       status('Point camera at QR');
-      if (detector && !preferZXing) scanLoopNative(); else await startZXing();
+      // Prefer native detector when available; otherwise try ZXing
+      if (detector) {
+        scanLoopNative();
+      } else {
+        await startZXing(/*fallbackFromNative*/true);
+      }
     }catch(e){
       status('Camera unavailable');
       console.error('[scanner] getUserMedia failed', e);
@@ -193,12 +193,27 @@
   }
 
   async function ensureZXing(){
-    if (ZX.ready) return;
-    try {
-      const mod = await import('https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js');
-      ZX.reader = new mod.BrowserMultiFormatReader();
-      ZX.ready = true;
-    }catch(e){ console.error('[scanner] ZXing load failed', e); }
+    if (ZX.ready) return true;
+    if (ZX.tried) return false;
+    ZX.tried = true;
+    const sources = [
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js',
+      'https://unpkg.com/@zxing/library@0.20.0/esm/index.min.js',
+      'https://cdn.skypack.dev/@zxing/library@0.20.0?min'
+    ];
+    for (const src of sources){
+      try {
+        const mod = await import(/* @vite-ignore */ src);
+        const Reader = mod.BrowserMultiFormatReader || mod.default?.BrowserMultiFormatReader || mod.BrowserCodeReader?.BrowserMultiFormatReader;
+        if (!Reader) throw new Error('ZXing module missing reader');
+        ZX.reader = new Reader();
+        ZX.ready = true;
+        return true;
+      } catch (e){
+        console.warn('[scanner] ZXing load attempt failed for', src, e);
+      }
+    }
+    return false;
   }
 
   async function enumerateVideoDevices(){
@@ -215,11 +230,23 @@
     return (useBack ? (back?.deviceId || cams[0].deviceId) : (front?.deviceId || cams[0].deviceId));
   }
 
-  async function startZXing(){
+  async function startZXing(fallbackFromNative){
     // Stop any native camera first
     stopCamera();
-    await ensureZXing();
-    if (!ZX.ready) { status('Scanner unavailable'); return; }
+    const ok = await ensureZXing();
+    if (!ok || !ZX.ready) {
+      // If ZXing failed to load (e.g., CDN blocked), try native detector as a fallback
+      if (!detector && hasBarcodeDetector) {
+        try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
+      }
+      if (detector) {
+        // Use native path
+        await startCamera();
+        return;
+      }
+      status('Scanner unavailable');
+      return;
+    }
     try {
       if (ZX.controls){ try{ ZX.controls.stop(); }catch{} ZX.controls = null; }
       const deviceId = await pickDeviceId();
@@ -233,8 +260,26 @@
       });
       status('Point camera at QR');
     }catch(e){
-      status('Scanner unavailable');
       console.error('[scanner] ZXing start failed', e);
+      // Final fallback: try native if possible
+      if (!fallbackFromNative && hasBarcodeDetector) {
+        try { detector = detector || new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
+        if (detector) { await startCamera(); return; }
+      }
+      status('Scanner unavailable');
+    }
+  }
+
+  async function chooseAndStart(){
+    // Strategy:
+    // - If we prefer ZXing (iOS Safari), try it first; fall back to native if ZXing unavailable
+    // - Else, use native if available; fall back to ZXing
+    if (preferZXing) {
+      await startZXing();
+    } else if (detector) {
+      await startCamera();
+    } else {
+      await startZXing();
     }
   }
 
@@ -256,7 +301,7 @@
     showSheet(true);
     // Escape closes
     document.addEventListener('keydown', escCloseOnce, { once: true });
-    if (!preferZXing && hasBarcodeDetector && detector) await startCamera(); else await startZXing();
+    await chooseAndStart();
   }
 
   function escCloseOnce(ev){ if (ev.key === 'Escape') close(); }
