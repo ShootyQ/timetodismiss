@@ -6,6 +6,7 @@ const { onCall, HttpsError }       = require('firebase-functions/v2/https');
 const { onSchedule }               = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten }        = require('firebase-functions/v2/firestore');
 const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
+const { defineBoolean }            = require('firebase-functions/params');
 const { initializeApp }            = require('firebase-admin/app');
 const { getAuth }                  = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
@@ -14,7 +15,12 @@ const crypto = require('crypto');
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
 const db   = getFirestore();
-const ENABLE_BEFORE_SIGNIN = String(process.env.ENABLE_BEFORE_SIGNIN || '').toLowerCase() === 'true';
+// Prefer runtime param (deployable via .env or CLI). Fallback to process.env for backward compatibility.
+const PARAM_ENABLE_BEFORE_SIGNIN = defineBoolean('ENABLE_BEFORE_SIGNIN', { default: true });
+const ENABLE_BEFORE_SIGNIN =
+  (typeof process !== 'undefined' && process.env && typeof process.env.ENABLE_BEFORE_SIGNIN === 'string')
+    ? (String(process.env.ENABLE_BEFORE_SIGNIN).toLowerCase() === 'true')
+    : PARAM_ENABLE_BEFORE_SIGNIN.value();
 
 // ───────────────── Small helpers ─────────────────
 const ts        = () => FieldValue.serverTimestamp();

@@ -289,19 +289,7 @@
     return auth;
   }
 
-  // Prefer token claims to resolve tenant; fallback to domain mapping only if missing
-  async function resolveTenant(db, user) {
-    const idt = await user.getIdTokenResult(true);
-    const claims = idt.claims || {};
-    if (claims.schoolId) {
-      return { schoolId: claims.schoolId, orgId: claims.orgId || 'mn-conference' };
-    }
-    const domain = (user.email || '').split('@')[1]?.toLowerCase();
-    if (!domain) throw new Error('no-domain');
-    const snap = await db.collection('domains').doc(domain).get();
-    if (!snap.exists) throw new Error('domain-not-found');
-    return snap.data();
-  }
+  // Removed legacy domain-based tenant fallback. Tenant context now comes from token claims and user selection only.
 
   // Expose a full reset helper: sign out, clear SW + caches, nuke storage, reload
   async function resetSession(hardReload=true){
@@ -1103,38 +1091,8 @@
           window.SD.orgId = token?.claims?.orgId || window.SD.orgId || 'mn-conference';
         }
 
-        // If missing, fallback to domain mapping once (but NOT for superintendent-only users)
-        const isSup = !!(token?.claims && token.claims.superintendent);
-        if (!window.SD?.schoolId) {
-          if (!isSup) {
-            try {
-              const db = firebase.firestore();
-              const t = await resolveTenant(db, user);
-              window.SD.schoolId = t.schoolId;
-              if (t.orgId) window.SD.orgId = t.orgId;
-            } catch (e) {
-              try { console.warn('[Tenant fallback] domain mapping failed:', e?.message || e); } catch {}
-            }
-          } else {
-            // Superintendent without an explicit school — keep school unset; pages should offer a school picker
-            // Prefer orgId(s) from claims if available
-            const orgIds = Array.isArray(token?.claims?.orgIds) ? token.claims.orgIds : (token?.claims?.orgId ? [token.claims.orgId] : []);
-            if (orgIds.length && !window.SD.orgId) window.SD.orgId = orgIds[0];
-            // NEW: if claims do not provide any org identifier, attempt a one-time domain mapping fallback
-            if (!orgIds.length && !window.SD.orgId) {
-              try {
-                const db = firebase.firestore();
-                const t = await resolveTenant(db, user); // may throw if domain not mapped
-                if (t && t.orgId) {
-                  window.SD.orgId = t.orgId;
-                  // do NOT set schoolId here; superintendent still picks a school later
-                }
-              } catch (e) {
-                try { console.warn('[Sup fallback] No orgIds in claims and domain mapping failed:', e?.message || e); } catch {}
-              }
-            }
-          }
-        }
+        // Do not use domain mapping fallback; rely on claims + UI school selection.
+        // Superintendent without explicit school keeps school unset; pages present a picker via the school switcher.
 
         // Roles and switcher from claims
         await resolveTenantAndRoles(user, token);
