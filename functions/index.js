@@ -269,7 +269,10 @@ async function computeClaims(uid, email) {
     } catch (e) {
       console.warn('Failed to persist owner flag', e);
     }
-    await bumpUserTokens(req.auth.uid, { reason: 'owner-grant' });
+    // Do NOT revoke refresh tokens here; it forces an immediate re-login and causes a
+    // "takes two times to login" experience. Instead, bump claimsVersion so clients
+    // refresh their ID token on the next tick via the header listener.
+    await bumpClaimsVersion(req.auth.uid, { reason: 'owner-grant' });
     return { ok: true };
   });
 
@@ -885,8 +888,8 @@ async function computeClaims(uid, email) {
       }, { merge: true });
     });
 
-    // Force token refresh so UI updates immediately
-    await bumpUserTokens(uid, { reason: 'guardian-claim-consumed' });
+    // Nudge clients to refresh without revoking active sessions
+    await bumpClaimsVersion(uid, { reason: 'guardian-claim-consumed' });
 
     return { ok: true, orgId, schoolId, studentId };
   });

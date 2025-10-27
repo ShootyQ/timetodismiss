@@ -1147,7 +1147,21 @@
           });
         } catch (e) { try { console.warn('claims bump watch failed', e); } catch {} }
       } catch (e) {
-        console.error('Error ensuring claims / resolving roles:', e);
+        try { console.error('Error ensuring claims / resolving roles:', e); } catch {}
+        // If the token was revoked/expired and cannot be refreshed, proactively sign out
+        // and send the user back to login instead of leaving the UI in a broken state.
+        const code = (e && (e.code || e.errorCode)) || '';
+        const msg = (e && (e.message || '')) || '';
+        const looksExpired = code === 'auth/user-token-expired' || code === 'auth/user-token-revoked' || /user-token-expired/i.test(msg);
+        if (looksExpired) {
+          try { await auth.signOut(); } catch {}
+          // Fast redirect back to login for protected pages; otherwise just show sign-in UI
+          try {
+            const path = location.pathname.replace(/\/+$/, '');
+            if (PROTECTED.has(path)) scheduleLoginRedirect(800);
+          } catch {}
+          return;
+        }
         setRoleLinksFromClaims({ claims: {} });
       }
     });
