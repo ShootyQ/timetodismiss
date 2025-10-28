@@ -34,6 +34,7 @@
     }
     .qa-card:hover{ transform:translateY(-2px); box-shadow:0 12px 32px -12px rgba(15,23,42,.16); background:#f8fafc; }
     .qa-card:focus{ outline:3px solid var(--ring); outline-offset:3px; }
+  .qa-card.disabled{ cursor:not-allowed; opacity:.55; filter:grayscale(0.1); pointer-events:none; }
     .qa-ic{
       flex:0 0 auto; width:44px; height:44px; border-radius:12px; display:grid; place-items:center;
       /* Fallback */
@@ -81,13 +82,13 @@
               <span class="qa-text"><span class="qa-title">Roster, Classes, Ride Shares</span><span class="qa-sub">Add students, organize classes, manage ride groups</span></span>
             </a>
 
-            <a class="qa-card" href="/guardian-invites.html">
+            <a class="qa-card disabled" aria-disabled="true" title="Coming soon">
               <span class="qa-ic" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="currentColor" focusable="false" aria-hidden="true">
                   <path d="M12 12a5 5 0 1 0-5-5 5 5 0 0 0 5 5zm0 2c-4 0-8 2-8 5v1h16v-1c0-3-4-5-8-5z"/>
                 </svg>
               </span>
-              <span class="qa-text"><span class="qa-title">Guardian Invites</span><span class="qa-sub">Invite guardians to claim students</span></span>
+              <span class="qa-text"><span class="qa-title">Guardian Invites</span><span class="qa-sub">Coming soon</span></span>
             </a>
 
             <a class="qa-card" href="/qr-codes.html">
