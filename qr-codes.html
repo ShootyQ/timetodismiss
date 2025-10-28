@@ -75,6 +75,10 @@
     .pa-square3{ grid-template-columns: repeat(2, 3in); column-gap: .25in; row-gap: .25in; padding: .5in; }
     .pa-square3 .pa-item{ width:3in; height:3in; }
 
+  /* Business Card 3.5x2 in (2 cols x ~4 rows) */
+  .pa-bizcard{ grid-template-columns: repeat(2, 3.5in); column-gap: .25in; row-gap: .25in; padding: .5in; }
+  .pa-bizcard .pa-item{ width:3.5in; height:2in; }
+
     /* Fluid grid (non label) auto paginate by browser */
   .pa-gridflow{ grid-template-columns: repeat(auto-fit, minmax(1.3in, 1fr)); gap:.35in; padding:.6in .6in .6in; }
     .pa-gridflow .pa-item{ width:100%; height:auto; }
@@ -121,6 +125,9 @@
       <label class="inline-flex" id="wrapGroupByTag">
         <input id="groupByTag" type="checkbox" /> One per family (per tag)
       </label>
+      <label class="inline-flex" id="wrapGroupByLast">
+        <input id="groupByLast" type="checkbox" /> One per family (last name)
+      </label>
       <label class="inline-flex" id="wrapRideShares">
         <input id="includeRideShares" type="checkbox" /> Ride Shares
       </label>
@@ -155,6 +162,7 @@
         <option value="square2">Square 2×2 in</option>
         <option value="square3">Square 3×3 in</option>
         <option value="nameqr">Large Name + QR rows</option>
+        <option value="bizcard">Business Card 3.5×2 in</option>
       </select>
       <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
       <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
@@ -234,6 +242,7 @@
   const wrapModeStudents = document.getElementById('wrapModeStudents');
   const wrapRideShares = document.getElementById('wrapRideShares');
   const wrapGroupByTag = document.getElementById('wrapGroupByTag');
+  const wrapGroupByLast = document.getElementById('wrapGroupByLast');
   const wrapSortLastName = document.getElementById('wrapSortLastName');
     const cols = document.getElementById('cols');
     const sizeSel = document.getElementById('size');
@@ -243,6 +252,7 @@
     const modeStudents = document.getElementById('modeStudents');
   const includeRideShares = document.getElementById('includeRideShares');
   const groupByTag = document.getElementById('groupByTag');
+  const groupByLast = document.getElementById('groupByLast');
   const sortLastName = document.getElementById('sortLastName');
     const btnAll = document.getElementById('selectAll');
     const btnClr = document.getElementById('clearSel');
@@ -288,7 +298,8 @@
       // Keep Students and Ride Shares visible in Simple mode
       wrapModeStudents?.classList.toggle('hidden', false);
       wrapRideShares?.classList.toggle('hidden', false);
-      wrapGroupByTag?.classList.toggle('hidden', false);
+  wrapGroupByTag?.classList.toggle('hidden', false);
+  wrapGroupByLast?.classList.toggle('hidden', false);
       wrapSortLastName?.classList.toggle('hidden', false);
       cols?.classList.toggle('hidden', simple);
       sizeSel?.classList.toggle('hidden', simple);
@@ -329,6 +340,10 @@
       const filter = (q.value||'').toLowerCase();
       const useStudents = !!modeStudents.checked;
       // Consolidated view: one per family/tag while in Students mode
+      if (useStudents && groupByLast?.checked){
+        const grouped = studentsToFamiliesByLast(students);
+        return grouped.filter(x => (x.tag||'').toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+      }
       if (useStudents && groupByTag?.checked){
         const grouped = studentsToFamilyTags(students);
         return grouped.filter(x => x.tag.toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
@@ -454,6 +469,7 @@
         case 'avery5163': return { class: 'pa-avery5163', qrIn: 1.55, perPage: 10 };
         case 'square2':   return { class: 'pa-square2',   qrIn: 1.8,  perPage: 12 };
         case 'square3':   return { class: 'pa-square3',   qrIn: 2.4,  perPage: 6 };
+        case 'bizcard':   return { class: 'pa-bizcard',   qrIn: 1.4,  perPage: 8 };
   case 'nameqr':    return { class: 'pa-nameqr',    qrIn: 2.4,  perPage: 2,   bigName: true, landscape: true };
         default:          return { class: 'pa-gridflow',  gridFlow: true, qrIn: (parseInt(sizeSel.value,10)||200)/96 };
       }
@@ -463,6 +479,7 @@
 
     function getAllItems(){
       if (modeStudents.checked){
+        if (groupByLast?.checked) return studentsToFamiliesByLast(students);
         if (groupByTag?.checked) return studentsToFamilyTags(students);
         const base = students.slice();
         if (sortLastName?.checked){ base.sort((a,b)=> lastName(nameOf(a)).localeCompare(lastName(nameOf(b)))); }
@@ -743,6 +760,15 @@
             doc.addImage(png, 'PNG', right-qrSize, y, qrSize, qrSize, undefined, 'FAST');
             if (i===0){ doc.setDrawColor(229); doc.setLineWidth(0.01); doc.setLineDash([0.15, 0.1], 0); doc.line(left, mid-0.1, right, mid-0.1); doc.setLineDash(); }
           }
+        } else if (layoutSel.value === 'bizcard'){
+          // Business card grid: 2 cols, 3.5in x 2in cards, 0.25in gap, 0.5in margins
+          const cols=2; const labelW=3.5, labelH=2.0; const left=0.5, top=0.5; const gap=0.25;
+          for (let i=0; i<pageItems.length; i++){
+            const r = Math.floor(i/cols), c = i%cols;
+            const x = left + c*(labelW + gap);
+            const y = top + r*(labelH + gap);
+            await drawLabel(doc, pageItems[i], x, y, labelW, labelH, qrIn, useStudents);
+          }
         } else {
           // Responsive grid approximation: 3 columns with padding
           const pageW = isLandscape ? 11 : 8.5; const pageH = isLandscape ? 8.5 : 11;
@@ -814,6 +840,8 @@
           .pa-square2 .pa-item{width:2in;height:2in;}
           .pa-square3{grid-template-columns:repeat(2,3in);column-gap:.25in;row-gap:.25in;padding:.5in;}
           .pa-square3 .pa-item{width:3in;height:3in;}
+          .pa-bizcard{grid-template-columns:repeat(2,3.5in);column-gap:.25in;row-gap:.25in;padding:.5in;}
+          .pa-bizcard .pa-item{width:3.5in;height:2in;}
           .pa-gridflow{grid-template-columns:repeat(auto-fit,minmax(1.3in,1fr));gap:.35in;padding:.6in;}
           .pa-nameqr{padding:.45in .6in .45in;display:flex;flex-direction:column;gap:0;}
           .pa-nameqr .pa-item{flex:1 1 0;display:grid;grid-template-columns:1fr auto;align-items:center;column-gap:.55in;break-inside:auto;page-break-inside:auto;}
@@ -870,8 +898,9 @@
   showNames.addEventListener('change', renderList);
   simpleMode.addEventListener('change', () => { applySimpleMode(); saveOpts(); });
   if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
-  if (groupByTag) groupByTag.addEventListener('change', () => { selected.clear(); renderList(); saveOpts(); });
-  if (sortLastName) sortLastName.addEventListener('change', () => { if (modeStudents.checked && !groupByTag.checked){ renderList(); saveOpts(); } });
+  if (groupByTag) groupByTag.addEventListener('change', () => { if (groupByTag.checked && groupByLast) groupByLast.checked = false; selected.clear(); renderList(); saveOpts(); });
+  if (groupByLast) groupByLast.addEventListener('change', () => { if (groupByLast.checked && groupByTag) groupByTag.checked = false; selected.clear(); renderList(); saveOpts(); });
+  if (sortLastName) sortLastName.addEventListener('change', () => { if (modeStudents.checked && !(groupByTag.checked || (groupByLast && groupByLast.checked))){ renderList(); saveOpts(); } });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -882,6 +911,7 @@
       }
       // Show per-family and sorting controls only in Students mode
       if (wrapGroupByTag) wrapGroupByTag.classList.toggle('hidden', !modeStudents.checked);
+      if (wrapGroupByLast) wrapGroupByLast.classList.toggle('hidden', !modeStudents.checked);
       if (wrapSortLastName) wrapSortLastName.classList.toggle('hidden', !modeStudents.checked);
     });
 
@@ -994,7 +1024,7 @@
         const useStudents = !!modeStudents.checked;
         let total = 0;
         if (useStudents){
-          total = groupByTag?.checked ? studentsToFamilyTags(students).length : (students.length || 0);
+          total = groupByLast?.checked ? studentsToFamiliesByLast(students).length : (groupByTag?.checked ? studentsToFamilyTags(students).length : (students.length || 0));
         } else {
           total = tags.length || 0;
         }
@@ -1020,6 +1050,7 @@
           includeRideShares: !!(includeRideShares && includeRideShares.checked),
           simple: !!(simpleMode && simpleMode.checked),
           groupByTag: !!(groupByTag && groupByTag.checked),
+          groupByLast: !!(groupByLast && groupByLast.checked),
           sortLastName: !!(sortLastName && sortLastName.checked)
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
@@ -1040,6 +1071,7 @@
         if (typeof o.includeRideShares === 'boolean' && includeRideShares) includeRideShares.checked = o.includeRideShares;
         if (typeof o.simple === 'boolean' && simpleMode) simpleMode.checked = o.simple;
         if (typeof o.groupByTag === 'boolean' && groupByTag) groupByTag.checked = o.groupByTag;
+        if (typeof o.groupByLast === 'boolean' && groupByLast) groupByLast.checked = o.groupByLast;
         if (typeof o.sortLastName === 'boolean' && sortLastName) sortLastName.checked = o.sortLastName;
       }catch{}
     }
@@ -1144,6 +1176,28 @@
         out.push({ type:'tag', tag, name: display });
       }
       return out.sort((a,b)=> a.tag.localeCompare(b.tag));
+    }
+
+    // New: consolidate by last name; one label per family
+    function studentsToFamiliesByLast(list){
+      const byLast = new Map();
+      for (const s of (list||[])){
+        const ln = lastName(nameOf(s)) || '(unknown)';
+        if (!byLast.has(ln)) byLast.set(ln, []);
+        byLast.get(ln).push(s);
+      }
+      const out = [];
+      for (const [ln, arr] of byLast.entries()){
+        // pick most common tag among the family; otherwise fall back to first id
+        const counts = new Map();
+        for (const s of arr){ const t = normTag(s.tag||''); if (t){ counts.set(t, (counts.get(t)||0)+1); } }
+        let tag = '';
+        if (counts.size){ tag = Array.from(counts.entries()).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]))[0][0]; }
+        const first = arr[0] || {};
+        const id = first.id || first.studentId || '';
+        out.push({ id, tag, name: (ln && ln !== '(unknown)') ? (ln + ' family') : (nameOf(first) || '') });
+      }
+      return out.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
     }
   </script>
 </body>

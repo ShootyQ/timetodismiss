@@ -81,13 +81,16 @@ const bumpClaimsVersion = async (uid, extra = {}) => {
 async function computeClaims(uid, email) {
   const emailLower = norm(email);
   const base = {
-    owner: false, superintendent: false, admin: false, caller: false, viewer: false,
+    owner: false, superintendent: false, admin: false, caller: false, viewer: false, guardian: false,
     orgIds: [], schoolIds: []
   };
 
   // Owner? (store this on users/{uid}.owner = true)
   const uDoc = await db.doc(`users/${uid}`).get().catch(() => null);
-  if (uDoc?.exists && uDoc.get('owner') === true) base.owner = true;
+  if (uDoc?.exists){
+    if (uDoc.get('owner') === true) base.owner = true;
+    if (uDoc.get('guardian') === true) base.guardian = true;
+  }
 
   // Superintendent — two ways:
   // 1) orgs where orgs.superEmails contains user email (recommended to maintain when adding/removing supers)
@@ -156,6 +159,7 @@ async function computeClaims(uid, email) {
     if (base.admin) rolesArr.push('admin');
     if (base.caller) rolesArr.push('caller');
     if (base.viewer) rolesArr.push('viewer');
+  if (base.guardian) rolesArr.push('guardian');
     base.roles = rolesArr;
 
     return base;
@@ -888,8 +892,14 @@ async function computeClaims(uid, email) {
       }, { merge: true });
     });
 
-    // Nudge clients to refresh without revoking active sessions
-    await bumpClaimsVersion(uid, { reason: 'guardian-claim-consumed' });
+    // Apply claims immediately so new guardian flag lands in the next ID token refresh
+    const user = await auth.getUser(uid).catch(() => null);
+    if (user) {
+      await applyClaims(uid, user.email || '', 'guardian-claim-consumed');
+    } else {
+      // Fallback: still bump so clients attempt a refresh
+      await bumpClaimsVersion(uid, { reason: 'guardian-claim-consumed' });
+    }
 
     return { ok: true, orgId, schoolId, studentId };
   });
