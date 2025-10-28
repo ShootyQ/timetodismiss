@@ -6,13 +6,21 @@ const { onCall, HttpsError }       = require('firebase-functions/v2/https');
 const { onSchedule }               = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten }        = require('firebase-functions/v2/firestore');
 const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
+const { defineBoolean }            = require('firebase-functions/params');
 const { initializeApp }            = require('firebase-admin/app');
 const { getAuth }                  = require('firebase-admin/auth');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const crypto = require('crypto');
 
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
 const db   = getFirestore();
+// Prefer runtime param (deployable via .env or CLI). Fallback to process.env for backward compatibility.
+const PARAM_ENABLE_BEFORE_SIGNIN = defineBoolean('ENABLE_BEFORE_SIGNIN', { default: true });
+const ENABLE_BEFORE_SIGNIN =
+  (typeof process !== 'undefined' && process.env && typeof process.env.ENABLE_BEFORE_SIGNIN === 'string')
+    ? (String(process.env.ENABLE_BEFORE_SIGNIN).toLowerCase() === 'true')
+    : PARAM_ENABLE_BEFORE_SIGNIN.value();
 
 // ───────────────── Small helpers ─────────────────
 const ts        = () => FieldValue.serverTimestamp();
@@ -60,17 +68,29 @@ const bumpUserTokens = async (uid, extra = {}) => {
   }, { merge: true });
 };
 
+// Bump only the claimsVersion to notify clients, without revoking tokens
+const bumpClaimsVersion = async (uid, extra = {}) => {
+  await db.doc(`users/${uid}`).set({
+    claimsVersion: FieldValue.increment(1),
+    updatedAt: ts(),
+    ...extra,
+  }, { merge: true });
+};
+
 // ───────────────── Claims aggregation (single source of truth) ─────────────────
 async function computeClaims(uid, email) {
   const emailLower = norm(email);
   const base = {
-    owner: false, superintendent: false, admin: false, caller: false, viewer: false,
+    owner: false, superintendent: false, admin: false, caller: false, viewer: false, guardian: false,
     orgIds: [], schoolIds: []
   };
 
   // Owner? (store this on users/{uid}.owner = true)
   const uDoc = await db.doc(`users/${uid}`).get().catch(() => null);
-  if (uDoc?.exists && uDoc.get('owner') === true) base.owner = true;
+  if (uDoc?.exists){
+    if (uDoc.get('owner') === true) base.owner = true;
+    if (uDoc.get('guardian') === true) base.guardian = true;
+  }
 
   // Superintendent — two ways:
   // 1) orgs where orgs.superEmails contains user email (recommended to maintain when adding/removing supers)
@@ -139,30 +159,39 @@ async function computeClaims(uid, email) {
     if (base.admin) rolesArr.push('admin');
     if (base.caller) rolesArr.push('caller');
     if (base.viewer) rolesArr.push('viewer');
+  if (base.guardian) rolesArr.push('guardian');
     base.roles = rolesArr;
 
     return base;
   }
 
-  async function applyClaims(uid, email, reason = 'recompute') {
+  async function applyClaims(uid, email, reason = 'recompute', opts = {}) {
     const claims = await computeClaims(uid, email);
     await auth.setCustomUserClaims(uid, claims);
-    await bumpUserTokens(uid, { reason });
+    // Default: do NOT revoke refresh tokens on every claim change, to avoid bouncing user sessions.
+    // Only revoke when explicitly requested (e.g., admin actions) to force a full re-auth.
+    if (opts && opts.revoke === true) {
+      await bumpUserTokens(uid, { reason });
+    } else {
+      await bumpClaimsVersion(uid, { reason });
+    }
     return claims;
   }
 
   // ───────────────── Auth Blocking (instant claims on first token) ─────────────────
   // Runs BEFORE a session starts; puts final roles/orgs/schools into the first ID token.
-  exports.beforeSignIn = beforeUserSignedIn(async (event) => {
-    const { uid, email } = event.data || {};
-    if (!uid) return {};
-    const claims = await computeClaims(uid, email || '');
-    return { customClaims: claims };
-  });
+  if (ENABLE_BEFORE_SIGNIN) {
+    exports.beforeSignIn = beforeUserSignedIn(async (event) => {
+      const { uid, email } = event.data || {};
+      if (!uid) return {};
+      const claims = await computeClaims(uid, email || '');
+      return { customClaims: claims };
+    });
+  }
 
   // ───────────────── Triggers (recompute after writes) ─────────────────
   exports.onSchoolMemberWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/schools/{schoolId}/members/{uid}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/schools/{schoolId}/members/{uid}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const after  = event.data.after?.data();
       const before = event.data.before?.data();
@@ -175,7 +204,7 @@ async function computeClaims(uid, email) {
   );
 
   exports.onOrgMemberWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/members/{uid}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/members/{uid}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const uid = event.params.uid;
       const user = await auth.getUser(uid).catch(() => null);
@@ -186,7 +215,7 @@ async function computeClaims(uid, email) {
 
   // Optional: if you edit org.superEmails manually, keep claims in sync
   exports.onOrgDocWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const before = event.data.before?.data() || {};
       const after  = event.data.after?.data()  || {};
@@ -224,7 +253,7 @@ async function computeClaims(uid, email) {
   // ───────────────── Callables ─────────────────
 
   // Owner bootstrap (one-time)
-  exports.ownerGrant = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerGrant = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (norm(req.auth.token.email) !== 'carlsonandy85@gmail.com') {
       throw new HttpsError('permission-denied', 'Nope.');
@@ -244,12 +273,15 @@ async function computeClaims(uid, email) {
     } catch (e) {
       console.warn('Failed to persist owner flag', e);
     }
-    await bumpUserTokens(req.auth.uid, { reason: 'owner-grant' });
+    // Do NOT revoke refresh tokens here; it forces an immediate re-login and causes a
+    // "takes two times to login" experience. Instead, bump claimsVersion so clients
+    // refresh their ID token on the next tick via the header listener.
+    await bumpClaimsVersion(req.auth.uid, { reason: 'owner-grant' });
     return { ok: true };
   });
 
   // Create org + superintendent (owner only)
-  exports.createSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.createSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
 
@@ -294,7 +326,7 @@ async function computeClaims(uid, email) {
   });
 
   // Owner: add/remove superintendent
-  exports.ownerAddSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerAddSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
     const { orgId, email } = req.data || {};
@@ -326,7 +358,7 @@ async function computeClaims(uid, email) {
     return { ok: true, uid: user.uid };
   });
 
-  exports.ownerRemoveSuperintendent = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.ownerRemoveSuperintendent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     if (!req.auth.token?.owner) throw new HttpsError('permission-denied', 'Owner only.');
     const { orgId, uid, email } = req.data || {};
@@ -345,7 +377,7 @@ async function computeClaims(uid, email) {
   });
 
   // Reset all students in a school to 'waiting' (admin or caller for that school)
-  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.resetAllToWaiting = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const uid = req.auth.uid;
@@ -392,7 +424,7 @@ async function computeClaims(uid, email) {
     schedule: 'every 5 minutes',
     region: 'us-central1',
     timeZone: 'America/Chicago', // adjust to your primary tenant timezone if needed
-    minInstances: 1,
+    minInstances: 0,
   }, async () => {
     const nowMs = Date.now();
     const ended = [];
@@ -446,7 +478,7 @@ async function computeClaims(uid, email) {
   });
 
   // Add a school (owner or superintendent of that org)
-  exports.addSchool = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.addSchool = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolName } = req.data || {};
@@ -483,7 +515,7 @@ async function computeClaims(uid, email) {
   });
 
   // Set roles for a school member (canonical write = members/)
-  exports.setSchoolMemberRoles = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.setSchoolMemberRoles = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId, user = {}, roles = {} } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -534,7 +566,7 @@ async function computeClaims(uid, email) {
   });
 
   // List school members
-  exports.listSchoolMembers = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.listSchoolMembers = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -565,7 +597,7 @@ async function computeClaims(uid, email) {
   });
 
   // List classes for a school (ordered) — lightweight read used by roles UI
-  exports.listSchoolClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.listSchoolClasses = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
@@ -598,7 +630,7 @@ async function computeClaims(uid, email) {
 
   // Assign classes to a teacher/member
   // Stores at members/{uid}.teacher.classIds (array)
-  exports.setTeacherClasses = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.setTeacherClasses = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const { orgId, schoolId, memberId, classIds } = req.data || {};
     if (!orgId || !schoolId || !memberId) throw new HttpsError('invalid-argument', 'orgId, schoolId, memberId required.');
@@ -615,7 +647,7 @@ async function computeClaims(uid, email) {
   });
 
   // Invite then set initial role (writes members/; claims applied immediately)
-  exports.inviteUser = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.inviteUser = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { email, orgId, schoolId, role = 'admin' } = req.data || {};
@@ -646,15 +678,16 @@ async function computeClaims(uid, email) {
   });
 
   // Recompute claims for the current user (self-service)
-  exports.refreshMyClaims = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.refreshMyClaims = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const user = await auth.getUser(req.auth.uid);
-    const claims = await applyClaims(user.uid, user.email || '', 'manual-refresh');
+    // IMPORTANT: Do not revoke on self-service refresh to avoid bouncing other sessions/devices
+    const claims = await applyClaims(user.uid, user.email || '', 'manual-refresh', { revoke: false });
     return { ok: true, claims };
   });
 
   // Admin: force revoke a user’s tokens (owner or any superintendent)
-  exports.adminRevokeUserTokens = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.adminRevokeUserTokens = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { uid, reason = 'admin-revoke' } = req.data || {};
@@ -665,7 +698,7 @@ async function computeClaims(uid, email) {
   });
 
   // Delete a school and all nested data, then recompute usedSchools
-  exports.deleteSchool = onCall({ region: 'us-central1', minInstances: 1 }, async (req) => {
+  exports.deleteSchool = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId } = req.data || {};
@@ -702,7 +735,7 @@ async function computeClaims(uid, email) {
 
   // Keep org.usedSchools in sync when schools are created/deleted (safety net)
   exports.onSchoolsWrite = onDocumentWritten(
-    { document: 'orgs/{orgId}/schools/{schoolId}', region: 'us-central1', minInstances: 1 },
+    { document: 'orgs/{orgId}/schools/{schoolId}', region: 'us-central1', minInstances: 0 },
     async (event) => {
       const orgId = event.params.orgId;
       if (!orgId) return;
@@ -711,3 +744,230 @@ async function computeClaims(uid, email) {
       await orgRef.set({ usedSchools: docs.length, updatedAt: ts() }, { merge: true });
     }
   );
+
+  // ───────────────── Guardian Invites & Claims ─────────────────
+  function randomToken(bytes = 16){
+    try { return crypto.randomBytes(bytes).toString('base64url'); }
+    catch { return Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2); }
+  }
+  function shortCode8(){
+    const alphabet = 'ABCDEFGHJKMNPqrstuvwxyz23456789abcdefghjkmnpQRSTUVWXYZ';
+    let s = '';
+    for (let i = 0; i < 8; i++) s += alphabet[Math.floor(Math.random()*alphabet.length)];
+    return (s.slice(0,4) + '-' + s.slice(4)).toUpperCase();
+  }
+  function parseInvitePath(p){
+    // orgs/{orgId}/schools/{schoolId}/invites/{inviteId}
+    const seg = String(p||'').split('/');
+    if (seg.length < 6) return { orgId: null, schoolId: null, inviteId: null };
+    return { orgId: seg[1], schoolId: seg[3], inviteId: seg[5] };
+  }
+
+  // Admin/staff: create a guardian claim invite for a student
+  // Input: { orgId, schoolId, studentId, email?, relationshipType? }
+  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const { orgId, schoolId, studentId, email = null, relationshipType = 'primary', daysValid = 14 } = req.data || {};
+    if (!orgId || !schoolId || !studentId) throw new HttpsError('invalid-argument', 'orgId, schoolId, studentId required.');
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin for this school required.');
+
+    const invitesCol = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('invites');
+    const token = 'PT-' + randomToken(16); // Prefix avoids tag collisions
+    const code8 = shortCode8();
+    const inviteRef = invitesCol.doc();
+    const expiresAt = FieldValue.serverTimestamp(); // set placeholder, then backfill with absolute date in an extra write not needed — keep server TS and store daysValid
+
+    const payload = {
+      type: 'guardian-claim',
+      studentId: String(studentId),
+      relationshipType: String(relationshipType || 'primary'),
+      email: email ? String(email).trim() : null,
+      code8,
+      code8Lower: code8.replace(/-/g,'').toLowerCase(),
+      token,
+      status: 'pending',
+      orgId, schoolId,
+      daysValid: Math.max(1, Math.min(60, Number(daysValid)||14)),
+      createdAt: ts(),
+      expiresAt: FieldValue.increment(0) // purely to keep shape; validity enforced as createdAt + daysValid on read
+    };
+    await inviteRef.set(payload, { merge: true });
+
+    // Return link (client-host agnostic: relative path)
+    const inviteId = inviteRef.id;
+    const link = `/claim.html?inv=${encodeURIComponent(inviteId)}&token=${encodeURIComponent(token)}`;
+    return { ok: true, inviteId, code8, token, link };
+  });
+
+  // Signed-in guardian: claim invite via inv+token OR code
+  // Input: { inv, token } OR { code }
+  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const { inv, token, code } = req.data || {};
+
+    // Locate the invite doc
+    let docSnap = null; let docRef = null;
+    if (code) {
+      const codeKey = String(code).replace(/-/g,'').toLowerCase();
+      const q = await db.collectionGroup('invites')
+        .where('code8Lower','==', codeKey)
+        .where('status','==','pending')
+        .limit(1).get();
+      if (!q.empty) { docSnap = q.docs[0]; docRef = docSnap.ref; }
+    } else if (token) {
+      const q = await db.collectionGroup('invites')
+        .where('token','==', String(token))
+        .where('status','==','pending')
+        .limit(1).get();
+      if (!q.empty) { docSnap = q.docs[0]; docRef = docSnap.ref; }
+    }
+    if (!docSnap || !docRef) throw new HttpsError('not-found', 'Invite not found or already used.');
+
+    const invite = docSnap.data() || {};
+    if (inv && docRef.id !== String(inv)) throw new HttpsError('permission-denied', 'Invite mismatch.');
+    if (token && invite.token !== String(token)) throw new HttpsError('permission-denied', 'Token mismatch.');
+    if ((invite.status || 'pending') !== 'pending') throw new HttpsError('failed-precondition', 'Invite is not pending.');
+    if (invite.type !== 'guardian-claim') throw new HttpsError('failed-precondition', 'Wrong invite type.');
+
+    const { orgId, schoolId, inviteId } = parseInvitePath(docRef.path);
+    if (!orgId || !schoolId) throw new HttpsError('internal', 'Malformed invite path.');
+
+    // Enforce daysValid from createdAt
+    let createdAtMs = Date.now();
+    try { const t = invite.createdAt; if (t && typeof t.toMillis === 'function') createdAtMs = t.toMillis(); } catch {}
+    const daysValid = Math.max(1, Math.min(60, Number(invite.daysValid)||14));
+    const expiresMs = createdAtMs + daysValid * 24*60*60*1000;
+    if (Date.now() > expiresMs) throw new HttpsError('deadline-exceeded', 'Invite expired.');
+
+    const studentId = String(invite.studentId || '');
+    if (!studentId) throw new HttpsError('invalid-argument', 'Invite missing studentId.');
+
+    const studentRef = db.doc(`orgs/${orgId}/schools/${schoolId}/students/${studentId}`);
+    const linkRef    = studentRef.collection('guardians').doc(uid);
+
+    await db.runTransaction(async (tx) => {
+      const curInvite = await tx.get(docRef);
+      if (!curInvite.exists) throw new HttpsError('not-found', 'Invite missing.');
+      const cur = curInvite.data() || {};
+      if ((cur.status || 'pending') !== 'pending') throw new HttpsError('failed-precondition', 'Invite already used or revoked.');
+      // Idempotent: if link already exists, proceed quietly
+      const linkSnap = await tx.get(linkRef);
+      const linkPayload = {
+        uid,
+        relationshipType: String(cur.relationshipType || 'primary'),
+        verifiedAt: ts(),
+        createdAt: linkSnap.exists ? (linkSnap.get('createdAt') || ts()) : ts(),
+        orgId, schoolId,
+      };
+      tx.set(linkRef, linkPayload, { merge: true });
+      tx.update(docRef, { status: 'consumed', consumedByUid: uid, consumedAt: ts(), updatedAt: ts() });
+      tx.set(db.doc(`users/${uid}`), { guardian: true, updatedAt: ts() }, { merge: true });
+
+      // Also write a reverse lookup so guardians can be listed without collectionGroup
+      // Key format keeps it unique and readable; values denormalize minimal fields for client
+      const reverseKey = `${orgId}__${schoolId}__${studentId}`;
+      const reverseRef = db.doc(`users/${uid}/guardianLinks/${reverseKey}`);
+      // Try to denormalize a display name for convenience (best-effort, not required)
+      let studentName = studentId;
+      let studentTag = '';
+      try {
+        const sSnap = await tx.get(studentRef);
+        if (sSnap.exists) {
+          const s = sSnap.data() || {};
+          studentName = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+          const rawTag = s.carTag || s.tag || '';
+          studentTag = String(rawTag || '').toUpperCase().trim();
+        }
+      } catch (_) {}
+      tx.set(reverseRef, {
+        orgId,
+        schoolId,
+        studentId,
+        name: studentName,
+        tag: studentTag || null,
+        linkedAt: ts(),
+      }, { merge: true });
+    });
+
+    // Apply claims immediately so new guardian flag lands in the next ID token refresh
+    const user = await auth.getUser(uid).catch(() => null);
+    if (user) {
+      await applyClaims(uid, user.email || '', 'guardian-claim-consumed');
+    } else {
+      // Fallback: still bump so clients attempt a refresh
+      await bumpClaimsVersion(uid, { reason: 'guardian-claim-consumed' });
+    }
+
+    return { ok: true, orgId, schoolId, studentId };
+  });
+
+  // Guardian helper: list students linked to current user
+  // Returns [{ orgId, schoolId, studentId, name }]
+  exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const out = [];
+    try {
+      // Preferred: read reverse index written at claim time
+      const revSnap = await db.collection(`users/${uid}/guardianLinks`).limit(100).get();
+      if (!revSnap.empty) {
+        revSnap.docs.forEach(d => {
+          const x = d.data() || {};
+          const orgId = String(x.orgId || '');
+          const schoolId = String(x.schoolId || '');
+          const studentId = String(x.studentId || d.id);
+          const name = x.name || studentId;
+          const tag = String(x.tag || '').toUpperCase().trim();
+          if (orgId && schoolId && studentId) out.push({ orgId, schoolId, studentId, name, tag });
+        });
+        // Enrich names/tags if missing or clearly an ID (best-effort, avoids client reads)
+        const needEnrich = out.filter(s => !s.name || s.name === s.studentId || /^(?:[A-Za-z0-9_-]{6,})$/.test(s.name));
+        for (const s of needEnrich){
+          try {
+            const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.studentId}`);
+            const snap = await ref.get();
+            if (snap.exists){
+              const d = snap.data() || {};
+              const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
+              if (nm) s.name = nm;
+              const tg = String(d.carTag || d.tag || '').toUpperCase().trim();
+              if (tg) s.tag = tg;
+            }
+          } catch (e) { /* ignore */ }
+        }
+        return { ok: true, students: out };
+      }
+    } catch (e) {
+      console.error('[listMyLinkedStudents] reverse index read failed', e);
+    }
+    try {
+      // Fallback: collection group scan of guardians
+      const snap = await db.collectionGroup('guardians').where('uid','==', uid).limit(100).get();
+      for (const d of snap.docs){
+        try {
+          const guardiansColl = d.ref.parent;                 // .../students/{studentId}/guardians
+          const studentRef = guardiansColl.parent;            // .../students/{studentId}
+          const seg = studentRef.path.split('/');             // orgs/{orgId}/schools/{schoolId}/students/{studentId}
+          if (seg.length < 6) continue;
+          const orgId = seg[1];
+          const schoolId = seg[3];
+          const studentId = seg[5];
+          const sSnap = await studentRef.get();
+          const s = sSnap.exists ? (sSnap.data() || {}) : {};
+          const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+          const tag = String(s.carTag || s.tag || '').toUpperCase().trim();
+          out.push({ orgId, schoolId, studentId, name, tag });
+        } catch (inner) {
+          console.error('[listMyLinkedStudents] doc parse failed', inner);
+        }
+      }
+    } catch (e) {
+      console.error('[listMyLinkedStudents] guardians group query failed', e);
+      // Don't surface 500s to the client; return empty list so UI can degrade gracefully
+      return { ok: true, students: out };
+    }
+    return { ok: true, students: out };
+  });

@@ -171,6 +171,7 @@
             <a href="/callerhub.html?stay=1" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
             <a href="/leaderboard.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Leaderboard</a>
             <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
+            <a href="/guardian-invites.html" data-requires="admin" title="Guardian Invites" style="display:block !important; opacity:1 !important; visibility:visible !important;">Guardian Invites</a>
             <a href="/superintendent.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Superintendent</a>
             <a href="/prefs.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Preferences</a>
           </nav>
@@ -283,24 +284,12 @@
       await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
     } catch (e1) {
       try { await auth.setPersistence(firebase.auth.Auth.Persistence.SESSION); }
-      catch (e2) { try { await auth.setPersistence(firebase.auth.Auth.Persistence.NONE); } catch {} }
+      catch (e2) { /* leave default persistence as-is; do NOT force NONE which would cause sign-outs on reload */ }
     }
     return auth;
   }
 
-  // Prefer token claims to resolve tenant; fallback to domain mapping only if missing
-  async function resolveTenant(db, user) {
-    const idt = await user.getIdTokenResult(true);
-    const claims = idt.claims || {};
-    if (claims.schoolId) {
-      return { schoolId: claims.schoolId, orgId: claims.orgId || 'mn-conference' };
-    }
-    const domain = (user.email || '').split('@')[1]?.toLowerCase();
-    if (!domain) throw new Error('no-domain');
-    const snap = await db.collection('domains').doc(domain).get();
-    if (!snap.exists) throw new Error('domain-not-found');
-    return snap.data();
-  }
+  // Removed legacy domain-based tenant fallback. Tenant context now comes from token claims and user selection only.
 
   // Expose a full reset helper: sign out, clear SW + caches, nuke storage, reload
   async function resetSession(hardReload=true){
@@ -1001,7 +990,8 @@
         // If we're on a protected page, send to login quietly (no alerts)
         try {
           const path = location.pathname.replace(/\/+$/, '');
-      if (PROTECTED.has(path)) scheduleLoginRedirect(1800); // defer instead of immediate
+          // Give auth hydration ample time before redirecting to login to avoid "random" logouts on slower networks/devices
+          if (PROTECTED.has(path)) scheduleLoginRedirect(9000);
         } catch {}
         return;
       }
@@ -1045,23 +1035,48 @@
   try { if (hdrAccountPop && !hdrAccountPop.hidden) refreshHdrAccountPop(user); } catch {}
 
   try {
-        // Step B: ensure claims exist (may call CF and refresh token)
-        await ensureClaims(user);
+  // Step B: ensure claims exist (may call CF and refresh token)
+  await ensureClaims(user);
 
-        // Now read fresh token with claims
-        let token = await user.getIdTokenResult(true);
+  // Now read fresh token with claims
+  let token = await user.getIdTokenResult(true);
 
-    // One-time per session: ask backend to recompute claims to drop any stale access
-    // Track whether we explicitly requested a refresh so the first user doc snapshot forces a token reload
-    let pendingClaimsRefresh = false;
+        // If this is a bootstrapped owner email but the token lacks owner,
+        // auto-invoke the secured ownerGrant callable to restore the claim.
+        // This is safe because the function itself hard-checks the allowed email.
         try {
-          if (!sessionStorage.getItem('SD_CLAIMS_REFRESHED')) {
-            const call = window.SD?.httpsCallable ? window.SD.httpsCallable('refreshMyClaims') : null;
+          const emailLower = (user.email || '').toLowerCase();
+          if (!token?.claims?.owner && TEMP_ADMIN_EMAILS && TEMP_ADMIN_EMAILS.has(emailLower)) {
+            const call = window.SD?.httpsCallable ? window.SD.httpsCallable('ownerGrant') : null;
             if (call) {
-      pendingClaimsRefresh = true; // ensure first snapshot triggers token reload even if version already bumped
-      await call();
-      // Wait for new claims to actually appear (bounded poll)
-      token = await waitForEffectiveClaims(user, 8000);
+              await call();
+              // Wait for the new claim to take effect
+              token = await waitForEffectiveClaims(user, 8000) || token;
+            }
+          }
+        } catch (e) {
+          try { console.warn('[hdr] ownerGrant auto-call failed:', e?.message || e); } catch {}
+        }
+
+        // One-time per session: optionally ask backend to recompute claims.
+        // IMPORTANT: only do this when the token appears to lack any role/school claims to avoid cold-start slowness after deploys.
+        // If token already has roles/school, fire-and-forget a refresh in background at most once per session.
+        let pendingClaimsRefresh = false;
+        try {
+          const already = sessionStorage.getItem('SD_CLAIMS_REFRESHED') === '1';
+          const c0 = token?.claims || {};
+          const hasRoleish = !!(c0.owner || c0.superintendent || c0.admin || c0.caller || c0.viewer || (Array.isArray(c0.roles) && c0.roles.length));
+          const hasSchool = !!(c0.schoolId || (Array.isArray(c0.schoolIds) && c0.schoolIds.length));
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('refreshMyClaims') : null;
+          if (!already && call) {
+            if (!hasRoleish && !hasSchool) {
+              // Truly missing claims: block briefly and wait for effective roles
+              pendingClaimsRefresh = true;
+              await call();
+              token = await waitForEffectiveClaims(user, 6000) || token; // shorter bounded wait
+            } else {
+              // We already have useful claims – do not block UI; refresh in background
+              call().catch(()=>{});
             }
             sessionStorage.setItem('SD_CLAIMS_REFRESHED', '1');
           }
@@ -1076,38 +1091,8 @@
           window.SD.orgId = token?.claims?.orgId || window.SD.orgId || 'mn-conference';
         }
 
-        // If missing, fallback to domain mapping once (but NOT for superintendent-only users)
-        const isSup = !!(token?.claims && token.claims.superintendent);
-        if (!window.SD?.schoolId) {
-          if (!isSup) {
-            try {
-              const db = firebase.firestore();
-              const t = await resolveTenant(db, user);
-              window.SD.schoolId = t.schoolId;
-              if (t.orgId) window.SD.orgId = t.orgId;
-            } catch (e) {
-              try { console.warn('[Tenant fallback] domain mapping failed:', e?.message || e); } catch {}
-            }
-          } else {
-            // Superintendent without an explicit school — keep school unset; pages should offer a school picker
-            // Prefer orgId(s) from claims if available
-            const orgIds = Array.isArray(token?.claims?.orgIds) ? token.claims.orgIds : (token?.claims?.orgId ? [token.claims.orgId] : []);
-            if (orgIds.length && !window.SD.orgId) window.SD.orgId = orgIds[0];
-            // NEW: if claims do not provide any org identifier, attempt a one-time domain mapping fallback
-            if (!orgIds.length && !window.SD.orgId) {
-              try {
-                const db = firebase.firestore();
-                const t = await resolveTenant(db, user); // may throw if domain not mapped
-                if (t && t.orgId) {
-                  window.SD.orgId = t.orgId;
-                  // do NOT set schoolId here; superintendent still picks a school later
-                }
-              } catch (e) {
-                try { console.warn('[Sup fallback] No orgIds in claims and domain mapping failed:', e?.message || e); } catch {}
-              }
-            }
-          }
-        }
+        // Do not use domain mapping fallback; rely on claims + UI school selection.
+        // Superintendent without explicit school keeps school unset; pages present a picker via the school switcher.
 
         // Roles and switcher from claims
         await resolveTenantAndRoles(user, token);
@@ -1162,7 +1147,21 @@
           });
         } catch (e) { try { console.warn('claims bump watch failed', e); } catch {} }
       } catch (e) {
-        console.error('Error ensuring claims / resolving roles:', e);
+        try { console.error('Error ensuring claims / resolving roles:', e); } catch {}
+        // If the token was revoked/expired and cannot be refreshed, proactively sign out
+        // and send the user back to login instead of leaving the UI in a broken state.
+        const code = (e && (e.code || e.errorCode)) || '';
+        const msg = (e && (e.message || '')) || '';
+        const looksExpired = code === 'auth/user-token-expired' || code === 'auth/user-token-revoked' || /user-token-expired/i.test(msg);
+        if (looksExpired) {
+          try { await auth.signOut(); } catch {}
+          // Fast redirect back to login for protected pages; otherwise just show sign-in UI
+          try {
+            const path = location.pathname.replace(/\/+$/, '');
+            if (PROTECTED.has(path)) scheduleLoginRedirect(800);
+          } catch {}
+          return;
+        }
         setRoleLinksFromClaims({ claims: {} });
       }
     });

@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guardian Invites — Admin</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR6" defer></script>
+  <style>
+    .wrap{ max-width: 980px; margin:0 auto; padding: 18px; }
+    .section{ padding: 36px 0; }
+    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; box-shadow:0 8px 24px rgba(15,23,42,.05); }
+    .grid{ display:grid; gap:12px; }
+    .muted{ color:#64748b; }
+    label{ font-weight:700; }
+    input, select{ width:100%; border:1px solid #e5e7eb; border-radius:10px; padding:.6rem .7rem; }
+    .row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .out{ background:#f8fafc; border:1px solid #e5e7eb; border-radius:10px; padding:10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body class="sd-body">
+  <main>
+    <section class="section">
+      <div class="wrap">
+        <h1>Guardian Invites</h1>
+        <p class="muted">Create a one-time link or code to let a guardian claim a student.</p>
+
+        <div id="guard" class="card" style="display:none; margin-top:10px;">
+          <p><strong>Access denied.</strong> You need Admin access for a school to create invites.</p>
+        </div>
+
+        <div id="formCard" class="card" style="margin-top:10px;">
+          <div class="grid">
+            <div class="row">
+              <label>Student (doc ID or SIS ID)
+                <input id="studentId" placeholder="e.g., student doc id or SIS ID" />
+              </label>
+              <label>Relationship
+                <select id="rel">
+                  <option value="primary" selected>Primary</option>
+                  <option value="secondary">Secondary</option>
+                </select>
+              </label>
+            </div>
+            <div class="row">
+              <label>Guardian email (optional)
+                <input id="email" type="email" placeholder="guardian@example.com" />
+              </label>
+              <label>Valid days
+                <select id="days">
+                  <option>7</option>
+                  <option selected>14</option>
+                  <option>30</option>
+                </select>
+              </label>
+            </div>
+            <div class="actions">
+              <button id="createBtn" class="btn btn-primary" type="button">Create Invite</button>
+              <span id="status" class="muted"></span>
+            </div>
+          </div>
+        </div>
+
+        <div id="resultCard" class="card" style="display:none; margin-top:10px;">
+          <h3 style="margin:0 0 6px;">Invite created</h3>
+          <div class="grid">
+            <div>
+              <div class="muted">Magic link</div>
+              <div id="linkOut" class="out" style="word-break:break-all;"></div>
+            </div>
+            <div>
+              <div class="muted">Short code</div>
+              <div id="codeOut" class="out"></div>
+            </div>
+          </div>
+          <div class="actions" style="margin-top:8px;">
+            <button id="copyLink" class="btn" type="button">Copy link</button>
+            <button id="newInvite" class="btn btn-outline" type="button">New invite</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Requires Admin for the current school. Uses callable createGuardianInvite.
+    async function ready(){
+      const status = document.getElementById('status');
+      const guard = document.getElementById('guard');
+      const card  = document.getElementById('formCard');
+      const res   = document.getElementById('resultCard');
+      const linkOut = document.getElementById('linkOut');
+      const codeOut = document.getElementById('codeOut');
+      const copyLink = document.getElementById('copyLink');
+      const newInvite= document.getElementById('newInvite');
+      const createBtn= document.getElementById('createBtn');
+
+      function setGuard(v){ guard.style.display = v ? '' : 'none'; card.style.display = v ? 'none' : ''; }
+
+      // Wait for claims and a selected school
+      const claims = (window.SD && window.SD.claims) || {};
+      const roles = (window.SD && window.SD.roles) || {};
+      const orgId = window.SD && window.SD.orgId;
+      const schoolId = window.SD && window.SD.schoolId;
+      const canAdmin = !!(roles && roles.admin);
+      if (!canAdmin || !orgId || !schoolId){ setGuard(true); return; }
+
+      async function resolveStudentId(orgId, schoolId, input){
+        // Use compat Firestore already initialized by site-header.js to avoid version mismatch
+        try{
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (!db) return { error: 'no-db' };
+          // Try direct document id
+          try {
+            const ds = await db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students').doc(input).get();
+            if (ds.exists){
+              const d = ds.data() || {};
+              return { id: ds.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || ds.id };
+            }
+          } catch {}
+          // Try SIS id field (id)
+          try {
+            const qy = await db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('students')
+              .where('id','==', input).limit(2).get();
+            if (qy.size === 1){
+              const doc0 = qy.docs[0];
+              const d = doc0.data() || {};
+              return { id: doc0.id, name: d.name || [d.firstName,d.lastName].filter(Boolean).join(' ') || doc0.id, via:'sis' };
+            }
+            if (qy.size > 1){ return { error: 'multiple' }; }
+          } catch {}
+          return { error: 'not-found' };
+        } catch(e){ return { error: 'lookup-failed', message: e?.message || String(e) }; }
+      }
+
+      async function create(){
+        const studentId = document.getElementById('studentId').value.trim();
+        const email = document.getElementById('email').value.trim();
+        const relationshipType = document.getElementById('rel').value;
+        const daysValid = Number(document.getElementById('days').value) || 14;
+        if (!studentId){ alert('Enter a student ID'); return; }
+        status.textContent = 'Looking up student…';
+        try {
+          // Resolve the entered value to a real student document id
+          const resolved = await resolveStudentId(orgId, schoolId, studentId);
+          if (resolved?.error === 'not-found') { status.textContent=''; alert('Student not found. Enter the student document ID or the SIS ID from the roster.'); return; }
+          if (resolved?.error === 'multiple') { status.textContent=''; alert('Multiple students matched that SIS ID. Please use the student document ID instead.'); return; }
+          if (resolved?.error) { status.textContent=''; alert('Lookup failed. ' + (resolved.message || 'Try again.')); return; }
+
+          status.textContent = 'Creating…';
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('createGuardianInvite') : null;
+          if (!call) throw new Error('Backend unavailable.');
+          const resp = await call({ orgId, schoolId, studentId: resolved.id, email: email||null, relationshipType, daysValid });
+          const data = (resp && resp.data) || resp || {};
+          if (!data.ok) throw new Error('Failed to create invite');
+          const link = location.origin + (data.link || '/claim.html');
+          linkOut.textContent = link;
+          codeOut.textContent = data.code8 || '';
+          res.style.display = '';
+          status.textContent = 'Invite ready';
+        } catch (e) {
+          console.error(e);
+          alert('Could not create invite: ' + (e.message || e.code || 'error'));
+          status.textContent = '';
+        }
+      }
+
+      createBtn.addEventListener('click', create);
+      copyLink.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(linkOut.textContent); copyLink.textContent = 'Copied!'; setTimeout(()=>copyLink.textContent='Copy link', 1200); } catch {}
+      });
+      newInvite.addEventListener('click', () => { res.style.display = 'none'; status.textContent=''; document.getElementById('studentId').focus(); });
+    }
+
+    // Listen on document (site-header dispatches on document)
+    document.addEventListener('sd:claims-ready', ready, { once: true });
+    // If claims already present (fast path), initialize immediately
+    if (window.SD && window.SD.claims) {
+      try { ready(); } catch {}
+    }
+  </script>
+</body>
+</html>

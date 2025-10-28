@@ -193,6 +193,7 @@
           <select id="sortSel" aria-label="Sort by">
             <option value="first" selected>First Name</option>
             <option value="last">Last Name</option>
+            <option value="callAvg">Typical (Avg vs start)</option>
           </select>
         </label>
         <label class="small" style="display:flex; align-items:center; gap:4px;">
@@ -230,7 +231,7 @@
   <div id="qrSheet" hidden></div>
 
   <script type="module">
-  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
+  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setStatusForExactTag, setActiveSession, getStudentStatsForDay } from '/app.js?v=23';
     await init();
 
     const classFilter = document.getElementById('classFilter');
@@ -257,7 +258,9 @@
   const tilesSessionMode = document.getElementById('tilesSessionMode');
   const tilesSessionElapsed = document.getElementById('tilesSessionElapsed');
   const tilesSessionAutoEnd = document.getElementById('tilesSessionAutoEnd');
-  let tilesStartedAt = null; let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
+  let tilesStartedAt = null; // Date object from Firestore startedAt
+  let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
+  function stopTilesTimer(){ try{ if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch{} }
   let current = null;
 
   // Highlight helper for scanned/updated students
@@ -338,7 +341,15 @@
         onSnapshot(sRef,(snap)=>{
           if(!snap.exists()) return;
           const data = snap.data();
-          if(data.startedAt && !tilesStartedAt){ tilesStartedAt = data.startedAt.toDate(); startTilesTimer(); }
+          // Restart timer if startedAt first arrives or changes (defensive: avoid multiple intervals)
+          if (data.startedAt){
+            const dt = data.startedAt.toDate();
+            if (!tilesStartedAt || (tilesStartedAt && dt.getTime() !== tilesStartedAt.getTime())){
+              tilesStartedAt = dt;
+              stopTilesTimer();
+              startTilesTimer();
+            }
+          }
           if(data.mode) tilesSessionMode.textContent = 'Session ('+(data.mode||'tiles')+')';
           if(data.endedAt && !tilesEnded){ tilesEnded=true; endSessionBtn.textContent='Dismissal Ended'; endSessionBtn.disabled=true; if(tilesSessionElapsed && tilesStartedAt){ tilesSessionElapsed.textContent = tilesFmt(data.endedAt.toDate()-tilesStartedAt); } }
         }, (err)=> console.warn('[tiles] session snapshot error', err));
@@ -364,7 +375,7 @@
         await setDoc(signalRef,{ message:'Dismissal is over!', lastAt: serverTimestamp(), seq: increment(1) }, { merge:true });
       } catch(sigErr){ console.warn('[tiles] dismissal signal failed', sigErr); }
       tilesEnded=true;
-      try { if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch {}
+  try { stopTilesTimer(); } catch {}
       if(tilesStartedAt && tilesSessionElapsed){ const ms = Date.now() - tilesStartedAt.getTime(); tilesSessionElapsed.textContent = tilesFmt(ms); }
       endSessionBtn.textContent='Dismissal Ended';
     } catch(e){ console.warn('[tiles] end session failed', e); if(!skipConfirm) alert('Could not end dismissal here. Try Analytics → End Now.'); endSessionBtn.textContent='End Dismissal'; endSessionBtn.disabled=false; }
@@ -377,29 +388,45 @@
 
   function tilesFmt(ms){ if(ms<0) ms=0; const s=Math.floor(ms/1000); const m=Math.floor(s/60); const rs=s%60; const h=Math.floor(m/60); const rm=m%60; return (h>0? (h+':'+String(rm).padStart(2,'0')):rm)+':'+String(rs).padStart(2,'0'); }
   async function waitForContext(maxMs=15000){ const start=Date.now(); while(Date.now()-start<maxMs){ if(globalThis.SD?.orgId && globalThis.SD?.schoolId) return true; await new Promise(r=>setTimeout(r,120)); } return false; }
-  function startTilesTimer(){ if(!tilesStartedAt) return; function tick(){ const now=new Date(); const elapsed= now - tilesStartedAt; if(tilesSessionElapsed) tilesSessionElapsed.textContent=tilesFmt(elapsed); const limit = autoEndMinutes*60000; if(!tilesEnded){ const remain = limit - elapsed; if(remain<=0){ autoEndTiles(); } else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent=' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; } } } tick(); tilesTimer=setInterval(tick,1000); }
+  function startTilesTimer(){
+    if(!tilesStartedAt) return;
+    stopTilesTimer(); // ensure single ticker
+    const startMs = tilesStartedAt.getTime();
+    function tick(){
+      const nowMs = Date.now();
+      const elapsed = Math.max(0, nowMs - startMs);
+      if(tilesSessionElapsed) tilesSessionElapsed.textContent = tilesFmt(elapsed);
+      const limit = (autoEndMinutes>0 ? autoEndMinutes : 0) * 60000;
+      if(!tilesEnded && limit>0){
+        const remain = Math.max(0, limit - elapsed);
+        if(remain<=0){ autoEndTiles(); }
+        else if(tilesSessionAutoEnd){ tilesSessionAutoEnd.textContent = ' • Auto end in '+tilesFmt(remain)+' (limit '+autoEndMinutes+'m)'; }
+      } else if (tilesSessionAutoEnd) {
+        tilesSessionAutoEnd.textContent = '';
+      }
+    }
+    tick();
+    tilesTimer = setInterval(tick, 1000);
+  }
   async function autoEndTiles(){ if(tilesEnded || tilesEnding) return; try{ await endSession({ skipConfirm:true }); }catch{} }
 
   // Removed sound feedback for callers (silent operations)
   function ding(){ /* no-op */ }
 
-    // Call by identifier: prefers car tag, but recognizes ride share tokens too
+    // Call helper used by the RS pill: prefer ride share if available; else family; else exact tag
     async function callRideShareByTag(tag){
       const TAG = String(tag||'').toUpperCase();
       const grp = tagToGroup[TAG];
       const rsGrp = rideShareToGroup[TAG];
       ding();
-      // 1) If this matches a normal car tag, call that family/group first
-      if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
-      if (grp && Array.isArray(grp.tags) && grp.tags.length) {
-        const tags = grp.tags.map(t => String(t||'').toUpperCase());
-        return Promise.allSettled(tags.map(t => setStatusForTag(t, 'called')));
-      }
-      // 2) If it looks like a ride share token, apply ride-share wide
+      // 1) Direct ride share token
       if (rsGrp && setStatusForRideShare) return setStatusForRideShare(TAG, 'called');
-      // 3) Fallback: treat as plain tag
-      if (grp?.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
-      return setStatusForTag(TAG, 'called');
+      // 2) Tag belongs to a family group with a rideShare key
+      if (grp && grp.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
+      // 3) No ride share: call just the family group for that tag
+      if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
+      // 4) Final fallback: exact tag only
+      return setStatusForExactTag(TAG, 'called');
     }
 
     let allStudents = [];
@@ -416,22 +443,23 @@
         const fam = grp?.name || s.groupName || s.carName || '';
         const statusCls = s.status ? String(s.status) : '';
         
-        // Determine the letter grouping based on sort method
-        let sortName, initial, letter;
-        if (sortBy === 'last') {
-          // Use last name for letter grouping
-          sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
-        } else {
-          // Use first name for letter grouping
-          sortName = (s.firstName || '').trim() || (s.name || '').trim().split(/\s+/)[0] || '';
-        }
-        initial = sortName.charAt(0).toUpperCase();
-        letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
-        
-        const isHead = letter !== prevLetter;
-        if (isHead) {
-          rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
-          prevLetter = letter;
+        // Determine the letter grouping based on sort method (suppress groups for callAvg)
+        if (sortBy !== 'callAvg'){
+          let sortName, initial;
+          if (sortBy === 'last') {
+            // Use last name for letter grouping
+            sortName = (s.lastName || '').trim() || (s.name || '').trim().split(/\s+/).pop() || '';
+          } else {
+            // Use first name for letter grouping
+            sortName = (s.firstName || '').trim() || (s.name || '').trim().split(/\s+/)[0] || '';
+          }
+          initial = sortName.charAt(0).toUpperCase();
+          const letter = (initial >= 'A' && initial <= 'Z') ? initial : '#';
+          const isHead = letter !== prevLetter;
+          if (isHead) {
+            rows.push(`<li role="presentation"><div class="letter-tile" aria-hidden="true">${letter}</div></li>`);
+            prevLetter = letter;
+          }
         }
         const hasRS = !!grp?.rideShare || (grp && (grp.tags||[]).length>0);
         rows.push(`<li role="listitem">
@@ -448,6 +476,65 @@
       tiles.innerHTML = rows.join('');
     }
 
+    // --- Typical-start sorting support (avg offset from session start) ---
+    // Map of studentId -> average milliseconds after dismissal start when 'called'
+    const studentAvgOffset = new Map();
+    let avgOffsetsLoading = false;
+    let avgOffsetsPromise = null;
+
+    async function ensureAvgOffsets(options){
+      // Build once per page load; refresh if explicitly requested
+      if (avgOffsetsPromise && !options?.force) return avgOffsetsPromise;
+      avgOffsetsPromise = (async () => {
+        avgOffsetsLoading = true;
+        try {
+          // Wait for tenant
+          await waitForContext();
+          const oid = globalThis.SD?.orgId; const sid = globalThis.SD?.schoolId; if(!oid||!sid) return;
+          // Fetch recent sessions to get startedAt per day
+          const mod = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+          const { getFirestore, collection, query: qy, orderBy: ob, limit: lim, getDocs: gds } = mod;
+          const fs = getFirestore();
+          const coll = collection(fs,'orgs',oid,'schools',sid,'callSessions');
+          const snap = await gds(qy(coll, ob('startedAt','desc'), lim(10)));
+          const sessions = [];
+          snap.forEach(d => { const data = d.data()||{}; const startedAt = data.startedAt?.toDate?.(); if(startedAt) sessions.push({ id:d.id, startedAt }); });
+          if (!sessions.length) return;
+          // Unique days (UTC) to reduce duplicate fetches
+          const dayToStart = new Map();
+          for (const s of sessions){ const day = s.startedAt.toISOString().slice(0,10); if(!dayToStart.has(day)) dayToStart.set(day, s.startedAt); }
+          // Build a set of students in view to constrain work
+          const targetIds = new Set((allStudents||[]).map(s=>s.id));
+          // Accumulators
+          const sums = new Map(); // id -> total ms
+          const counts = new Map(); // id -> n
+          // For each day, fetch stats and accumulate deltas
+          for (const [day, startAt] of dayToStart.entries()){
+            try{
+              const stats = await getStudentStatsForDay(day).catch(()=>[]);
+              for (const st of (stats||[])){
+                const sid2 = st.id?.split(':')[1] || st.studentId || null;
+                if (!sid2 || !targetIds.has(sid2)) continue;
+                const calledAt = st.calledAt?.toDate?.();
+                if (!calledAt || !startAt) continue;
+                const delta = Math.max(0, calledAt - startAt);
+                if (!isFinite(delta)) continue;
+                sums.set(sid2, (sums.get(sid2)||0) + delta);
+                counts.set(sid2, (counts.get(sid2)||0) + 1);
+              }
+            }catch(e){ /* ignore per-day failures */ }
+          }
+          // Finalize averages
+          studentAvgOffset.clear();
+          for (const [id, total] of sums.entries()){
+            const c = counts.get(id)||0; if (c>0) studentAvgOffset.set(id, Math.round(total/c));
+          }
+        } catch (e){ console.warn('[tiles] avg offsets build failed', e); }
+        finally { avgOffsetsLoading = false; }
+      })();
+      return avgOffsetsPromise;
+    }
+
     function applyFilters(){
       const q = (search?.value || '').trim().toLowerCase();
       const sortBy = sortSel?.value || 'first';
@@ -462,6 +549,15 @@
         const as = order[a.status] ?? 0;
         const bs = order[b.status] ?? 0;
         if (as !== bs) return as - bs;
+        if (sortBy === 'callAvg'){
+          const ai = studentAvgOffset.has(a.id) ? studentAvgOffset.get(a.id) : Number.POSITIVE_INFINITY;
+          const bi = studentAvgOffset.has(b.id) ? studentAvgOffset.get(b.id) : Number.POSITIVE_INFINITY;
+          if (ai !== bi) return ai - bi;
+          // tie-breaker by name
+          const an = (a.name||'').toLowerCase();
+          const bn = (b.name||'').toLowerCase();
+          return an.localeCompare(bn);
+        }
         
         // Sort by first name or last name based on selection
         let aSortKey, bSortKey;
@@ -506,6 +602,8 @@
       unsub = onStudents(classId, (list) => {
         allStudents = Array.isArray(list) ? list : [];
         rebuildScanIndexes();
+        // If sorting by callAvg, (re)build averages once students are loaded
+        if ((sortSel?.value || '') === 'callAvg') { ensureAvgOffsets().then(()=>applyFilters()).catch(()=>applyFilters()); return; }
         applyFilters();
       });
     }
@@ -602,17 +700,17 @@
         } else if (b.id === 'aFam'){
           const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
           if (tag){
-            const g = await getGroupByTag(tag);
-            if (g && g.id) await setStatusForGroup(g.id, 'called'); else await setStatusForTag(tag, 'called');
+            // Family = same tag only (do not expand to ride share or other tags)
+            await setStatusForExactTag(tag, 'called');
             showToast('Family called');
           }
         } else if (b.id === 'aRS'){
           const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
           const grp = tag ? (groupMap[tag] || await getGroupByTag(tag)) : null;
-          if (grp && grp.id){ await setStatusForGroup(grp.id, 'called'); showToast('Ride share called'); }
-          else if (grp && Array.isArray(grp.tags) && grp.tags.length){ await Promise.allSettled(grp.tags.map(t => setStatusForTag(String(t||'').toUpperCase(), 'called'))); showToast('Ride share called'); }
-          else if (grp && grp.rideShare){ await setStatusForRideShare(grp.rideShare, 'called'); showToast('Ride share called'); }
-          else if (tag){ await setStatusForTag(tag, 'called'); showToast('Family called'); }
+          if (grp && grp.rideShare){ await setStatusForRideShare(grp.rideShare, 'called'); showToast('Ride share called'); }
+          else if (rideShareToGroup[tag]){ await setStatusForRideShare(tag, 'called'); showToast('Ride share called'); }
+          else if (grp && grp.id){ await setStatusForGroup(grp.id, 'called'); showToast('Family called'); }
+          else if (tag){ await setStatusForExactTag(tag, 'called'); showToast('Family called'); }
         } else if (b.id === 'aPicked'){
           await setStudentStatus(id, 'picked_up');
           showToast('Picked up');
@@ -835,7 +933,14 @@
 
     classFilter?.addEventListener('change', resubscribe);
     search?.addEventListener('input', applyFilters);
-    sortSel?.addEventListener('change', applyFilters);
+    sortSel?.addEventListener('change', () => {
+      const mode = sortSel?.value || 'first';
+      if (mode === 'callAvg') {
+        ensureAvgOffsets().then(()=>applyFilters()).catch(()=>applyFilters());
+      } else {
+        applyFilters();
+      }
+    });
 
     // Direct ride share QR scan (rs=TOKEN)
     document.addEventListener('scan:ride-share', async (e) => {
@@ -849,6 +954,6 @@
       } catch(err){ console.error('[tiles] ride share scan failed', err); }
     });
   </script>
-  <script src="/scanner.js"></script>
+  <script src="/scanner.js?v=2025-10-27-1"></script>
 </body>
 </html>

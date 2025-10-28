@@ -13,10 +13,15 @@
   const DETECT_INTERVAL = 120; // ms between detect attempts
   const DUP_MS = 1200;         // minimal interval to accept same payload twice
 
-  const ZX = { ready: false, reader: null, controls: null };
+  const ZX = { ready: false, reader: null, controls: null, tried: false };
   const hasBarcodeDetector = 'BarcodeDetector' in window;
+  const ua = navigator.userAgent || navigator.vendor || '';
+  const isiOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  // iOS Safari BarcodeDetector can be flaky on some versions; prefer ZXing there.
+  const preferZXing = isiOS && isSafari;
   let detector = null;
-  if (hasBarcodeDetector) {
+  if (hasBarcodeDetector && !preferZXing) {
     try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
   }
 
@@ -35,11 +40,12 @@
             </div>
           </div>
           <div class="qr-video-wrap" style="flex:1 1 auto;display:grid;place-items:center;padding:10px">
-            <video id="qrVideo" playsinline autoplay style="max-width:96vw;max-height:70vh;border-radius:12px;background:#000"></video>
+            <video id="qrVideo" playsinline webkit-playsinline autoplay style="max-width:96vw;max-height:70vh;border-radius:12px;background:#000"></video>
           </div>
           <div id="qrStatus" style="color:#fff;opacity:.9;text-align:center;padding:8px 12px;min-height:24px"></div>
         </div>`;
-      video = document.getElementById('qrVideo');
+  video = document.getElementById('qrVideo');
+  try { if (video) { video.setAttribute('playsinline',''); video.muted = true; video.setAttribute('muted',''); } } catch {}
       statusEl = document.getElementById('qrStatus');
       closeBtn = document.getElementById('qrClose');
       flipBtn  = document.getElementById('qrFlip');
@@ -48,12 +54,7 @@
       closeBtn?.addEventListener('click', close);
       flipBtn?.addEventListener('click', async () => {
         useBack = !useBack;
-        if (hasBarcodeDetector) {
-          await startCamera();
-        } else {
-          // ZXing fallback: re-init with preferred device if possible
-          await startZXing();
-        }
+        await chooseAndStart();
       });
       flashBtn?.addEventListener('click', () => setTorch(!torchOn));
       sheet.dataset.wired = '1';
@@ -136,24 +137,46 @@
   async function startCamera(){
     stopCamera();
     try{
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: useBack ? { ideal: 'environment' } : { ideal: 'user' },
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      };
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      stream = await getStreamWithFallbacks();
       track = stream.getVideoTracks()[0] || null;
       if (video) video.srcObject = stream;
-      await video?.play?.();
+      try { if (video) { video.muted = true; video.setAttribute('muted',''); video.setAttribute('playsinline',''); video.setAttribute('webkit-playsinline',''); } } catch {}
+      try { await video?.play?.(); } catch {}
       status('Point camera at QR');
-      scanLoopNative();
+      // Prefer native detector when available; otherwise try ZXing
+      if (detector) {
+        scanLoopNative();
+      } else {
+        await startZXing(/*fallbackFromNative*/true);
+      }
     }catch(e){
-      status('Camera unavailable');
+      const name = (e && (e.name||e.code)) || '';
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+        status('Camera blocked. Allow camera access in Safari settings.');
+      } else if (name === 'NotFoundError' || name === 'OverconstrainedError'){
+        status('No suitable camera found. Try flipping cameras or check permissions.');
+      } else if (name === 'SecurityError'){
+        status('Camera unavailable on this page. Use HTTPS and allow camera access.');
+      } else {
+        status('Camera unavailable');
+      }
       console.error('[scanner] getUserMedia failed', e);
     }
+  }
+
+  async function getStreamWithFallbacks(){
+    const tries = [
+      { audio:false, video: { facingMode: useBack ? { ideal: 'environment' } : { ideal: 'user' }, width:{ ideal:1280 }, height:{ ideal:720 } } },
+      { audio:false, video: { facingMode: useBack ? 'environment' : 'user' } },
+      { audio:false, video: { facingMode: 'environment' } },
+      { audio:false, video: { facingMode: 'user' } },
+      { audio:false, video: true }
+    ];
+    let lastErr = null;
+    for (const c of tries){
+      try { return await navigator.mediaDevices.getUserMedia(c); } catch(e){ lastErr = e; }
+    }
+    throw lastErr || new Error('getUserMedia failed');
   }
 
   function stopCamera(){
@@ -186,12 +209,27 @@
   }
 
   async function ensureZXing(){
-    if (ZX.ready) return;
-    try {
-      const mod = await import('https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js');
-      ZX.reader = new mod.BrowserMultiFormatReader();
-      ZX.ready = true;
-    }catch(e){ console.error('[scanner] ZXing load failed', e); }
+    if (ZX.ready) return true;
+    if (ZX.tried) return false;
+    ZX.tried = true;
+    const sources = [
+      'https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/esm/index.min.js',
+      'https://unpkg.com/@zxing/library@0.20.0/esm/index.min.js',
+      'https://cdn.skypack.dev/@zxing/library@0.20.0?min'
+    ];
+    for (const src of sources){
+      try {
+        const mod = await import(/* @vite-ignore */ src);
+        const Reader = mod.BrowserMultiFormatReader || mod.default?.BrowserMultiFormatReader || mod.BrowserCodeReader?.BrowserMultiFormatReader;
+        if (!Reader) throw new Error('ZXing module missing reader');
+        ZX.reader = new Reader();
+        ZX.ready = true;
+        return true;
+      } catch (e){
+        console.warn('[scanner] ZXing load attempt failed for', src, e);
+      }
+    }
+    return false;
   }
 
   async function enumerateVideoDevices(){
@@ -208,11 +246,23 @@
     return (useBack ? (back?.deviceId || cams[0].deviceId) : (front?.deviceId || cams[0].deviceId));
   }
 
-  async function startZXing(){
+  async function startZXing(fallbackFromNative){
     // Stop any native camera first
     stopCamera();
-    await ensureZXing();
-    if (!ZX.ready) { status('Scanner unavailable'); return; }
+    const ok = await ensureZXing();
+    if (!ok || !ZX.ready) {
+      // If ZXing failed to load (e.g., CDN blocked), try native detector as a fallback
+      if (!detector && hasBarcodeDetector) {
+        try { detector = new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
+      }
+      if (detector) {
+        // Use native path
+        await startCamera();
+        return;
+      }
+      status('Scanner unavailable');
+      return;
+    }
     try {
       if (ZX.controls){ try{ ZX.controls.stop(); }catch{} ZX.controls = null; }
       const deviceId = await pickDeviceId();
@@ -226,8 +276,26 @@
       });
       status('Point camera at QR');
     }catch(e){
-      status('Scanner unavailable');
       console.error('[scanner] ZXing start failed', e);
+      // Final fallback: try native if possible
+      if (!fallbackFromNative && hasBarcodeDetector) {
+        try { detector = detector || new window.BarcodeDetector({ formats: ['qr_code'] }); } catch {}
+        if (detector) { await startCamera(); return; }
+      }
+      status('Scanner unavailable');
+    }
+  }
+
+  async function chooseAndStart(){
+    // Strategy:
+    // - If we prefer ZXing (iOS Safari), try it first; fall back to native if ZXing unavailable
+    // - Else, use native if available; fall back to ZXing
+    if (preferZXing) {
+      await startZXing();
+    } else if (detector) {
+      await startCamera();
+    } else {
+      await startZXing();
     }
   }
 
@@ -249,7 +317,7 @@
     showSheet(true);
     // Escape closes
     document.addEventListener('keydown', escCloseOnce, { once: true });
-    if (hasBarcodeDetector && detector) await startCamera(); else await startZXing();
+    await chooseAndStart();
   }
 
   function escCloseOnce(ev){ if (ev.key === 'Escape') close(); }
@@ -273,6 +341,8 @@
 })();
 // /scanner.js
 // Standalone camera scanner. Emits 'scan:car-tag' events with { tag } only — never student names.
+// If the primary scanner (window.TTDScanner) is present, disable this legacy block to avoid conflicts.
+if (!window.TTDScanner) {
 
 let sheet, video, statusEl, flipBtn, flashBtn;
 let stream = null, track = null, useBack = true, torchOn = false;
@@ -479,3 +549,5 @@ function close(){
   visible(false);
   stopCamera();
 }
+
+} // end legacy guard

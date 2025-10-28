@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Time To Dismiss — QR Codes (Prototype)</title>
+  <link rel="stylesheet" href="/styles.css?v=2025-09-06-MC4" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR5" defer></script>
+  <style>
+    :root{
+      --chip-bg: #f1f5f9; --chip-bd:#e5e7eb; --chip-on:#0ea5e9; --chip-on-bg:#e0f2fe;
+    }
+    .qrp-main{ padding:18px 0 28px; }
+    .qrp-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:8px; }
+    .qrp-title{ margin:0; font-weight:900; letter-spacing:.2px; }
+    .qrp-sub{ margin:4px 0 12px; color:var(--muted); }
+
+    /* Segmented */
+    .seg{ display:inline-flex; border:1px solid #e5e7eb; border-radius:12px; overflow:hidden; }
+    .seg button{ padding:.5rem .8rem; border:0; background:#fff; cursor:pointer; font-weight:800; }
+    .seg button[aria-pressed="true"]{ background:#0ea5e9; color:#fff; }
+
+    /* Chips */
+    .chips{ display:flex; flex-wrap:wrap; gap:8px; }
+    .chip{ display:inline-flex; align-items:center; gap:6px; padding:.45rem .6rem; border:1px solid var(--chip-bd); border-radius:999px; background:var(--chip-bg); font-weight:700; cursor:pointer; }
+    .chip input{ accent-color:var(--chip-on); }
+    .chip.on{ background:var(--chip-on-bg); border-color:#bae6fd; }
+
+    .ctrls{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    .ctrls .spacer{ flex:1 1 auto; }
+    .ctrls input[type="search"]{ min-width:260px; padding:.55rem .7rem; border-radius:10px; border:1px solid #e5e7eb; }
+
+    .settings{ border:1px solid #e5e7eb; border-radius:12px; background:#fff; padding:.45rem .6rem; }
+    .settings summary{ cursor:pointer; font-weight:900; list-style:none; }
+    .settings summary::-webkit-details-marker{ display:none; }
+    .settings-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:6px; }
+
+    .qr-grid{ display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:12px; list-style:none; padding:0; margin:0; }
+    .qr-item{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; align-items:center; }
+    .qr-item .top{ align-self:stretch; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .qr-item .qr-box{ width:200px; height:200px; display:grid; place-items:center; }
+    .qr-item .qr-label{ font-weight:900; letter-spacing:.4px; }
+    .qr-item .muted{ color:var(--muted); font-size:.9rem; }
+    .tight .qr-item{ border-radius:10px; padding:8px; }
+
+    .count{ color:var(--muted); font-size:.95rem; margin:6px 0 10px; }
+
+    /* Print */
+    #printArea.hidden{ display:none !important; }
+    #printArea .pa-pages{ display:block; }
+    .pa-page{ display:grid; break-after:page; page-break-after:always; }
+    .pa-page:last-child{ break-after:auto; page-break-after:auto; }
+    .pa-item{ display:flex; flex-direction:column; align-items:center; justify-content:center; break-inside:avoid; page-break-inside:avoid; }
+    .pa-qr{ display:grid; place-items:center; }
+
+    @media (max-width:980px){ .qr-grid{ grid-template-columns: repeat(2, minmax(0,1fr)); } }
+    @media (max-width:640px){ .qr-grid{ grid-template-columns: repeat(1, minmax(0,1fr)); } .ctrls input[type="search"]{ min-width:200px; } }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="container qrp-main">
+    <div class="qrp-head">
+      <div>
+        <h1 class="page-title qrp-title">QR Codes (Prototype)</h1>
+        <p class="small qrp-sub">Cleaner workflow. Same power. Use Tags by default, or switch to Students to group by tag or last name.</p>
+      </div>
+    </div>
+
+    <div class="ctrls" role="toolbar" aria-label="QR controls">
+      <div class="seg" role="group" aria-label="Mode">
+        <button id="modeTagsBtn" type="button" aria-pressed="true">Tags</button>
+        <button id="modeStudentsBtn" type="button" aria-pressed="false">Students</button>
+      </div>
+
+      <div id="groupChips" class="chips" aria-label="Grouping">
+        <label class="chip" title="Show one label per car tag"><input id="grpPerTag" type="checkbox" /> Per tag</label>
+        <label class="chip" title="Group by identical last name only (approximate)"><input id="grpLastName" type="checkbox" /> Same last name</label>
+        <label class="chip" title="Include ride-share keys with tags (Tags mode only)"><input id="chipRideShares" type="checkbox" /> Ride shares</label>
+      </div>
+
+      <span class="spacer"></span>
+
+      <input id="search" type="search" placeholder="Filter by tag or name…" inputmode="search" autocomplete="off" />
+      <button id="selectAll" class="btn btn-secondary" type="button">Select All</button>
+      <button id="clearSel" class="btn btn-outline" type="button">Clear</button>
+      <button id="print" class="btn btn-primary" type="button">Print</button>
+      <button id="downloadPdf" class="btn btn-outline" type="button">PDF</button>
+      <button id="downloadZip" class="btn btn-secondary" type="button">ZIP</button>
+    </div>
+
+    <details id="settings" class="settings" open>
+      <summary>Advanced options</summary>
+      <div class="settings-row">
+        <label class="inline-flex"><input id="showNames" type="checkbox" checked /> Show names</label>
+        <label class="inline-flex"><input id="tight" type="checkbox" /> Tight layout</label>
+        <select id="size" aria-label="QR size">
+          <option value="160">160 px</option>
+          <option value="180">180 px</option>
+          <option value="200" selected>200 px</option>
+          <option value="240">240 px</option>
+          <option value="300">300 px</option>
+        </select>
+        <select id="cols" aria-label="Columns">
+          <option value="2">2 columns</option>
+          <option value="3" selected>3 columns</option>
+          <option value="4">4 columns</option>
+        </select>
+        <select id="layout" aria-label="Print layout">
+          <option value="grid" selected>Responsive Grid</option>
+          <option value="avery5160">Avery 5160 (30/pg)</option>
+          <option value="avery5163">Avery 5163 (10/pg)</option>
+          <option value="square2">Square 2×2 in</option>
+          <option value="square3">Square 3×3 in</option>
+          <option value="nameqr">Large Name + QR rows</option>
+          <option value="bizcard">Business Card 3.5×2 in</option>
+        </select>
+      </div>
+    </details>
+
+    <div id="count" class="count" aria-live="polite"></div>
+
+    <ul id="grid" class="qr-grid"></ul>
+
+    <div id="printArea" class="hidden"><div id="paPages" class="pa-pages"></div></div>
+
+    <div id="helpers" class="note hidden" style="margin-top:10px;">
+      <details>
+        <summary><strong>No student data?</strong> Paste CSV to generate codes</summary>
+        <div class="small" style="margin:.5rem 0;">CSV headers: name,id,tag — tag optional. Example: Doe, John,12345,Q32</div>
+        <textarea id="csv" rows="6" class="csv-area" style="width:100%;"></textarea>
+        <div class="helpers-actions" style="margin-top:.5rem; display:flex; gap:8px;">
+          <button id="csvLoad" class="btn btn-secondary" type="button">Load CSV</button>
+          <button id="csvClear" class="btn btn-outline" type="button">Clear</button>
+        </div>
+      </details>
+    </div>
+  </main>
+
+  <script>
+    // Ensure QRCode library (qrcodejs)
+    (function ensureQRCode(){ if (window.QRCode) return; const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; s.crossOrigin='anonymous'; document.head.appendChild(s); })();
+  </script>
+
+  <script type="module">
+    // Load app API
+    async function loadApi(){
+      if (window.app) return window.app;
+      try { return await import('/app.js?v=23'); } catch {}
+      try { return await import('./app.js'); } catch {}
+      return {};
+    }
+    const api = await loadApi();
+    const { init, onCars, onCarGroups, onStudents } = api;
+
+    // Elements
+    const grid = document.getElementById('grid');
+    const count = document.getElementById('count');
+    const helpers = document.getElementById('helpers');
+
+    const modeTagsBtn = document.getElementById('modeTagsBtn');
+    const modeStudentsBtn = document.getElementById('modeStudentsBtn');
+    const grpPerTag = document.getElementById('grpPerTag');
+    const grpLastName = document.getElementById('grpLastName');
+    const chipRideShares = document.getElementById('chipRideShares');
+
+    const search = document.getElementById('search');
+    const showNames = document.getElementById('showNames');
+    const tight = document.getElementById('tight');
+    const sizeSel = document.getElementById('size');
+    const colsSel = document.getElementById('cols');
+    const layoutSel = document.getElementById('layout');
+
+    const btnAll = document.getElementById('selectAll');
+    const btnClr = document.getElementById('clearSel');
+    const btnPrint = document.getElementById('print');
+    const btnPdf = document.getElementById('downloadPdf');
+    const btnZip = document.getElementById('downloadZip');
+
+    const csvTA = document.getElementById('csv');
+    const csvLoad = document.getElementById('csvLoad');
+    const csvClear = document.getElementById('csvClear');
+
+    const paPages = document.getElementById('paPages');
+
+    // State
+    let mode = 'tags'; // 'tags' | 'students'
+    let tags = [];       // [{ tag, name }]
+    let rideShares = []; // [{ rs, name }]
+    let students = [];   // [{ id, name, tag }]
+    const selected = new Set();
+
+    // Utilities
+    const norm = s => String(s||'').trim();
+    const normTag = s => norm(s).toUpperCase();
+    function nameOf(s){ if (!s) return ''; if (s.name) return String(s.name); const f=s.firstName||s.first||s.givenName||''; const l=s.lastName||s.last||s.surname||''; const both=[l,f].filter(Boolean).join(', '); return both || s.displayName || s.fullName || ''; }
+    function lastName(str){ let s = String(str||'').trim(); if(!s) return ''; const fam=s.match(/^(.+)\s+family$/i); if(fam) s=fam[1].trim(); const plus=s.match(/^(.+)\s+\+\d+$/); if(plus) s=plus[1].trim(); if (s.includes(',')) return s.split(',')[0].trim(); const parts = s.split(/\s+/).filter(Boolean); return parts.length? parts[parts.length-1] : s; }
+
+    function setCols(n){ grid.style.setProperty('grid-template-columns', `repeat(${n}, minmax(0,1fr))`); }
+
+    function studentsToFamilyTags(list){
+      const byTag = new Map();
+      for (const s of (list||[])){
+        const tag = normTag(s.tag || ''); if (!tag) continue;
+        if (!byTag.has(tag)) byTag.set(tag, []); byTag.get(tag).push(s);
+      }
+      const out = [];
+      for (const [tag, arr] of byTag.entries()){
+        const lns = Array.from(new Set(arr.map(s=>lastName(nameOf(s))).filter(Boolean)));
+        let display = '';
+        if (lns.length === 1) display = lns[0] + ' family';
+        else if (arr.length) { const base = lastName(nameOf(arr[0])) || nameOf(arr[0]) || ''; display = base ? base + ' +' + (arr.length-1) : ''; }
+        out.push({ type:'tag', tag, name: display });
+      }
+      return out.sort((a,b)=> (a.tag||'').localeCompare(b.tag||''));
+    }
+    function studentsToFamiliesByLast(list){
+      const byLast = new Map();
+      for (const s of (list||[])){
+        const ln = lastName(nameOf(s)) || '(unknown)'; if (!byLast.has(ln)) byLast.set(ln, []); byLast.get(ln).push(s);
+      }
+      const out = [];
+      for (const [ln, arr] of byLast.entries()){
+        const counts = new Map(); for (const s of arr){ const t = normTag(s.tag||''); if (t) counts.set(t, (counts.get(t)||0)+1); }
+        let tag=''; if (counts.size) tag = Array.from(counts.entries()).sort((a,b)=> b[1]-a[1] || a[0].localeCompare(b[0]))[0][0];
+        const first = arr[0] || {}; const id = first.id || first.studentId || '';
+        out.push({ id, tag, name: (ln && ln !== '(unknown)') ? (ln + ' family') : (nameOf(first) || '') });
+      }
+      return out.sort((a,b)=> (a.name||'').localeCompare(b.name||''));
+    }
+
+    function tagsFromCarsMap(map){
+      const arr = []; for (const [tag,name] of Object.entries(map||{})){ const T=normTag(tag); if(!T) continue; arr.push({ tag:T, name:name||'' }); } return arr.sort((a,b)=>a.tag.localeCompare(b.tag));
+    }
+    function collectRideShares(groups){
+      const out = []; for (const g of (groups||[])){ const token = (g.rideShare || g.rideshare || '').trim(); if(!token) continue; out.push({ rs: token, name: g.name || '' }); }
+      const seen = new Set(); return out.filter(o=>{ if(seen.has(o.rs)) return false; seen.add(o.rs); return true; }).sort((a,b)=>a.rs.localeCompare(b.rs));
+    }
+
+    function currentList(){
+      const filter = (search.value||'').toLowerCase();
+      if (mode === 'students'){
+        if (grpLastName.checked){
+          const grouped = studentsToFamiliesByLast(students);
+          return grouped.filter(x => (x.tag||'').toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+        }
+        if (grpPerTag.checked){
+          const grouped = studentsToFamilyTags(students);
+          return grouped.filter(x => x.tag.toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter));
+        }
+        return students.filter(s => (nameOf(s)||'').toLowerCase().includes(filter) || (s.tag||'').toLowerCase().includes(filter) || String(s.id||'').toLowerCase().includes(filter));
+      }
+      // tags mode
+      const base = tags.map(t => ({ type:'tag', tag:t.tag, name:t.name }));
+      if (chipRideShares.checked) base.push(...rideShares.map(r => ({ type:'rs', rs:r.rs, name:r.name })));
+      return base.filter(x => {
+        const key = x.type==='tag' ? x.tag : x.rs; return (key||'').toLowerCase().includes(filter) || (x.name||'').toLowerCase().includes(filter);
+      });
+    }
+
+    function fileBase(item){ const raw = (mode==='students') ? (item.tag || item.id || item.studentId || 'code') : (item.type==='rs' ? item.rs : item.tag); return String(raw||'code').replace(/[^A-Za-z0-9_-]+/g,'_'); }
+    function buildPayload(item){ if (mode==='students'){ const tag=item.tag||''; const id=item.id||item.studentId||''; return tag? `car=${encodeURIComponent(tag)}` : `student=${encodeURIComponent(id)}`; } return item.type==='rs' ? `rs=${encodeURIComponent(item.rs)}` : `car=${encodeURIComponent(item.tag)}`; }
+    function getKey(item){ return (mode==='students') ? (item.id||item.studentId||item.tag) : (item.type==='rs' ? ('RS:'+item.rs) : item.tag); }
+
+    function render(){
+      const list = currentList();
+      const prev = new Set(selected);
+      const px = parseInt(sizeSel.value,10) || 200;
+      grid.classList.toggle('tight', !!tight.checked);
+      grid.innerHTML = '';
+      for (const it of list){
+        let label = ''; let name = ''; let key = '';
+        if (mode==='students'){ label = it.tag || it.id || ''; name = nameOf(it) || ''; key = it.id || it.studentId || it.tag; }
+        else { label = (it.type==='tag'? it.tag : it.rs); name = it.name || ''; key = getKey(it); }
+        const li = document.createElement('li'); li.className='qr-item'; li.dataset.key = key;
+        const nameHtml = showNames.checked && name ? `<span class=\"muted small\">${name}</span>` : '';
+        li.innerHTML = `
+          <div class="top">
+            <label class="inline-flex" style="gap:6px;">
+              <input type="checkbox" ${prev.has(key)?'checked':''} />
+              ${nameHtml}
+            </label>
+            <button class="btn btn-xs btn-outline" data-dl="${key}" type="button">Download PNG</button>
+          </div>
+          <div class="qr-box"></div>
+          <div class="qr-label">${label}</div>`;
+        grid.appendChild(li);
+        const box = li.querySelector('.qr-box'); box.style.width = px+'px'; box.style.height = px+'px';
+        const host = document.createElement('div'); box.appendChild(host);
+        const payload = buildPayload(it);
+        const draw = () => new QRCode(host, { text: payload, width: px, height: px, correctLevel: QRCode.CorrectLevel.M });
+        if (window.QRCode) { try { draw(); } catch{} } else { const t = setInterval(()=>{ if(window.QRCode){ clearInterval(t); try { draw(); } catch{} } }, 60); }
+        const cb = li.querySelector('input[type="checkbox"]');
+        cb.addEventListener('change', () => { if (cb.checked) selected.add(key); else selected.delete(key); updateCounts(); });
+        if (prev.has(key)) selected.add(key);
+      }
+      updateCounts();
+    }
+
+    function updateCounts(){
+      try{
+        let total = 0; if (mode==='students'){ total = students.length; if (grpPerTag.checked) total = studentsToFamilyTags(students).length; if (grpLastName.checked) total = studentsToFamiliesByLast(students).length; } else { total = tags.length; }
+        const visible = currentList().length; const sel = selected.size; const target = sel? `${sel} selected` : `${visible} shown`;
+        count.textContent = `${target} • ${total} total`;
+      }catch{}
+    }
+
+    function parseCSV(text){
+      const rows = String(text||'').split(/\r?\n/).map(r => r.trim()).filter(Boolean); if(!rows.length) return [];
+      const first = rows[0].split(',').map(s=>s.trim().toLowerCase()); const hasHeader = ['name','id','tag'].some(h=>first.includes(h)); const start = hasHeader?1:0;
+      const idx = { name: hasHeader? first.indexOf('name') : 0, id: hasHeader? first.indexOf('id') : 1, tag: hasHeader? first.indexOf('tag') : 2 };
+      const out=[]; for(let i=start;i<rows.length;i++){ const cols=rows[i].split(',').map(s=>s.trim()); const name=cols[idx.name]||''; const id=cols[idx.id]||''; const tag=(cols[idx.tag]||'').toUpperCase().trim(); if(!name && !id && !tag) continue; out.push({ id,name,tag }); } return out;
+    }
+
+    // External libs on-demand
+    async function ensureJSZip(){ if (window.JSZip) return window.JSZip; await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.crossOrigin='anonymous'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); return window.JSZip; }
+    async function ensureFileSaver(){ if (window.saveAs) return window.saveAs; await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js'; s.crossOrigin='anonymous'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); return window.saveAs; }
+    async function ensureJSPDF(){ if (window.jspdf?.jsPDF) return window.jspdf.jsPDF; await new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'; s.crossOrigin='anonymous'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); return window.jspdf.jsPDF; }
+
+    async function renderQrToPngDataUrl(payload, px){
+      await new Promise(r=>{ if(window.QRCode) r(); else { const t=setInterval(()=>{ if(window.QRCode){ clearInterval(t); r(); } },50); }});
+      const host=document.createElement('div'); host.style.position='fixed'; host.style.left='-9999px'; host.style.top='-9999px'; const holder=document.createElement('div'); holder.style.width=px+'px'; holder.style.height=px+'px'; host.appendChild(holder); document.body.appendChild(host);
+      try{ new QRCode(holder, { text: payload, width: px, height: px, correctLevel: QRCode.CorrectLevel.M }); const canvas=holder.querySelector('canvas'); if(canvas) return canvas.toDataURL('image/png'); const img=holder.querySelector('img'); if(img){ const c=document.createElement('canvas'); c.width=img.naturalWidth||px; c.height=img.naturalHeight||px; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,c.width,c.height); return c.toDataURL('image/png'); } throw new Error('QR render failed'); } finally { host.remove(); }
+    }
+
+    function presetInfo(key){
+      switch(key){
+        case 'avery5160': return { class:'pa-avery5160', qrIn:0.78, perPage:30, trimNames:true, maxLabelChars:8 };
+        case 'avery5163': return { class:'pa-avery5163', qrIn:1.55, perPage:10 };
+        case 'square2':   return { class:'pa-square2',   qrIn:1.8,  perPage:12 };
+        case 'square3':   return { class:'pa-square3',   qrIn:2.4,  perPage:6 };
+        case 'bizcard':   return { class:'pa-bizcard',   qrIn:1.4,  perPage:8 };
+        case 'nameqr':    return { class:'pa-nameqr',    qrIn:2.4,  perPage:2, bigName:true, landscape:true };
+        default:          return { class:'pa-gridflow',  gridFlow:true, qrIn:(parseInt(sizeSel.value,10)||200)/96 };
+      }
+    }
+    function toPx(inches){ return Math.round(inches * 96); }
+
+    function getAllItems(){
+      if (mode==='students'){
+        if (grpLastName.checked) return studentsToFamiliesByLast(students);
+        if (grpPerTag.checked) return studentsToFamilyTags(students);
+        return students.slice();
+      }
+      const base = tags.map(t=>({ type:'tag', tag:t.tag, name:t.name })); if (chipRideShares.checked) base.push(...rideShares.map(r=>({ type:'rs', rs:r.rs, name:r.name })));
+      return base;
+    }
+
+    function uniqByPayload(items){ const seen=new Set(); const out=[]; for(const it of items){ const p=buildPayload(it); if(seen.has(p)) continue; seen.add(p); out.push(it);} return out; }
+
+    function buildPrintArea(items){
+      const useStudents = (mode==='students') && !grpPerTag.checked; // align with previous behavior
+      const preset = presetInfo(layoutSel.value);
+      paPages.className = 'pa-pages'; paPages.innerHTML='';
+      const qrPx = toPx(preset.qrIn || 1);
+      const source = (layoutSel.value === 'nameqr') ? uniqByPayload(items) : items;
+      const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
+      for (let i=0;i<source.length;i+=perPage){
+        const pageItems = source.slice(i,i+perPage);
+        const page = document.createElement('div'); page.className = 'pa-page ' + preset.class + (preset.landscape ? ' pa-landscape' : ''); paPages.appendChild(page);
+        for (const item of pageItems){
+          const tag = useStudents ? (item.tag || '') : item.tag;
+          const nameRaw = useStudents ? nameOf(item) : (item.name || '');
+          const name = (preset.bigName ? lastName(nameRaw) : nameRaw);
+          const id = useStudents ? (item.id || item.studentId || '') : null;
+          const labelText = useStudents ? (tag || id || '') : (item.type==='rs' ? item.rs : tag);
+          const payload = buildPayload(item);
+          const div = document.createElement('div'); div.className='pa-item';
+          if (layoutSel.value === 'nameqr'){
+            div.innerHTML = `<div class="pa-bigname">${name || '&nbsp;'}</div><div class="pa-qr"></div>`;
+          } else {
+            div.innerHTML = `<div class="pa-qr"></div><div class="pa-label">${labelText}</div>${showNames.checked && name ? `<div class=\"pa-name\">${name}</div>` : ''}`;
+          }
+          page.appendChild(div);
+          const host = div.querySelector('.pa-qr'); const holder=document.createElement('div'); holder.style.width=qrPx+'px'; holder.style.height=qrPx+'px'; host.appendChild(holder);
+          const draw = () => new QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: QRCode.CorrectLevel.M });
+          if (window.QRCode) { try { draw(); } catch{} } else { const t=setInterval(()=>{ if(window.QRCode){ clearInterval(t); try { draw(); } catch{} } },60); }
+        }
+      }
+      return source;
+    }
+
+    async function drawLabel(doc, item, x, y, w, h, qrIn, useStudents, fonts={}){
+      const payload = buildPayload(item);
+      const png = await renderQrToPngDataUrl(payload, Math.round(qrIn*96));
+      const qrW = Math.min(qrIn, w*0.9); const qrX = x + (w-qrW)/2; const qrY = y + 0.05;
+      doc.addImage(png, 'PNG', qrX, qrY, qrW, qrW, undefined, 'FAST');
+      const rawName = useStudents ? nameOf(item) : (item.name || '');
+      const labelText = useStudents ? (item.tag || item.id || item.studentId || '') : (item.type==='rs' ? item.rs : item.tag);
+      doc.setFont('helvetica','bold'); doc.setFontSize(12); doc.text(String(labelText||''), x + w/2, qrY + qrW + 0.12, { align:'center', baseline:'top', maxWidth:w*0.95 });
+      if (rawName){ doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.text(String(rawName), x + w/2, qrY + qrW + 0.35, { align:'center', baseline:'top', maxWidth:w*0.95 }); }
+    }
+
+    async function downloadAsZip(items){
+      const JSZip = await ensureJSZip(); await ensureFileSaver(); const zip = new JSZip();
+      const preset = presetInfo(layoutSel.value); const px = toPx(preset.qrIn || (parseInt(sizeSel.value,10)||200)/96);
+      for(const it of items){ const payload=buildPayload(it); const fname=fileBase(it)+'.png'; const dataUrl=await renderQrToPngDataUrl(payload, px); const base64=dataUrl.split(',')[1]; zip.file(fname, base64, { base64:true }); }
+      const blob = await zip.generateAsync({ type:'blob' }); const org=(window.app?.orgId || 'ttd'); const when=new Date().toISOString().replace(/[:.]/g,'-'); saveAs(blob, `${org}-qr-codes-${when}.zip`);
+    }
+
+    async function downloadAsPdf(items){
+      const jsPDF = await ensureJSPDF(); const preset = presetInfo(layoutSel.value); const isLandscape=!!preset.landscape;
+      const doc = new jsPDF({ unit:'in', format:'letter', orientation: isLandscape? 'landscape' : 'portrait' });
+      const qrIn = preset.qrIn || 2; // default 2in
+      function addPageIfNeeded(pageIndex){ if(pageIndex>0) doc.addPage('letter', isLandscape? 'landscape' : 'portrait'); }
+      let per = preset.perPage || items.length; if(!preset.perPage && layoutSel.value==='grid'){
+        const cols=3; const gap=0.35; const left=0.6; const top=0.6; const pageW=isLandscape?11:8.5; const pageH=isLandscape?8.5:11; const cellW=(pageW-2*left-(cols-1)*gap)/cols; const bottom=0.6; const usableH=pageH-top-bottom; const maxRows=Math.max(1,Math.floor((usableH+gap)/(cellW+gap))); per = cols*maxRows;
+      }
+      let pageIndex=0; for(let off=0; off<items.length; off+=per){ addPageIfNeeded(pageIndex++); const pageItems=items.slice(off, off+per);
+        if (layoutSel.value==='avery5160'){
+          const cols=3, rows=10; const W=2.625, H=1.0; const L=0.1875, T=0.5, G=0.125;
+          for(let i=0;i<pageItems.length;i++){ const r=Math.floor(i/cols), c=i%cols; const x=L+c*(W+G); const y=T+r*(H); await drawLabel(doc, pageItems[i], x,y,W,H, qrIn, (mode==='students')); }
+        } else if (layoutSel.value==='avery5163'){
+          const cols=2; const W=4, H=2; const L=0.1875, T=0.5, G=0.125;
+          for(let i=0;i<pageItems.length;i++){ const r=Math.floor(i/cols), c=i%cols; const x=L+c*(W+G); const y=T+r*(H); await drawLabel(doc, pageItems[i], x,y,W,H, qrIn, (mode==='students')); }
+        } else if (layoutSel.value==='square2'){
+          const cols=3; const W=2, H=2; const L=0.5, T=0.5, G=0.2;
+          for(let i=0;i<pageItems.length;i++){ const r=Math.floor(i/cols), c=i%cols; const x=L+c*(W+G); const y=T+r*(H+G); await drawLabel(doc, pageItems[i], x,y,W,H, qrIn, (mode==='students')); }
+        } else if (layoutSel.value==='square3'){
+          const cols=2; const W=3, H=3; const L=0.5, T=0.5, G=0.25;
+          for(let i=0;i<pageItems.length;i++){ const r=Math.floor(i/cols), c=i%cols; const x=L+c*(W+G); const y=T+r*(H+G); await drawLabel(doc, pageItems[i], x,y,W,H, qrIn, (mode==='students')); }
+        } else if (layoutSel.value==='nameqr'){
+          const left=0.6, right=10.4, top=0.45, mid=4.25; const qrSize=qrIn; const rowYs=[top, mid];
+          for(let i=0;i<pageItems.length && i<2; i++){ const it=pageItems[i]; const y=rowYs[i]; const payload=buildPayload(it); const png=await renderQrToPngDataUrl(payload, Math.round(qrSize*96)); const rawName=(mode==='students') ? nameOf(it) : (it.name || ''); const last=lastName(rawName); doc.setFont('helvetica','bold'); doc.setFontSize(48); doc.text(last||' ', left, y+1.2, {baseline:'top', maxWidth:(right-left-qrSize-0.55)}); doc.addImage(png,'PNG', right-qrSize, y, qrSize, qrSize, undefined, 'FAST'); if(i===0){ doc.setDrawColor(229); doc.setLineWidth(0.01); doc.setLineDash([0.15,0.1],0); doc.line(left, mid-0.1, right, mid-0.1); doc.setLineDash(); } }
+        } else {
+          const pageW=isLandscape?11:8.5; const pageH=isLandscape?8.5:11; const cols=3; const gap=0.35; const left=0.6; const top=0.6; const bottom=0.6; const cellW=(pageW-2*left - (cols-1)*gap)/cols; const cellH=cellW; const maxRows=Math.max(1,Math.floor(((pageH-top-bottom)+gap)/(cellH+gap))); const cap=Math.min(pageItems.length, cols*maxRows);
+          for(let i=0;i<cap;i++){ const r=Math.floor(i/cols), c=i%cols; const x=left+c*(cellW+gap); const y=top+r*(cellH+gap); await drawLabel(doc, pageItems[i], x,y,cellW,cellH, qrIn, (mode==='students')); }
+        }
+      }
+      const org = (window.app?.orgId || 'ttd'); const when = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+      doc.save(`${org}-qr-codes-${when}.pdf`);
+    }
+
+    function printNow(printWin, items){
+      if(!Array.isArray(items) || !items.length){ try{ printWin?.close(); }catch{} alert('Nothing to print. Select items or clear the filter.'); return; }
+      const used = buildPrintArea(items);
+      const html = `<!doctype html><html><head><meta charset=\"utf-8\"><title>QR Codes</title></head><body>${paPages.innerHTML}</body></html>`;
+      const w = printWin; if(!w){ alert('Popup blocked.'); return; }
+      try{ w.document.open(); w.document.write(html); w.document.close(); }catch(e){}
+      const tryInjectQR = () => {
+        const qrs = w.document.querySelectorAll('.pa-qr'); let idx=0; const preset=presetInfo(layoutSel.value); const qrPx=toPx(preset.qrIn||1);
+        const payloads = (used||items).map(it => buildPayload(it));
+        qrs.forEach(host => { const holder=w.document.createElement('div'); holder.style.width=qrPx+'px'; holder.style.height=qrPx+'px'; host.appendChild(holder); const payload = payloads[idx++] || ''; try { new w.QRCode(holder, { text: payload, width: qrPx, height: qrPx, correctLevel: (w.QRCode && w.QRCode.CorrectLevel && w.QRCode.CorrectLevel.M) || 2 }); } catch {} });
+      };
+      const lib = w.document.createElement('script'); lib.src='https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js'; lib.onload=()=>{ tryInjectQR(); setTimeout(()=>{ w.focus(); w.print(); }, 100); }; w.document.head.appendChild(lib);
+      setTimeout(()=>{ if(!w.QRCode){ w.focus(); w.print(); } }, 1500); w.addEventListener('afterprint', () => { try{ w.close(); }catch{} });
+    }
+
+    // Events
+    colsSel.addEventListener('change', () => setCols(colsSel.value));
+    sizeSel.addEventListener('change', render);
+    layoutSel.addEventListener('change', () => {});
+    search.addEventListener('input', render);
+    tight.addEventListener('change', () => grid.classList.toggle('tight', !!tight.checked));
+    showNames.addEventListener('change', render);
+
+    grpPerTag.addEventListener('change', () => { if (grpPerTag.checked) grpLastName.checked=false; selected.clear(); render(); saveOpts(); });
+    grpLastName.addEventListener('change', () => { if (grpLastName.checked) grpPerTag.checked=false; selected.clear(); render(); saveOpts(); });
+  chipRideShares.addEventListener('change', () => { if (mode==='tags'){ selected.clear(); render(); } saveOpts(); syncChips(); });
+
+  modeTagsBtn.addEventListener('click', () => { mode='tags'; modeTagsBtn.setAttribute('aria-pressed','true'); modeStudentsBtn.setAttribute('aria-pressed','false'); helpers.classList.add('hidden'); selected.clear(); render(); saveOpts(); syncChips(); });
+  modeStudentsBtn.addEventListener('click', () => { mode='students'; modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); helpers.classList.toggle('hidden', typeof onStudents === 'function'); selected.clear(); render(); saveOpts(); syncChips(); });
+
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-dl]'); if(!btn) return; const item = btn.closest('.qr-item'); const canvas=item?.querySelector('.qr-box canvas'); let url=''; if(canvas){ url=canvas.toDataURL('image/png'); } else { const img=item?.querySelector('.qr-box img'); if(!img) return; const c=document.createElement('canvas'); c.width=img.naturalWidth||img.width||512; c.height=img.naturalHeight||img.height||512; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,c.width,c.height); url=c.toDataURL('image/png'); } const a=document.createElement('a'); a.href=url; a.download=`qr-${(item.querySelector('.qr-label')?.textContent||'code').replace(/[^A-Za-z0-9_-]+/g,'_')}.png`; document.body.appendChild(a); a.click(); a.remove();
+    });
+
+    btnAll.addEventListener('click', () => { selected.clear(); grid.querySelectorAll('.qr-item').forEach(li=>{ const key=li.dataset.key; selected.add(key); const cb = li.querySelector('input[type="checkbox"]'); if(cb) cb.checked=true; }); updateCounts(); });
+    btnClr.addEventListener('click', () => { selected.clear(); grid.querySelectorAll('.qr-item input[type="checkbox"]').forEach(cb=>cb.checked=false); updateCounts(); });
+
+    btnPrint.addEventListener('click', () => {
+      const all = getAllItems(); const keys = new Set(selected); let items=[]; if(keys.size){ items = all.filter(it => keys.has(getKey(it))); } else { const filtered=currentList(); if ((search.value||'').trim() && filtered.length < all.length){ if (confirm(`Print only the ${filtered.length} filtered items?`)) items=filtered; else items=all; } else items=all; }
+      if(!items.length){ alert('Nothing to print.'); return; }
+      let w = window.open('about:blank','qrprint'); if(!w){ const iframe=document.createElement('iframe'); iframe.style.position='fixed'; iframe.style.width='0'; iframe.style.height='0'; iframe.style.opacity='0'; iframe.style.pointerEvents='none'; document.body.appendChild(iframe); try{ printNow(iframe.contentWindow, items); } catch(e){} return; } try{ w.document.write('<!doctype html><title>Preparing…</title><body style="font:14px system-ui; padding:20px;">Preparing labels…</body>'); } catch{} try{ printNow(w, items); } catch(e){ try{ w.close(); }catch{} }
+    });
+
+    btnZip.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); const items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsZip(items); } catch(e){ alert('ZIP failed'); }
+    });
+    btnPdf.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); const items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsPdf(items); } catch(e){ alert('PDF failed'); }
+    });
+
+    csvLoad.addEventListener('click', () => { const parsed = parseCSV(csvTA.value); students = parsed; mode='students'; modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); selected.clear(); render(); helpers.classList.toggle('hidden', students.length>0); });
+    csvClear.addEventListener('click', () => { csvTA.value=''; });
+
+    // Persist simple options
+    const LSKEY = 'ttd.qr.opts.v5proto';
+    function saveOpts(){ try{ const o={ mode, size:sizeSel.value, cols:colsSel.value, tight:!!tight.checked, showNames:!!showNames.checked, layout:layoutSel.value, q:search.value||'', perTag:!!grpPerTag.checked, lastName:!!grpLastName.checked, rideShares:!!chipRideShares.checked }; localStorage.setItem(LSKEY, JSON.stringify(o)); }catch{} }
+    function loadOpts(){ try{ const raw=localStorage.getItem(LSKEY); if(!raw) return; const o=JSON.parse(raw); if(o.mode) mode=o.mode; sizeSel.value=o.size||sizeSel.value; colsSel.value=o.cols||colsSel.value; tight.checked=!!o.tight; showNames.checked=!!o.showNames; layoutSel.value=o.layout||layoutSel.value; search.value=o.q||''; grpPerTag.checked=!!o.perTag; grpLastName.checked=!!o.lastName; chipRideShares.checked=!!o.rideShares; if(mode==='students'){ modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); } }catch{} }
+
+  function syncChips(){ try{ grpPerTag.closest('.chip')?.classList.toggle('on', !!grpPerTag.checked); grpLastName.closest('.chip')?.classList.toggle('on', !!grpLastName.checked); chipRideShares.closest('.chip')?.classList.toggle('on', !!chipRideShares.checked && mode==='tags'); }catch{} }
+
+  // Bootstrap
+  loadOpts(); setCols(colsSel.value); grid.classList.toggle('tight', !!tight.checked); syncChips();
+    try{ if (typeof init === 'function') await init(); } catch{}
+
+    try{ if (typeof onCars === 'function'){ onCars(map => { tags = tagsFromCarsMap(map); if (mode==='tags') render(); updateCounts(); }); } } catch{}
+    try{ if (typeof onCarGroups === 'function'){ onCarGroups(groups => { rideShares = collectRideShares(groups); if (mode==='tags' && chipRideShares.checked) render(); updateCounts(); }); } } catch{}
+    try{ if (typeof onStudents === 'function'){ onStudents(null, all => { students = (all||[]).map(s => ({ id: s.id || s.studentId || s.uid || '', name: nameOf(s), tag: s.tag? normTag(s.tag) : (s.carTag? normTag(s.carTag) : '') })); if (mode==='students') render(); updateCounts(); }); helpers.classList.add('hidden'); } else { helpers.classList.remove('hidden'); } } catch{}
+
+    // Initial render
+    render();
+    // Save on changes
+    [search, sizeSel, colsSel, tight, showNames, layoutSel].forEach(el=>{ el.addEventListener('change', saveOpts); el.addEventListener('input', saveOpts); });
+  </script>
+</body>
+</html>

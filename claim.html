@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claim Student — Time To Dismiss</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR6" defer></script>
+  <style>
+    .wrap{ max-width: 680px; margin: 0 auto; padding: 24px 18px; }
+    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:16px; box-shadow:0 8px 24px rgba(15,23,42,.05); }
+    .muted{ color:#64748b; }
+    input{ width:100%; border:1px solid #e5e7eb; border-radius:10px; padding:.65rem .75rem; }
+    .btns{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  </style>
+</head>
+<body class="sd-body">
+  <main>
+    <div class="wrap">
+      <h1>Claim a student</h1>
+      <p class="muted">If you received an invite email, just open the link on this device and sign in below. Or enter your short claim code.</p>
+
+      <div id="needSignIn" class="card" style="display:none; margin-top:10px;">
+        <strong>Sign in to continue</strong>
+        <p class="muted" style="margin:6px 0 0;">Use the Sign in button in the header, then come back to this page.</p>
+      </div>
+
+      <div id="codeCard" class="card" style="margin-top:10px;">
+        <label for="code" style="font-weight:700;">Claim code</label>
+        <input id="code" maxlength="16" placeholder="H7Q4-M2NP" />
+        <div class="btns" style="margin-top:10px;">
+          <button id="claimBtn" class="btn btn-primary" type="button">Claim</button>
+          <span id="status" class="muted"></span>
+        </div>
+      </div>
+
+      <div id="doneCard" class="card" style="display:none; margin-top:10px;">
+        <strong>Linked!</strong>
+        <p class="muted">You're now linked to this student. View your passes in the Parent Portal.</p>
+        <div class="btns">
+          <a class="btn" href="/parents.html">Go to Parent Portal</a>
+        </div>
+      </div>
+
+      <div id="errCard" class="card" style="display:none; margin-top:10px;">
+        <strong>Could not claim</strong>
+        <p id="errMsg" class="muted" style="margin:6px 0 0;">Check the link or code and try again.</p>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    async function claimWith(params){
+      const status = document.getElementById('status');
+      const errCard= document.getElementById('errCard');
+      const errMsg = document.getElementById('errMsg');
+      const done   = document.getElementById('doneCard');
+      status.textContent = 'Claiming…'; errCard.style.display='none'; done.style.display='none';
+      try{
+        const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('claimGuardianInvite') : null;
+        if (!call) throw new Error('Backend unavailable.');
+        const resp = await call(params);
+        const data = (resp && resp.data) || resp || {};
+        if (!data.ok) throw new Error('Failed to claim');
+        status.textContent = 'Linked!';
+        done.style.display='';
+        // Optional: delay redirect
+        setTimeout(()=>{ location.replace('/parents.html'); }, 1000);
+      } catch (e) {
+        console.error(e);
+        status.textContent = '';
+        errMsg.textContent = e.message || e.code || 'Could not claim';
+        errCard.style.display='';
+      }
+    }
+
+    function getQuery(){ try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(''); } }
+
+    function ready(){
+      const need = document.getElementById('needSignIn');
+      const u = (window.firebase && window.firebase.auth && window.firebase.auth().currentUser) ? window.firebase.auth().currentUser : null;
+      if (!u){ need.style.display = ''; return; }
+      need.style.display = 'none';
+
+      // Auto-claim via inv+token from URL if present
+      const qs = getQuery();
+      const inv = qs.get('inv');
+      const token = qs.get('token');
+      if (inv && token){ claimWith({ inv, token }); return; }
+
+      // Manual code path
+      document.getElementById('claimBtn').addEventListener('click', () => {
+        const code = document.getElementById('code').value.trim();
+        if (!code){ alert('Enter your claim code'); return; }
+        claimWith({ code });
+      });
+    }
+
+    // Listen on document (site-header dispatches this on document)
+    document.addEventListener('sd:claims-ready', ready, { once: true });
+    // Fast path if claims already present
+    if (window.SD && window.SD.claims) {
+      try { ready(); } catch {}
+    } else {
+      // As a safety, initialize after a short delay to show the sign-in prompt even if claims event lags
+      setTimeout(() => { try { ready(); } catch {} }, 600);
+    }
+  </script>
+</body>
+</html>
