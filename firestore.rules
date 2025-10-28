@@ -79,6 +79,18 @@ service cloud.firestore {
              request.resource.data.updatedAt == request.time;
     }
 
+    // Viewer-limited toggle for Absent: allow called ↔ absent with server time only
+    // This permits non-caller viewers to mark a student absent and undo it back to called,
+    // while forbidding any other field changes or status transitions.
+    function canViewerToggleAbsent() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(['status','updatedAt']) &&
+             request.resource.data.updatedAt == request.time &&
+             (
+               (resource.data.status == 'called' && request.resource.data.status == 'absent') ||
+               (resource.data.status == 'absent' && request.resource.data.status == 'called')
+             );
+    }
+
     // Allow a teacher (not necessarily caller/admin) to update ONLY preferredName or callSound (plus updatedAt)
     // if the student is in one of the teacher's assigned classes listed in the member doc.
     function isTeacherForStudent(orgId, schoolId) {
@@ -171,8 +183,15 @@ service cloud.firestore {
           allow get:  if isAuthed() && (inSchool(orgId, schoolId) || isGuardianOfStudent(orgId, schoolId, studentId));
           // Listing restricted to staff scoped to school
           allow list: if isAuthed() && inSchool(orgId, schoolId);
-          // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
-          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId) || canTeacherMarkAbsent(orgId, schoolId));
+          // Update allowed for callers/admins (full status changes), viewers limited flips (en_route, absent),
+          // and teachers limited to preferredName/callSound or marking absent for their class.
+          allow update: if isAuthed() && inSchool(orgId, schoolId) && (
+            isAtLeastCaller() ||
+            canViewerFlipToEnRoute() ||
+            canViewerToggleAbsent() ||
+            isTeacherForStudent(orgId, schoolId) ||
+            canTeacherMarkAbsent(orgId, schoolId)
+          );
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
 
           // Per-student events subcollection used for analytics (collectionGroup queries)
