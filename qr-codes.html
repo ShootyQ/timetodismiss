@@ -530,8 +530,13 @@
     }
 
     function lastName(str){
-      const s = String(str||'').trim();
+      let s = String(str||'').trim();
       if (!s) return '';
+      // Normalize common grouped-family labels like "Doe family" or "Doe +2"
+      const fam = s.match(/^(.+)\s+family$/i);
+      if (fam) s = fam[1].trim();
+      const plus = s.match(/^(.+)\s+\+\d+$/);
+      if (plus) s = plus[1].trim();
       // Expect either "Last, First" or full name; take last token or segment before comma.
       if (s.includes(',')) return s.split(',')[0].trim();
       const parts = s.split(/\s+/).filter(Boolean);
