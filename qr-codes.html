@@ -1162,29 +1162,32 @@
       el.addEventListener('input', saveOpts);
     });
 
-    // Helpers: consolidate students into unique family tags
-    function studentsToFamiliesByLast(list){
+    // Helpers: consolidate students into unique family tags (one label per tag)
+    function studentsToFamilyTags(list){
       const byTag = new Map();
-      for (const s of (list||[])){
+      for (const s of (list || [])){
         const tag = normTag(s.tag || '');
-        if (!tag) continue; // only consolidate those with tags
+        if (!tag) continue; // only group students that have a car tag
         if (!byTag.has(tag)) byTag.set(tag, []);
         byTag.get(tag).push(s);
       }
       const out = [];
       for (const [tag, arr] of byTag.entries()){
-        // Choose a display name: if all share last name, show that; else show first student's last name + ' +' count
+        // If all students share the same last name, display "<Last> family"; otherwise "<Last> +N"
         const lastNames = Array.from(new Set(arr.map(s => lastName(nameOf(s))).filter(Boolean)));
         let display = '';
-        if (lastNames.length === 1){ display = lastNames[0] + ' family'; }
-        else if (arr.length){ display = lastName(nameOf(arr[0])) + ' +' + (arr.length-1); }
-        out.push({ type:'tag', tag, name: display });
+        if (lastNames.length === 1) {
+          display = lastNames[0] ? (lastNames[0] + ' family') : '';
+        } else if (arr.length) {
+          const base = lastName(nameOf(arr[0])) || nameOf(arr[0]) || '';
+          display = base ? (base + ' +' + (arr.length - 1)) : '';
+        }
+        out.push({ type: 'tag', tag, name: display });
       }
-        // Do NOT label as 'family' to avoid implying relationship; show just last name
-        const display = (lname ? lname : (nameOf(first) || ''));
+      return out.sort((a,b)=> (a.tag||'').localeCompare(b.tag||''));
     }
 
-    // New: consolidate by last name; one label per family
+    // New: consolidate by last name; one label per family (not actual family, just same last name)
     function studentsToFamiliesByLast(list){
       const byLast = new Map();
       for (const s of (list||[])){
