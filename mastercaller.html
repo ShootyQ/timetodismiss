@@ -231,7 +231,7 @@
   <div id="qrSheet" hidden></div>
 
   <script type="module">
-  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setActiveSession, getStudentStatsForDay } from '/app.js?v=23';
+  import { init, getClasses, onStudents, onCarGroups, setStudentStatus, getGroupByTag, setStatusForGroup, setStatusForTag, setStatusForRideShare, setStatusForExactTag, setActiveSession, getStudentStatsForDay } from '/app.js?v=23';
     await init();
 
     const classFilter = document.getElementById('classFilter');
@@ -413,23 +413,20 @@
   // Removed sound feedback for callers (silent operations)
   function ding(){ /* no-op */ }
 
-    // Call by identifier: prefers car tag, but recognizes ride share tokens too
+    // Call helper used by the RS pill: prefer ride share if available; else family; else exact tag
     async function callRideShareByTag(tag){
       const TAG = String(tag||'').toUpperCase();
       const grp = tagToGroup[TAG];
       const rsGrp = rideShareToGroup[TAG];
       ding();
-      // 1) If this matches a normal car tag, call that family/group first
-      if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
-      if (grp && Array.isArray(grp.tags) && grp.tags.length) {
-        const tags = grp.tags.map(t => String(t||'').toUpperCase());
-        return Promise.allSettled(tags.map(t => setStatusForTag(t, 'called')));
-      }
-      // 2) If it looks like a ride share token, apply ride-share wide
+      // 1) Direct ride share token
       if (rsGrp && setStatusForRideShare) return setStatusForRideShare(TAG, 'called');
-      // 3) Fallback: treat as plain tag
-      if (grp?.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
-      return setStatusForTag(TAG, 'called');
+      // 2) Tag belongs to a family group with a rideShare key
+      if (grp && grp.rideShare && setStatusForRideShare) return setStatusForRideShare(grp.rideShare, 'called');
+      // 3) No ride share: call just the family group for that tag
+      if (grp && setStatusForGroup) return setStatusForGroup(grp.id, 'called');
+      // 4) Final fallback: exact tag only
+      return setStatusForExactTag(TAG, 'called');
     }
 
     let allStudents = [];
@@ -703,17 +700,17 @@
         } else if (b.id === 'aFam'){
           const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
           if (tag){
-            const g = await getGroupByTag(tag);
-            if (g && g.id) await setStatusForGroup(g.id, 'called'); else await setStatusForTag(tag, 'called');
+            // Family = same tag only (do not expand to ride share or other tags)
+            await setStatusForExactTag(tag, 'called');
             showToast('Family called');
           }
         } else if (b.id === 'aRS'){
           const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
           const grp = tag ? (groupMap[tag] || await getGroupByTag(tag)) : null;
-          if (grp && grp.id){ await setStatusForGroup(grp.id, 'called'); showToast('Ride share called'); }
-          else if (grp && Array.isArray(grp.tags) && grp.tags.length){ await Promise.allSettled(grp.tags.map(t => setStatusForTag(String(t||'').toUpperCase(), 'called'))); showToast('Ride share called'); }
-          else if (grp && grp.rideShare){ await setStatusForRideShare(grp.rideShare, 'called'); showToast('Ride share called'); }
-          else if (tag){ await setStatusForTag(tag, 'called'); showToast('Family called'); }
+          if (grp && grp.rideShare){ await setStatusForRideShare(grp.rideShare, 'called'); showToast('Ride share called'); }
+          else if (rideShareToGroup[tag]){ await setStatusForRideShare(tag, 'called'); showToast('Ride share called'); }
+          else if (grp && grp.id){ await setStatusForGroup(grp.id, 'called'); showToast('Family called'); }
+          else if (tag){ await setStatusForExactTag(tag, 'called'); showToast('Family called'); }
         } else if (b.id === 'aPicked'){
           await setStudentStatus(id, 'picked_up');
           showToast('Picked up');
