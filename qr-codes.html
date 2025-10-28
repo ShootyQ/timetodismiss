@@ -41,6 +41,18 @@
     .csv-area{ width:100%; font-family:ui-monospace, monospace; }
     .helpers-actions{ margin-top:.5rem; display:flex; gap:8px; }
 
+    /* New: refined controls layout */
+    .qr-controls{ display:flex; flex-direction:column; gap:8px; }
+    .toolbar-row{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .toolbar-row .spacer{ flex:1 1 auto; }
+    details.qr-adv, details.qr-group{ border:1px solid #e5e7eb; border-radius:10px; padding:.4rem .6rem; background:#fff; }
+    details.qr-adv[open], details.qr-group[open]{ box-shadow:0 1px 0 rgba(2,6,23,.04) inset; }
+    details.qr-adv > summary, details.qr-group > summary{ list-style:none; cursor:pointer; display:flex; align-items:center; gap:6px; font-weight:800; }
+    details.qr-adv > summary::-webkit-details-marker, details.qr-group > summary::-webkit-details-marker{ display:none; }
+    .adv-grid{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; align-items:center; }
+    .adv-grid .inline-flex{ margin-right:4px; }
+    .seg-hint{ color:var(--muted); font-size:.9rem; }
+
   /* Print area (dedicated, avoids grid print bugs) */
   #printArea.hidden{ display:none !important; }
   #printArea{ background:#fff; }
@@ -111,65 +123,97 @@
       Codes encode <strong>car=TAG</strong> when available, else <strong>student=ID</strong>. Select items to print just those.
     </p>
 
+    <details class="note" style="margin:8px 0 10px;">
+      <summary><strong>How to use</strong></summary>
+      <div class="small" style="margin-top:6px;">
+        <ol style="margin:0 0 0 1.2rem; padding:0;">
+          <li>Choose what to list: Tags by default, or <em>Students</em> for per-student codes.</li>
+          <li>Optional: In Students mode, pick a grouping (one per car tag or same last name).</li>
+          <li>Use the filter to narrow the list. Select items to target just those.</li>
+          <li>Click <strong>Print</strong> or download as <strong>PDF</strong>/<strong>ZIP</strong>. PDF aligns best for labels.</li>
+        </ol>
+      </div>
+    </details>
+
     <div id="hostWarning" class="note hidden" role="status">
       Tip: To load All Students from your database, open this page via your app (http/https). When opened from disk (file://), use the CSV helper below.
     </div>
 
   <div class="qr-toolbar" role="toolbar" aria-label="QR options">
-      <label class="inline-flex">
-        <input id="simpleMode" type="checkbox" checked /> Simple
-      </label>
-      <label class="inline-flex" id="wrapModeStudents">
-        <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> Students
-      </label>
-      <label class="inline-flex" id="wrapGroupByTag">
-        <input id="groupByTag" type="checkbox" /> One per family (per tag)
-      </label>
-      <label class="inline-flex" id="wrapGroupByLast" title="Groups by identical last name only; not actual family">
-        <input id="groupByLast" type="checkbox" /> Same last name (not family)
-      </label>
-      <label class="inline-flex" id="wrapRideShares">
-        <input id="includeRideShares" type="checkbox" /> Ride Shares
-      </label>
-      <span id="modeHelp" class="sr-only">Toggle to list all students instead of car tags</span>
+    <div class="qr-controls">
+      <!-- Primary row: mode, grouping, filter, quick actions -->
+      <div class="toolbar-row">
+        <label class="inline-flex">
+          <input id="simpleMode" type="checkbox" checked /> Simple
+        </label>
+        <label class="inline-flex" id="wrapModeStudents" title="List students instead of tag labels">
+          <input id="modeStudents" type="checkbox" aria-describedby="modeHelp" /> Students
+        </label>
+        <label class="inline-flex" id="wrapGroupByTag" title="One QR per car tag; useful for families with multiple students">
+          <input id="groupByTag" type="checkbox" /> One per family (per tag)
+        </label>
+        <label class="inline-flex" id="wrapGroupByLast" title="Groups by identical last name only; not actual family">
+          <input id="groupByLast" type="checkbox" /> Same last name (not family)
+        </label>
+        <label class="inline-flex" id="wrapRideShares" title="Include ride-share keys alongside car tags">
+          <input id="includeRideShares" type="checkbox" /> Ride Shares
+        </label>
+        <span id="modeHelp" class="sr-only">Toggle to list all students instead of car tags</span>
+        <span class="spacer"></span>
+        <input id="q" class="qr-filter" placeholder="Filter by tag or name…" inputmode="search" autocomplete="off" aria-label="Filter" />
+        <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
+        <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
+        <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
+        <button id="downloadZip" class="btn btn-secondary" type="button" aria-label="Download ZIP of PNG images">Download ZIP</button>
+        <button id="downloadPdf" class="btn btn-outline" type="button" aria-label="Download printable PDF of labels">Download PDF</button>
+      </div>
 
-      <input id="q" class="qr-filter" placeholder="Filter by tag or name…" inputmode="search" autocomplete="off" aria-label="Filter" />
-      <select id="cols" aria-label="Columns">
-        <option value="2">2 columns</option>
-        <option value="3" selected>3 columns</option>
-        <option value="4">4 columns</option>
-      </select>
-      <select id="size" aria-label="QR size">
-        <option value="160">160 px</option>
-        <option value="180">180 px</option>
-        <option value="200" selected>200 px</option>
-        <option value="240">240 px</option>
-        <option value="300">300 px</option>
-      </select>
-      <label class="inline-flex">
-        <input id="tight" type="checkbox" /> Tight layout
-      </label>
-      <label class="inline-flex">
-        <input id="showNames" type="checkbox" checked /> Show names
-      </label>
-      <label class="inline-flex" id="wrapSortLastName">
-        <input id="sortLastName" type="checkbox" /> Sort by last name
-      </label>
-      <select id="layout" aria-label="Label layout">
-        <option value="grid" selected>Responsive Grid</option>
-        <option value="avery5160">Avery 5160 (30/pg)</option>
-        <option value="avery5163">Avery 5163 (10/pg)</option>
-        <option value="square2">Square 2×2 in</option>
-        <option value="square3">Square 3×3 in</option>
-        <option value="nameqr">Large Name + QR rows</option>
-        <option value="bizcard">Business Card 3.5×2 in</option>
-      </select>
-      <button id="selectAll" class="btn btn-secondary" type="button" aria-label="Select all">Select All</button>
-      <button id="clearSel" class="btn btn-outline" type="button" aria-label="Clear selection">Clear</button>
-      <button id="print" class="btn btn-primary" type="button" aria-label="Print selected">Print</button>
-      <button id="downloadZip" class="btn btn-secondary" type="button" aria-label="Download ZIP of PNG images">Download ZIP (images)</button>
-      <button id="downloadPdf" class="btn btn-outline" type="button" aria-label="Download printable PDF of labels">Download PDF (printable)</button>
+      <!-- Grouping & sort (visible mainly in Students mode) -->
+      <details class="qr-group">
+        <summary>Grouping & listing</summary>
+        <div class="adv-grid">
+          <label class="inline-flex" id="wrapSortLastName">
+            <input id="sortLastName" type="checkbox" /> Sort by last name
+          </label>
+          <span class="seg-hint">Students mode can show one per car tag or approximate "same last name" groups.</span>
+        </div>
+      </details>
+
+      <!-- Advanced layout & sizing -->
+      <details class="qr-adv">
+        <summary>Advanced options</summary>
+        <div class="adv-grid">
+          <select id="cols" aria-label="Columns">
+            <option value="2">2 columns</option>
+            <option value="3" selected>3 columns</option>
+            <option value="4">4 columns</option>
+          </select>
+          <select id="size" aria-label="QR size">
+            <option value="160">160 px</option>
+            <option value="180">180 px</option>
+            <option value="200" selected>200 px</option>
+            <option value="240">240 px</option>
+            <option value="300">300 px</option>
+          </select>
+          <label class="inline-flex">
+            <input id="tight" type="checkbox" /> Tight layout
+          </label>
+          <label class="inline-flex">
+            <input id="showNames" type="checkbox" checked /> Show names
+          </label>
+          <select id="layout" aria-label="Label layout">
+            <option value="grid" selected>Responsive Grid</option>
+            <option value="avery5160">Avery 5160 (30/pg)</option>
+            <option value="avery5163">Avery 5163 (10/pg)</option>
+            <option value="square2">Square 2×2 in</option>
+            <option value="square3">Square 3×3 in</option>
+            <option value="nameqr">Large Name + QR rows</option>
+            <option value="bizcard">Business Card 3.5×2 in</option>
+          </select>
+        </div>
+      </details>
     </div>
+  </div>
     <div class="small muted print-hint" style="margin:-4px 0 8px;">Printing tips: PDF is recommended for best alignment. If you use the browser’s Print, set scale 100% (no fit), disable headers/footers; Chrome/Edge align best for Avery.</div>
     <div id="rsHelp" class="small muted" style="margin:-2px 0 14px;">
       Ride Share codes: turn on “Ride Shares” above to list them, then Download PDF/ZIP. You can also encode a code manually using <code>rs=YOUR_TOKEN</code>.
@@ -310,6 +354,10 @@
       // CSV helpers are shown only when All Students mode AND not simple
       if (simple) helpers.classList.add('hidden');
       // Keep layout, includeRideShares, filter, selection, PDF/ZIP always visible
+      try {
+        const adv = document.querySelector('details.qr-adv');
+        if (adv) adv.open = !simple; // auto-collapse in Simple mode
+      } catch {}
     }
 
     function setTight(v){ grid.classList.toggle('qr-tight', !!v); }
