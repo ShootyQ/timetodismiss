@@ -554,7 +554,10 @@
           if (li) {
             const actions = li.querySelector('.inline-actions');
             if (actions) {
-              actions.innerHTML = `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${id}">En Route</button>`;
+              // Restore the original Called action set (En Route + Absent)
+              actions.innerHTML = `
+                <button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${id}">En Route</button>
+                <button class="btn btn-outline btn-xs" data-act="absent" data-id="${id}">Absent</button>`;
             }
             li.querySelector('.enroute-bar')?.remove();
           }
