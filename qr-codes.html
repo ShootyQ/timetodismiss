@@ -125,8 +125,8 @@
       <label class="inline-flex" id="wrapGroupByTag">
         <input id="groupByTag" type="checkbox" /> One per family (per tag)
       </label>
-      <label class="inline-flex" id="wrapGroupByLast">
-        <input id="groupByLast" type="checkbox" /> One per family (last name)
+      <label class="inline-flex" id="wrapGroupByLast" title="Groups by identical last name only; not actual family">
+        <input id="groupByLast" type="checkbox" /> Same last name (not family)
       </label>
       <label class="inline-flex" id="wrapRideShares">
         <input id="includeRideShares" type="checkbox" /> Ride Shares
@@ -1163,7 +1163,7 @@
     });
 
     // Helpers: consolidate students into unique family tags
-    function studentsToFamilyTags(list){
+    function studentsToFamiliesByLast(list){
       const byTag = new Map();
       for (const s of (list||[])){
         const tag = normTag(s.tag || '');
@@ -1180,7 +1180,8 @@
         else if (arr.length){ display = lastName(nameOf(arr[0])) + ' +' + (arr.length-1); }
         out.push({ type:'tag', tag, name: display });
       }
-      return out.sort((a,b)=> a.tag.localeCompare(b.tag));
+        // Do NOT label as 'family' to avoid implying relationship; show just last name
+        const display = (lname ? lname : (nameOf(first) || ''));
     }
 
     // New: consolidate by last name; one label per family
