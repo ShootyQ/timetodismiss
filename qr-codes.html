@@ -176,6 +176,11 @@
             <input id="sortLastName" type="checkbox" /> Sort by last name
           </label>
           <span class="seg-hint">Students mode can show one per car tag or approximate "same last name" groups.</span>
+          <!-- Copies per item (for handing out multiple labels per family) -->
+          <label class="inline-flex" id="wrapCopies" title="Number of duplicate labels to output per listed item">
+            <span>Copies</span>
+            <input id="copiesPerItem" type="number" min="1" max="10" value="1" style="width:72px;" />
+          </label>
         </div>
       </details>
 
@@ -303,6 +308,7 @@
   const btnPrint = document.getElementById('print');
     const btnZip = document.getElementById('downloadZip');
     const btnPdf = document.getElementById('downloadPdf');
+    const copiesInput = document.getElementById('copiesPerItem');
 
     const csvTA = document.getElementById('csv');
     const csvLoad = document.getElementById('csvLoad');
@@ -539,6 +545,22 @@
       return base;
     }
 
+    function getCopies(){
+      const n = parseInt(copiesInput?.value || '1', 10);
+      if (Number.isNaN(n) || n < 1) return 1;
+      return Math.min(n, 50);
+    }
+
+    function replicateItems(items, copies){
+      const c = Math.max(1, Math.min(50, copies|0));
+      if (c === 1) return items;
+      const out = [];
+      for (const it of (items||[])){
+        for (let i=0;i<c;i++) out.push(it);
+      }
+      return out;
+    }
+
     function getKey(item, useStudents){
       if (useStudents) return item.id || item.studentId || item.tag;
       return item.type === 'rs' ? ('RS:'+item.rs) : item.tag;
@@ -597,8 +619,8 @@
       paPages.className = 'pa-pages';
       paPages.innerHTML = '';
       const qrPx = toPx(preset.qrIn || 1);
-      // If using name+qr layout, dedupe by the QR payload to avoid repeats
-      const source = (layoutSel.value === 'nameqr') ? uniqByPayload(items) : items;
+  // If using name+qr layout, only de-dupe when not intentionally duplicating via Copies
+  const source = (layoutSel.value === 'nameqr' && getCopies() === 1) ? uniqByPayload(items) : items;
       const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
       for (let i=0; i<source.length; i+=perPage){
         const pageItems = source.slice(i, i+perPage);
@@ -722,9 +744,17 @@
   const useStudents = !!(modeStudents.checked && !(groupByTag?.checked));
 
       const manifest = [];
+      const usedNames = new Set();
       for (const it of items){
         const payload = buildPayload(it, useStudents);
-        const fname = buildFileBase(it, useStudents) + '.png';
+        const base = buildFileBase(it, useStudents) || 'code';
+        let fname = base + '.png';
+        if (usedNames.has(fname)){
+          let n = 2;
+          while (usedNames.has(`${base}-x${n}.png`)) n++;
+          fname = `${base}-x${n}.png`;
+        }
+        usedNames.add(fname);
         const dataUrl = await renderQrToPngDataUrl(payload, px);
         const base64 = dataUrl.split(',')[1];
         zip.file(fname, base64, { base64: true });
@@ -951,9 +981,10 @@
   showNames.addEventListener('change', renderList);
   simpleMode.addEventListener('change', () => { applySimpleMode(); saveOpts(); });
   if (includeRideShares) includeRideShares.addEventListener('change', () => { if (!modeStudents.checked) { selected.clear(); renderList(); } saveOpts(); });
-  if (groupByTag) groupByTag.addEventListener('change', () => { if (groupByTag.checked && groupByLast) groupByLast.checked = false; selected.clear(); renderList(); saveOpts(); });
-  if (groupByLast) groupByLast.addEventListener('change', () => { if (groupByLast.checked && groupByTag) groupByTag.checked = false; selected.clear(); renderList(); saveOpts(); });
+  if (groupByTag) groupByTag.addEventListener('change', () => { if (groupByTag.checked && groupByLast) groupByLast.checked = false; selected.clear(); renderList(); saveOpts(); const wrap = document.getElementById('wrapCopies'); if (wrap) wrap.classList.toggle('hidden', !(modeStudents.checked && (groupByTag.checked || (groupByLast && groupByLast.checked)))); });
+  if (groupByLast) groupByLast.addEventListener('change', () => { if (groupByLast.checked && groupByTag) groupByTag.checked = false; selected.clear(); renderList(); saveOpts(); const wrap = document.getElementById('wrapCopies'); if (wrap) wrap.classList.toggle('hidden', !(modeStudents.checked && (groupByTag?.checked || groupByLast.checked))); });
   if (sortLastName) sortLastName.addEventListener('change', () => { if (modeStudents.checked && !(groupByTag.checked || (groupByLast && groupByLast.checked))){ renderList(); saveOpts(); } });
+    if (copiesInput) copiesInput.addEventListener('change', () => { copiesInput.value = String(getCopies()); saveOpts(); });
     modeStudents.addEventListener('change', () => {
       selected.clear();
       renderList();
@@ -966,6 +997,10 @@
       if (wrapGroupByTag) wrapGroupByTag.classList.toggle('hidden', !modeStudents.checked);
       if (wrapGroupByLast) wrapGroupByLast.classList.toggle('hidden', !modeStudents.checked);
       if (wrapSortLastName) wrapSortLastName.classList.toggle('hidden', !modeStudents.checked);
+      if (document.getElementById('wrapCopies')){
+        const showCopies = !!(modeStudents.checked && (groupByTag?.checked || groupByLast?.checked));
+        document.getElementById('wrapCopies').classList.toggle('hidden', !showCopies);
+      }
     });
 
     document.addEventListener('click', (e) => {
@@ -1025,7 +1060,9 @@
           items = all;
         }
       }
-      if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+  if (!items.length){ alert('Nothing to print. Select items or clear the filter.'); return; }
+  // Apply copies per item (keeps families grouped contiguously)
+  items = replicateItems(items, getCopies());
       // Open the window immediately after decisions
       let w = window.open('about:blank','qrprint');
       if(!w){
@@ -1045,7 +1082,8 @@
       const useStudents = !!modeStudents.checked;
       const all = getAllItems();
       const keys = new Set(selected);
-      const items = keys.size ? all.filter(it => keys.has(getKey(it, useStudents))) : currentFilterList();
+  let items = keys.size ? all.filter(it => keys.has(getKey(it, useStudents))) : currentFilterList();
+  items = replicateItems(items, getCopies());
       if (!items.length){ alert('Nothing to download. Select items or clear the filter.'); return; }
       try { await downloadAsZip(items); } catch (e) { console.error(e); alert('ZIP download failed.'); }
     });
@@ -1055,7 +1093,8 @@
       const useStudents = !!modeStudents.checked;
       const all = getAllItems();
       const keys = new Set(selected);
-      const items = keys.size ? all.filter(it => keys.has(getKey(it, useStudents))) : currentFilterList();
+  let items = keys.size ? all.filter(it => keys.has(getKey(it, useStudents))) : currentFilterList();
+  items = replicateItems(items, getCopies());
       if (!items.length){ alert('Nothing to download. Select items or clear the filter.'); return; }
       try { await downloadAsPdf(items); } catch (e) { console.error(e); alert('PDF generation failed.'); }
     });
@@ -1089,7 +1128,7 @@
     }
 
     // Persist settings
-    const LSKEY = 'ttd.qr.opts.v4';
+  const LSKEY = 'ttd.qr.opts.v5';
     function saveOpts(){
       try{
         const o = {
@@ -1104,7 +1143,8 @@
           simple: !!(simpleMode && simpleMode.checked),
           groupByTag: !!(groupByTag && groupByTag.checked),
           groupByLast: !!(groupByLast && groupByLast.checked),
-          sortLastName: !!(sortLastName && sortLastName.checked)
+          sortLastName: !!(sortLastName && sortLastName.checked),
+          copies: getCopies()
         };
         localStorage.setItem(LSKEY, JSON.stringify(o));
       }catch{}
@@ -1125,7 +1165,8 @@
         if (typeof o.simple === 'boolean' && simpleMode) simpleMode.checked = o.simple;
         if (typeof o.groupByTag === 'boolean' && groupByTag) groupByTag.checked = o.groupByTag;
         if (typeof o.groupByLast === 'boolean' && groupByLast) groupByLast.checked = o.groupByLast;
-        if (typeof o.sortLastName === 'boolean' && sortLastName) sortLastName.checked = o.sortLastName;
+  if (typeof o.sortLastName === 'boolean' && sortLastName) sortLastName.checked = o.sortLastName;
+  if (typeof o.copies === 'number' && copiesInput) copiesInput.value = String(Math.max(1, Math.min(50, o.copies|0)));
       }catch{}
     }
 
@@ -1203,9 +1244,14 @@
     whenClaimsReady(bootstrap);
   // Apply simple mode after bootstrap of opts
   applySimpleMode();
+  // Initialize visibility of Copies control based on current grouping/mode
+  try{
+    const wrap = document.getElementById('wrapCopies');
+    if (wrap){ wrap.classList.toggle('hidden', !(modeStudents.checked && (groupByTag?.checked || groupByLast?.checked))); }
+  }catch{}
 
     // Persist on changes
-    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q, includeRideShares, simpleMode].forEach(el => {
+    [cols, sizeSel, tight, showNames, layoutSel, modeStudents, q, includeRideShares, simpleMode, copiesInput].forEach(el => {
       el.addEventListener('change', saveOpts);
       el.addEventListener('input', saveOpts);
     });
