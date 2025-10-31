@@ -38,3 +38,9 @@ Add the following repository secret in GitHub → Settings → Secrets and varia
 - site: `dismissalcaller`
 - public: `.` (serves static files from repo root)
 - cleanUrls enabled
+
+## Analytics
+
+- Google Analytics 4 is initialized globally from `site-header.js` using Measurement ID `G-2799S6XEND`.
+- To change the GA property later, update the `GA_MEASUREMENT_ID` constant and the `measurementId` inside the `firebaseConfig` block in `site-header.js`.
+- The GA script loads asynchronously on every page that includes `site-header.js` (most pages). Page views are tracked automatically.

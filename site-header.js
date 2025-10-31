@@ -7,6 +7,8 @@
 (function () {
   // Global build/version id for cache-busting across all pages
   const BUILD_ID = '2025-10-13-HDR6';
+  // Google Analytics 4 Measurement ID
+  const GA_MEASUREMENT_ID = 'G-2799S6XEND';
   // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
   const HDR_SAFE = (() => {
     try {
@@ -66,7 +68,7 @@
     storageBucket: "dismissalcaller.appspot.com",
     messagingSenderId: "942492177246",
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
-    measurementId: "G-279958XEND"
+    measurementId: "G-2799S6XEND"
   };
 
   const TEMP_ADMIN_EMAILS = new Set([
@@ -84,6 +86,25 @@
       document.head.appendChild(el);
     });
   }
+  // Lightweight GA4 bootstrap (runs on every page via site-header)
+  let _gaInit = false;
+  function initGoogleAnalytics(){
+    if (_gaInit) return; _gaInit = true;
+    try {
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){ window.dataLayer.push(arguments); }
+      window.gtag = window.gtag || gtag;
+      window.gtag('js', new Date());
+      window.gtag('config', GA_MEASUREMENT_ID, { anonymize_ip: true });
+    } catch {}
+  }
+  try {
+    // Load GA script asynchronously; init immediately as well so page_view queues
+    loadScriptOnce('https://www.googletagmanager.com/gtag/js?id=' + GA_MEASUREMENT_ID)
+      .then(() => { initGoogleAnalytics(); })
+      .catch(() => {});
+    initGoogleAnalytics();
+  } catch {}
   function show(el){ el && (el.style.display = ''); }
   function hide(el){ el && (el.style.display = 'none'); }
 
