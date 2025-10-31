@@ -106,6 +106,10 @@
           <option value="3" selected>3 columns</option>
           <option value="4">4 columns</option>
         </select>
+        <label class="inline-flex" id="wrapCopies" title="Number of duplicate labels to output per listed item">
+          <span>Copies</span>
+          <input id="copiesPerItem" type="number" min="1" max="50" value="1" style="width:72px;" />
+        </label>
         <select id="layout" aria-label="Print layout">
           <option value="grid" selected>Responsive Grid</option>
           <option value="avery5160">Avery 5160 (30/pg)</option>
@@ -176,6 +180,7 @@
     const btnPrint = document.getElementById('print');
     const btnPdf = document.getElementById('downloadPdf');
     const btnZip = document.getElementById('downloadZip');
+  const copiesInput = document.getElementById('copiesPerItem');
 
     const csvTA = document.getElementById('csv');
     const csvLoad = document.getElementById('csvLoad');
@@ -346,14 +351,16 @@
       return base;
     }
 
-    function uniqByPayload(items){ const seen=new Set(); const out=[]; for(const it of items){ const p=buildPayload(it); if(seen.has(p)) continue; seen.add(p); out.push(it);} return out; }
+  function uniqByPayload(items){ const seen=new Set(); const out=[]; for(const it of items){ const p=buildPayload(it); if(seen.has(p)) continue; seen.add(p); out.push(it);} return out; }
+  function getCopies(){ const n=parseInt(copiesInput?.value||'1',10); if(Number.isNaN(n)||n<1) return 1; return Math.min(n,50); }
+  function replicateItems(items, copies){ const c=Math.max(1, Math.min(50, copies|0)); if(c===1) return items; const out=[]; for(const it of (items||[])){ for(let i=0;i<c;i++) out.push(it); } return out; }
 
     function buildPrintArea(items){
       const useStudents = (mode==='students') && !grpPerTag.checked; // align with previous behavior
       const preset = presetInfo(layoutSel.value);
       paPages.className = 'pa-pages'; paPages.innerHTML='';
       const qrPx = toPx(preset.qrIn || 1);
-      const source = (layoutSel.value === 'nameqr') ? uniqByPayload(items) : items;
+  const source = (layoutSel.value === 'nameqr' && getCopies() === 1) ? uniqByPayload(items) : items;
       const perPage = preset.gridFlow ? source.length : (preset.perPage || source.length);
       for (let i=0;i<source.length;i+=perPage){
         const pageItems = source.slice(i,i+perPage);
@@ -394,7 +401,16 @@
     async function downloadAsZip(items){
       const JSZip = await ensureJSZip(); await ensureFileSaver(); const zip = new JSZip();
       const preset = presetInfo(layoutSel.value); const px = toPx(preset.qrIn || (parseInt(sizeSel.value,10)||200)/96);
-      for(const it of items){ const payload=buildPayload(it); const fname=fileBase(it)+'.png'; const dataUrl=await renderQrToPngDataUrl(payload, px); const base64=dataUrl.split(',')[1]; zip.file(fname, base64, { base64:true }); }
+      const usedNames = new Set();
+      for(const it of items){
+        const payload=buildPayload(it); const base=fileBase(it)||'code';
+        let fname = base + '.png';
+        if (usedNames.has(fname)){
+          let n=2; while(usedNames.has(`${base}-x${n}.png`)) n++; fname = `${base}-x${n}.png`;
+        }
+        usedNames.add(fname);
+        const dataUrl=await renderQrToPngDataUrl(payload, px); const base64=dataUrl.split(',')[1]; zip.file(fname, base64, { base64:true });
+      }
       const blob = await zip.generateAsync({ type:'blob' }); const org=(window.app?.orgId || 'ttd'); const when=new Date().toISOString().replace(/[:.]/g,'-'); saveAs(blob, `${org}-qr-codes-${when}.zip`);
     }
 
@@ -453,13 +469,14 @@
     search.addEventListener('input', render);
     tight.addEventListener('change', () => grid.classList.toggle('tight', !!tight.checked));
     showNames.addEventListener('change', render);
+  copiesInput?.addEventListener('change', () => { copiesInput.value = String(getCopies()); saveOpts(); });
 
-    grpPerTag.addEventListener('change', () => { if (grpPerTag.checked) grpLastName.checked=false; selected.clear(); render(); saveOpts(); });
-    grpLastName.addEventListener('change', () => { if (grpLastName.checked) grpPerTag.checked=false; selected.clear(); render(); saveOpts(); });
+  grpPerTag.addEventListener('change', () => { if (grpPerTag.checked) grpLastName.checked=false; selected.clear(); render(); saveOpts(); toggleCopiesVisibility(); });
+  grpLastName.addEventListener('change', () => { if (grpLastName.checked) grpPerTag.checked=false; selected.clear(); render(); saveOpts(); toggleCopiesVisibility(); });
   chipRideShares.addEventListener('change', () => { if (mode==='tags'){ selected.clear(); render(); } saveOpts(); syncChips(); });
 
-  modeTagsBtn.addEventListener('click', () => { mode='tags'; modeTagsBtn.setAttribute('aria-pressed','true'); modeStudentsBtn.setAttribute('aria-pressed','false'); helpers.classList.add('hidden'); selected.clear(); render(); saveOpts(); syncChips(); });
-  modeStudentsBtn.addEventListener('click', () => { mode='students'; modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); helpers.classList.toggle('hidden', typeof onStudents === 'function'); selected.clear(); render(); saveOpts(); syncChips(); });
+  modeTagsBtn.addEventListener('click', () => { mode='tags'; modeTagsBtn.setAttribute('aria-pressed','true'); modeStudentsBtn.setAttribute('aria-pressed','false'); helpers.classList.add('hidden'); selected.clear(); render(); saveOpts(); syncChips(); toggleCopiesVisibility(); });
+  modeStudentsBtn.addEventListener('click', () => { mode='students'; modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); helpers.classList.toggle('hidden', typeof onStudents === 'function'); selected.clear(); render(); saveOpts(); syncChips(); toggleCopiesVisibility(); });
 
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('button[data-dl]'); if(!btn) return; const item = btn.closest('.qr-item'); const canvas=item?.querySelector('.qr-box canvas'); let url=''; if(canvas){ url=canvas.toDataURL('image/png'); } else { const img=item?.querySelector('.qr-box img'); if(!img) return; const c=document.createElement('canvas'); c.width=img.naturalWidth||img.width||512; c.height=img.naturalHeight||img.height||512; const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,c.width,c.height); url=c.toDataURL('image/png'); } const a=document.createElement('a'); a.href=url; a.download=`qr-${(item.querySelector('.qr-label')?.textContent||'code').replace(/[^A-Za-z0-9_-]+/g,'_')}.png`; document.body.appendChild(a); a.click(); a.remove();
@@ -471,26 +488,28 @@
     btnPrint.addEventListener('click', () => {
       const all = getAllItems(); const keys = new Set(selected); let items=[]; if(keys.size){ items = all.filter(it => keys.has(getKey(it))); } else { const filtered=currentList(); if ((search.value||'').trim() && filtered.length < all.length){ if (confirm(`Print only the ${filtered.length} filtered items?`)) items=filtered; else items=all; } else items=all; }
       if(!items.length){ alert('Nothing to print.'); return; }
+      items = replicateItems(items, getCopies());
       let w = window.open('about:blank','qrprint'); if(!w){ const iframe=document.createElement('iframe'); iframe.style.position='fixed'; iframe.style.width='0'; iframe.style.height='0'; iframe.style.opacity='0'; iframe.style.pointerEvents='none'; document.body.appendChild(iframe); try{ printNow(iframe.contentWindow, items); } catch(e){} return; } try{ w.document.write('<!doctype html><title>Preparing…</title><body style="font:14px system-ui; padding:20px;">Preparing labels…</body>'); } catch{} try{ printNow(w, items); } catch(e){ try{ w.close(); }catch{} }
     });
 
-    btnZip.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); const items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsZip(items); } catch(e){ alert('ZIP failed'); }
+  btnZip.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); let items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); items = replicateItems(items, getCopies()); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsZip(items); } catch(e){ alert('ZIP failed'); }
     });
-    btnPdf.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); const items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsPdf(items); } catch(e){ alert('PDF failed'); }
+  btnPdf.addEventListener('click', async () => { const all=getAllItems(); const keys=new Set(selected); let items = keys.size? all.filter(it=>keys.has(getKey(it))) : currentList(); items = replicateItems(items, getCopies()); if(!items.length){ alert('Nothing to download.'); return; } try { await downloadAsPdf(items); } catch(e){ alert('PDF failed'); }
     });
 
     csvLoad.addEventListener('click', () => { const parsed = parseCSV(csvTA.value); students = parsed; mode='students'; modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); selected.clear(); render(); helpers.classList.toggle('hidden', students.length>0); });
     csvClear.addEventListener('click', () => { csvTA.value=''; });
 
     // Persist simple options
-    const LSKEY = 'ttd.qr.opts.v5proto';
-    function saveOpts(){ try{ const o={ mode, size:sizeSel.value, cols:colsSel.value, tight:!!tight.checked, showNames:!!showNames.checked, layout:layoutSel.value, q:search.value||'', perTag:!!grpPerTag.checked, lastName:!!grpLastName.checked, rideShares:!!chipRideShares.checked }; localStorage.setItem(LSKEY, JSON.stringify(o)); }catch{} }
-    function loadOpts(){ try{ const raw=localStorage.getItem(LSKEY); if(!raw) return; const o=JSON.parse(raw); if(o.mode) mode=o.mode; sizeSel.value=o.size||sizeSel.value; colsSel.value=o.cols||colsSel.value; tight.checked=!!o.tight; showNames.checked=!!o.showNames; layoutSel.value=o.layout||layoutSel.value; search.value=o.q||''; grpPerTag.checked=!!o.perTag; grpLastName.checked=!!o.lastName; chipRideShares.checked=!!o.rideShares; if(mode==='students'){ modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); } }catch{} }
+  const LSKEY = 'ttd.qr.opts.v5proto';
+  function saveOpts(){ try{ const o={ mode, size:sizeSel.value, cols:colsSel.value, tight:!!tight.checked, showNames:!!showNames.checked, layout:layoutSel.value, q:search.value||'', perTag:!!grpPerTag.checked, lastName:!!grpLastName.checked, rideShares:!!chipRideShares.checked, copies:getCopies() }; localStorage.setItem(LSKEY, JSON.stringify(o)); }catch{} }
+  function loadOpts(){ try{ const raw=localStorage.getItem(LSKEY); if(!raw) return; const o=JSON.parse(raw); if(o.mode) mode=o.mode; sizeSel.value=o.size||sizeSel.value; colsSel.value=o.cols||colsSel.value; tight.checked=!!o.tight; showNames.checked=!!o.showNames; layoutSel.value=o.layout||layoutSel.value; search.value=o.q||''; grpPerTag.checked=!!o.perTag; grpLastName.checked=!!o.lastName; chipRideShares.checked=!!o.rideShares; if (typeof o.copies === 'number' && document.getElementById('copiesPerItem')) document.getElementById('copiesPerItem').value = String(Math.max(1, Math.min(50, o.copies|0))); if(mode==='students'){ modeTagsBtn.setAttribute('aria-pressed','false'); modeStudentsBtn.setAttribute('aria-pressed','true'); } }catch{} }
 
   function syncChips(){ try{ grpPerTag.closest('.chip')?.classList.toggle('on', !!grpPerTag.checked); grpLastName.closest('.chip')?.classList.toggle('on', !!grpLastName.checked); chipRideShares.closest('.chip')?.classList.toggle('on', !!chipRideShares.checked && mode==='tags'); }catch{} }
+  function toggleCopiesVisibility(){ try{ const wrap=document.getElementById('wrapCopies'); if(!wrap) return; const show = (mode==='students') && (!!grpPerTag.checked || !!grpLastName.checked); wrap.classList.toggle('hidden', !show); }catch{} }
 
   // Bootstrap
-  loadOpts(); setCols(colsSel.value); grid.classList.toggle('tight', !!tight.checked); syncChips();
+  loadOpts(); setCols(colsSel.value); grid.classList.toggle('tight', !!tight.checked); syncChips(); toggleCopiesVisibility();
     try{ if (typeof init === 'function') await init(); } catch{}
 
     try{ if (typeof onCars === 'function'){ onCars(map => { tags = tagsFromCarsMap(map); if (mode==='tags') render(); updateCounts(); }); } } catch{}
@@ -500,7 +519,7 @@
     // Initial render
     render();
     // Save on changes
-    [search, sizeSel, colsSel, tight, showNames, layoutSel].forEach(el=>{ el.addEventListener('change', saveOpts); el.addEventListener('input', saveOpts); });
+  [search, sizeSel, colsSel, tight, showNames, layoutSel, copiesInput].forEach(el=>{ el?.addEventListener('change', saveOpts); el?.addEventListener('input', saveOpts); });
   </script>
 </body>
 </html>
