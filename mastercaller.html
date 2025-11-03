@@ -627,7 +627,8 @@
       const tag = (e && e.detail && e.detail.tag) ? String(e.detail.tag).toUpperCase().trim() : '';
       if (!tag) return;
       try{
-        await setStatusForTag(tag, 'called');
+        // Scanner should mirror the "Call Family" action: target the exact tag only
+        await setStatusForExactTag(tag, 'called');
         const norm = normScanKey(tag);
         (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
         showToast('Family called');
@@ -838,7 +839,8 @@
       // 2. Family/Car Tag attempt
       if(carTagRaw){
         const normalized = normScanKey(carTagRaw);
-        setStatusForTag(carTagRaw, 'called')
+        // Treat hardware/HID scans of a car tag the same as camera scans: family-only
+        setStatusForExactTag(carTagRaw, 'called')
           .then(updated => {
             console.log('[scan] family attempt via tag', { tag: carTagRaw, updated });
             if(updated>0){

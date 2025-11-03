@@ -97,7 +97,7 @@
   <div class="toast-host" id="toasts"></div>
 
   <script type="module">
-  import { init, onAuthChanged, onStudents, getClasses, setStudentStatus, setStatusForTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
+  import { init, onAuthChanged, onStudents, getClasses, setStudentStatus, setStatusForExactTag, setStatusForRideShare, setActiveSession } from '/app.js?v=23';
     await init();
 
     // Context line
@@ -267,7 +267,7 @@
 
     // Scanner integrations
     window.addEventListener('scan:car-tag', async (ev)=>{
-      const t = ev?.detail?.tag; if(!t) return; try { const n = await setStatusForTag(t, 'called'); toast('Called '+t); } catch(e){ console.warn('[proto] tag call failed', e); }
+      const t = ev?.detail?.tag; if(!t) return; try { const n = await setStatusForExactTag(t, 'called'); toast('Called '+t); } catch(e){ console.warn('[proto] tag call failed', e); }
     });
     window.addEventListener('scan:ride-share', async (ev)=>{
       const k = ev?.detail?.rs; if(!k) return; try { const n = await setStatusForRideShare(k, 'called'); toast('Called ride-share '+k); } catch(e){ console.warn('[proto] ride-share call failed', e); }
