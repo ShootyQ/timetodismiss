@@ -16,7 +16,8 @@ let ACTIVE_SESSION_ID = null; // optional: set by caller UI; used for analytics 
 /* ------------------------------------------------------------------ */
 export async function init() {
   if (app) return;
-  const firebaseConfig = {
+  // Prod and Dev Firebase configs; default to Prod unless env indicates Dev
+  const PROD_CONFIG = {
     apiKey: "AIzaSyD3bCzCSGN2s-rBcevStOGfhTOKDSmmbCU",
     authDomain: "dismissalcaller.firebaseapp.com",
     projectId: "dismissalcaller",
@@ -25,6 +26,22 @@ export async function init() {
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-279958XEND"
   };
+  const DEV_CONFIG = {
+    apiKey: "AIzaSyBN9mpGoaKj7SCYYD_JKLK-6e7xyF-NIzg",
+    authDomain: "dismissalcallerdev.firebaseapp.com",
+    projectId: "dismissalcallerdev",
+    storageBucket: "dismissalcallerdev.firebasestorage.app",
+    messagingSenderId: "614044735831",
+    appId: "1:614044735831:web:83a7d7d24eadc922bac612",
+    measurementId: "G-L9GB6XJM88"
+  };
+  const url = new URL(location.href);
+  const envHint = (url.searchParams.get('env') || localStorage.getItem('TTD_ENV') || '').toLowerCase();
+  const host = location.hostname.toLowerCase();
+  const path = location.pathname.toLowerCase();
+  const pathHint = path.includes('/dev') || path.includes('-dev'); // e.g., /timetodismiss-dev/
+  const isDevEnv = envHint === 'dev' || host.includes('localhost') || host.startsWith('dev.') || host.includes('-dev') || host.includes('preview') || pathHint;
+  const firebaseConfig = isDevEnv ? DEV_CONFIG : PROD_CONFIG;
   // Make accessible for diagnostics (roles.html debug panel, etc.)
   try { if (!window.firebaseConfig) window.firebaseConfig = firebaseConfig; } catch {}
 

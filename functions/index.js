@@ -16,7 +16,8 @@ try { initializeApp(); } catch (_) {}
 const auth = getAuth();
 const db   = getFirestore();
 // Prefer runtime param (deployable via .env or CLI). Fallback to process.env for backward compatibility.
-const PARAM_ENABLE_BEFORE_SIGNIN = defineBoolean('ENABLE_BEFORE_SIGNIN', { default: true });
+// Safety-first: default disabled to prevent sign-in outages if indexes are missing or queries are slow.
+const PARAM_ENABLE_BEFORE_SIGNIN = defineBoolean('ENABLE_BEFORE_SIGNIN', { default: false });
 const ENABLE_BEFORE_SIGNIN =
   (typeof process !== 'undefined' && process.env && typeof process.env.ENABLE_BEFORE_SIGNIN === 'string')
     ? (String(process.env.ENABLE_BEFORE_SIGNIN).toLowerCase() === 'true')
@@ -181,11 +182,24 @@ async function computeClaims(uid, email) {
   // ───────────────── Auth Blocking (instant claims on first token) ─────────────────
   // Runs BEFORE a session starts; puts final roles/orgs/schools into the first ID token.
   if (ENABLE_BEFORE_SIGNIN) {
+    const withTimeout = (p, ms = 2000) => new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => { if (!settled) { settled = true; resolve(null); } }, Math.max(500, ms));
+      p.then((v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } })
+       .catch((_) => { if (!settled) { settled = true; clearTimeout(timer); resolve(null); } });
+    });
     exports.beforeSignIn = beforeUserSignedIn(async (event) => {
-      const { uid, email } = event.data || {};
-      if (!uid) return {};
-      const claims = await computeClaims(uid, email || '');
-      return { customClaims: claims };
+      try {
+        const { uid, email } = event.data || {};
+        if (!uid) return {};
+        const claims = await withTimeout(computeClaims(uid, email || ''), 2000);
+        if (claims && typeof claims === 'object') return { customClaims: claims };
+        // Degrade gracefully: allow sign-in with no custom claims; clients can call refreshMyClaims later
+        return {};
+      } catch (e) {
+        console.warn('[beforeSignIn] degraded due to error:', e?.message || e);
+        return {};
+      }
     });
   }
 

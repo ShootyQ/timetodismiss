@@ -7,8 +7,15 @@
 (function () {
   // Global build/version id for cache-busting across all pages
   const BUILD_ID = '2025-10-13-HDR6';
-  // Google Analytics 4 Measurement ID
-  const GA_MEASUREMENT_ID = 'G-2799S6XEND';
+  // Determine environment (dev/prod) for Firebase + Analytics selection
+  const _url = new URL(location.href);
+  const _envHint = (_url.searchParams.get('env') || localStorage.getItem('TTD_ENV') || '').toLowerCase();
+  const _host = location.hostname.toLowerCase();
+  const _path = location.pathname.toLowerCase();
+  const _pathHint = _path.includes('/dev') || _path.includes('-dev');
+  const IS_DEV_ENV = _envHint === 'dev' || _host.includes('localhost') || _host.startsWith('dev.') || _host.includes('-dev') || _host.includes('preview') || _pathHint;
+  // Google Analytics 4 Measurement ID (switches for dev)
+  const GA_MEASUREMENT_ID = IS_DEV_ENV ? 'G-L9GB6XJM88' : 'G-2799S6XEND';
   // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
   const HDR_SAFE = (() => {
     try {
@@ -61,7 +68,7 @@
     window.SD = window.SD || {}; window.SD.BUILD_ID = BUILD_ID;
   } catch {}
 
-      const firebaseConfig = {
+      const PROD_CONFIG = {
     apiKey: "AIzaSyD3bCzCSGN2s-rBcevStOGfhTOKDSmmbCU",
     authDomain: "dismissalcaller.firebaseapp.com",
     projectId: "dismissalcaller",
@@ -70,6 +77,17 @@
     appId: "1:942492177246:web:f4fb6ea6af42b9bde975cf",
     measurementId: "G-2799S6XEND"
   };
+      const DEV_CONFIG = {
+    apiKey: "AIzaSyBN9mpGoaKj7SCYYD_JKLK-6e7xyF-NIzg",
+    authDomain: "dismissalcallerdev.firebaseapp.com",
+    projectId: "dismissalcallerdev",
+    storageBucket: "dismissalcallerdev.firebasestorage.app",
+    messagingSenderId: "614044735831",
+    appId: "1:614044735831:web:83a7d7d24eadc922bac612",
+    measurementId: "G-L9GB6XJM88"
+  };
+      const firebaseConfig = IS_DEV_ENV ? DEV_CONFIG : PROD_CONFIG;
+      try { if (!window.firebaseConfig) window.firebaseConfig = firebaseConfig; } catch {}
 
   const TEMP_ADMIN_EMAILS = new Set([
   'carlsonandy85@gmail.com',

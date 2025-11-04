@@ -68,6 +68,11 @@
         if (!data.ok) throw new Error('Failed to claim');
         status.textContent = 'Linked!';
         done.style.display='';
+        // Nudge ID token to refresh claims quickly (best-effort; ignore errors)
+        try {
+          const refresh = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('refreshMyClaims') : null;
+          if (refresh) { refresh({}); }
+        } catch(_) {}
         // Optional: delay redirect
         setTimeout(()=>{ location.replace('/parents.html'); }, 1000);
       } catch (e) {
