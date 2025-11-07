@@ -779,7 +779,10 @@ async function computeClaims(uid, email) {
 
   // Admin/staff: create a guardian claim invite for a student
   // Input: { orgId, schoolId, studentId, email?, relationshipType? }
-  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  // NOTE: Added explicit cors:true to support preview channel hosting domains (e.g., dismissalcaller--dev-<id>.web.app)
+  // Without this, some preview subdomains were failing the automatic callable CORS preflight.
+  exports.createGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
+    console.log('[createGuardianInvite] invoked');
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId, studentId, email = null, relationshipType = 'primary', daysValid = 14 } = req.data || {};
@@ -817,7 +820,8 @@ async function computeClaims(uid, email) {
 
   // Admin/staff: list guardian invites for a school (recent first)
   // Input: { orgId, schoolId, status?: 'pending'|'consumed'|'revoked'|"all", limit?: number }
-  exports.listGuardianInvites = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.listGuardianInvites = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
+    console.log('[listGuardianInvites] invoked');
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId, status = 'all', limit = 50 } = req.data || {};
@@ -863,7 +867,8 @@ async function computeClaims(uid, email) {
 
   // Admin/staff: revoke a pending guardian invite
   // Input: { orgId, schoolId, inviteId }
-  exports.revokeGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.revokeGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
+    console.log('[revokeGuardianInvite] invoked');
     assertAuthed(req);
     const claims = req.auth.token || {};
     const { orgId, schoolId, inviteId } = req.data || {};
@@ -881,7 +886,8 @@ async function computeClaims(uid, email) {
 
   // Signed-in guardian: claim invite via inv+token OR code
   // Input: { inv, token } OR { code }
-  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
+    console.log('[claimGuardianInvite] invoked');
     assertAuthed(req);
     const uid = req.auth.uid;
     const { inv, token, code } = req.data || {};

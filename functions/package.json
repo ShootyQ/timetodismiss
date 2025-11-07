@@ -5,6 +5,6 @@
   "type": "commonjs",
   "dependencies": {
     "firebase-admin": "^12.5.0",
-    "firebase-functions": "^4.8.0"
+    "firebase-functions": "^5.1.0"
   }
 }

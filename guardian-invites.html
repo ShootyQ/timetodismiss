@@ -119,6 +119,50 @@
       const canAdmin = !!(roles && roles.admin);
       if (!canAdmin || !orgId || !schoolId){ setGuard(true); return; }
 
+      // ---- Guardian backend call helper with callable -> HTTP fallback ----
+      const CF_BASE = 'https://us-central1-dismissalcallerdev.cloudfunctions.net';
+      const HTTP_ENDPOINTS = {
+        createGuardianInvite: CF_BASE + '/guardianInviteCreateHttp',
+        listGuardianInvites: CF_BASE + '/guardianInviteListHttp',
+        revokeGuardianInvite: CF_BASE + '/guardianInviteRevokeHttp',
+      };
+
+      async function callGuardian(name, payload){
+        // Try callable first (fast path; handles auth automatically)
+        try {
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null;
+          if (call) {
+            return await call(payload || {});
+          }
+        } catch (e) {
+          try { console.warn('[guardian] callable failed, falling back to HTTP:', e?.message||e); } catch {}
+        }
+        // HTTP fallback with explicit CORS and bearer token
+        const token = await (window.firebase?.auth?.()?.currentUser?.getIdToken?.());
+        if (!token) throw new Error('Not authenticated');
+        const url = HTTP_ENDPOINTS[name];
+        if (!url) throw new Error('No HTTP endpoint for ' + name);
+        if (name === 'listGuardianInvites'){
+          const p = payload || {};
+          const u = new URL(url);
+            u.searchParams.set('orgId', p.orgId);
+            u.searchParams.set('schoolId', p.schoolId);
+            if (p.status) u.searchParams.set('status', p.status);
+            if (p.limit)  u.searchParams.set('limit',  String(p.limit));
+          const r = await fetch(u.toString(), { headers: { Authorization: 'Bearer ' + token } });
+          const j = await r.json();
+          return { data: j };
+        } else {
+          const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+            body: JSON.stringify(payload || {})
+          });
+          const j = await r.json();
+          return { data: j };
+        }
+      }
+
       async function resolveStudentId(orgId, schoolId, input){
         // Use compat Firestore already initialized by site-header.js to avoid version mismatch
         try{
@@ -185,9 +229,7 @@
             const id = btn.getAttribute('data-revoke');
             if (!confirm('Revoke this invite?')) return;
             try {
-              const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeGuardianInvite') : null;
-              if (!call) throw new Error('Backend unavailable');
-              const resp = await call({ orgId, schoolId, inviteId: id });
+              const resp = await callGuardian('revokeGuardianInvite', { orgId, schoolId, inviteId: id });
               if (!resp?.data?.ok) throw new Error('Failed to revoke');
               await loadInvites();
             } catch(e){ alert('Could not revoke: ' + (e.message||'error')); }
@@ -197,9 +239,7 @@
 
       async function loadInvites(){
         try {
-          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listGuardianInvites') : null;
-          if (!call) return;
-          const resp = await call({ orgId, schoolId, status: 'all', limit: 50 });
+          const resp = await callGuardian('listGuardianInvites', { orgId, schoolId, status: 'all', limit: 50 });
           const invites = resp?.data?.invites || [];
           document.getElementById('invitesCard').style.display='';
           renderInvites(invites);
@@ -221,9 +261,7 @@
           if (resolved?.error) { status.textContent=''; alert('Lookup failed. ' + (resolved.message || 'Try again.')); return; }
 
           status.textContent = 'Creating…';
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('createGuardianInvite') : null;
-          if (!call) throw new Error('Backend unavailable.');
-          const resp = await call({ orgId, schoolId, studentId: resolved.id, email: email||null, relationshipType, daysValid });
+          const resp = await callGuardian('createGuardianInvite', { orgId, schoolId, studentId: resolved.id, email: email||null, relationshipType, daysValid });
           const data = (resp && resp.data) || resp || {};
           if (!data.ok) throw new Error('Failed to create invite');
           const link = location.origin + (data.link || '/claim.html');
