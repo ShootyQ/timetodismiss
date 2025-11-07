@@ -618,7 +618,12 @@
           profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
           // Refresh discovery list if we toggled discoverable
           await loadDiscoverable();
-        } catch(e){ profStatus.textContent = 'Save failed'; setTimeout(()=>profStatus.textContent='', 2200); }
+        } catch(e){
+          console.warn('updateMyParentProfile failed', e);
+          const msg = (e && (e.message || e.code)) ? String(e.message || e.code) : 'Save failed';
+          profStatus.textContent = msg;
+          setTimeout(()=>profStatus.textContent='', 3200);
+        }
       }
       profSave?.addEventListener('click', saveProfile);
 
