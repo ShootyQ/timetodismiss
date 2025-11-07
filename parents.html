@@ -329,6 +329,24 @@
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
         const uid = claims.uid;
+        // Guardian callout: if signed-in but not guardian, prompt to claim
+        if (!claims.guardian) {
+          document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
+          // Inject lightweight claim prompt card if not present
+          let claimCard = document.getElementById('guardianClaimPrompt');
+          if (!claimCard){
+            claimCard = document.createElement('div');
+            claimCard.id = 'guardianClaimPrompt';
+            claimCard.className = 'card animatable';
+            claimCard.innerHTML = '<strong>No linked students yet</strong><p class="muted" style="margin:6px 0 10px;">Enter your invite code or open the invite link to link a student.</p><div><a class="btn" href="/claim.html">Go to claim page</a></div>';
+            out.parentElement?.insertBefore(claimCard, out.nextSibling);
+            try { claimCard.classList.add('is-visible'); } catch {}
+          }
+        } else {
+          // Remove claim prompt if guardian now
+          const existing = document.getElementById('guardianClaimPrompt');
+          if (existing) existing.remove();
+        }
         let linked = await loadLinkedStudents(uid);
         // Hydrate friendly names if they look like IDs and we have org/school
         try{
@@ -350,7 +368,6 @@
           }
         } catch{}
         if (!linked.length){
-          document.getElementById('passesSubtitle').textContent = 'No linked students yet. Once you claim an invite, your passes will appear here on pickup days.';
           renderPasses([]);
           return;
         }

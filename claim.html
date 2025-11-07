@@ -73,8 +73,12 @@
           const refresh = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('refreshMyClaims') : null;
           if (refresh) { refresh({}); }
         } catch(_) {}
-        // Optional: delay redirect
-        setTimeout(()=>{ location.replace('/parents.html'); }, 1000);
+        // Let site-header redirect logic handle guardian transition; fallback direct after short delay
+        setTimeout(()=>{
+          try {
+            if (!location.pathname.endsWith('/parents.html')) location.replace('/parents.html');
+          } catch {}
+        }, 1200);
       } catch (e) {
         console.error(e);
         status.textContent = '';
