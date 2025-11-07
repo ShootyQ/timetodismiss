@@ -54,6 +54,26 @@
   </main>
 
   <script>
+    // Helper: callable -> HTTP fallback for claim
+    const CF_BASE = 'https://us-central1-dismissalcallerdev.cloudfunctions.net';
+    async function callClaim(params){
+      // Try callable first
+      try {
+        const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('claimGuardianInvite') : null;
+        if (call) return await call(params || {});
+      } catch (e) { try { console.warn('[claim] callable failed, fallback to HTTP', e?.message||e); } catch {} }
+      // HTTP fallback
+      const token = await (window.firebase?.auth?.()?.currentUser?.getIdToken?.());
+      if (!token) throw new Error('Not signed in');
+      const r = await fetch(CF_BASE + '/guardianInviteClaimHttp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+        body: JSON.stringify(params || {})
+      });
+      const j = await r.json();
+      return { data: j };
+    }
+
     async function claimWith(params){
       const status = document.getElementById('status');
       const errCard= document.getElementById('errCard');
@@ -61,9 +81,7 @@
       const done   = document.getElementById('doneCard');
       status.textContent = 'Claiming…'; errCard.style.display='none'; done.style.display='none';
       try{
-        const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('claimGuardianInvite') : null;
-        if (!call) throw new Error('Backend unavailable.');
-        const resp = await call(params);
+        const resp = await callClaim(params);
         const data = (resp && resp.data) || resp || {};
         if (!data.ok) throw new Error('Failed to claim');
         status.textContent = 'Linked!';
