@@ -1224,3 +1224,182 @@ async function computeClaims(uid, email) {
     } catch {}
     return { ok: true, students: out };
   });
+
+  // ───────────────── Parent Profile & Connect ─────────────────
+
+  // Read the caller's parent profile from users/{uid}
+  exports.getMyParentProfile = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const userDoc = await db.doc(`users/${uid}`).get();
+    const d = userDoc.exists ? (userDoc.data() || {}) : {};
+    return {
+      ok: true,
+      uid,
+      displayName: (d.displayName && String(d.displayName)) || (req.auth.token.name || null) || null,
+      discoverable: !!d.discoverable,
+      emailLower: (d.emailLower && String(d.emailLower)) || (req.auth.token.email || null) || null,
+      guardian: !!d.guardian,
+    };
+  });
+
+  // Update the caller's parent profile (displayName, discoverable)
+  exports.updateMyParentProfile = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const { displayName = undefined, discoverable = undefined } = req.data || {};
+
+    const payload = { updatedAt: ts() };
+    if (displayName !== undefined) {
+      const name = String(displayName || '').trim();
+      if (name && (name.length < 2 || name.length > 60)) {
+        throw new HttpsError('invalid-argument', 'displayName must be 2–60 characters.');
+      }
+      payload.displayName = name || null;
+    }
+    if (discoverable !== undefined) {
+      payload.discoverable = !!discoverable;
+    }
+
+    const email = req.auth?.token?.email || '';
+    if (email) payload.emailLower = String(email).toLowerCase();
+
+    await db.doc(`users/${uid}`).set(payload, { merge: true });
+    return { ok: true };
+  });
+
+  // Helper: does this user participate in the school (admin/staff or guardian link)?
+  async function canSeeParentsForSchool(reqClaims, orgId, schoolId, uid) {
+    try {
+      if (await canManageSchool(reqClaims || {}, orgId, schoolId, uid)) return true;
+    } catch {}
+    try {
+      const rev = await db.collection(`users/${uid}/guardianLinks`)
+        .where('orgId', '==', String(orgId))
+        .where('schoolId', '==', String(schoolId))
+        .limit(1).get();
+      return !rev.empty;
+    } catch {}
+    return false;
+  }
+
+  // List discoverable parents for a school the caller belongs to
+  // Input: { orgId, schoolId, limit? }
+  exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const { orgId, schoolId, limit = 50 } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+
+    const ok = await canSeeParentsForSchool(req.auth.token || {}, orgId, schoolId, req.auth.uid);
+    if (!ok) throw new HttpsError('permission-denied', 'Not a member of this school.');
+
+    const q = await db.collectionGroup('guardianLinks')
+      .where('orgId', '==', String(orgId))
+      .where('schoolId', '==', String(schoolId))
+      .limit(Math.max(1, Math.min(100, Number(limit) || 50)))
+      .get();
+
+    const seen = new Set();
+    const results = [];
+    for (const doc of q.docs) {
+      try {
+        const parentUid = doc.ref.parent.parent.id;
+        if (!parentUid || seen.has(parentUid)) continue;
+        seen.add(parentUid);
+        if (parentUid === req.auth.uid) continue;
+        const uSnap = await db.doc(`users/${parentUid}`).get();
+        const uData = uSnap.exists ? (uSnap.data() || {}) : {};
+        if (uData.discoverable) {
+          results.push({ uid: parentUid, displayName: uData.displayName || null });
+        }
+        if (results.length >= limit) break;
+      } catch {}
+    }
+    return { ok: true, parents: results };
+  });
+
+  // Send a parent-to-parent connect request
+  // Input: { toUid, orgId, schoolId, note? }
+  exports.sendParentConnectRequest = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const fromUid = req.auth.uid;
+    const { toUid, orgId, schoolId, note = null } = req.data || {};
+    if (!toUid || !orgId || !schoolId) throw new HttpsError('invalid-argument', 'toUid, orgId, schoolId required.');
+    if (toUid === fromUid) throw new HttpsError('invalid-argument', 'Cannot connect to yourself.');
+
+    const callerOk = await canSeeParentsForSchool(req.auth.token || {}, orgId, schoolId, fromUid);
+    if (!callerOk) throw new HttpsError('permission-denied', 'Caller not in this school.');
+
+    const targetLinks = await db.collection(`users/${toUid}/guardianLinks`)
+      .where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(1).get();
+    if (targetLinks.empty) throw new HttpsError('failed-precondition', 'Target is not part of this school.');
+
+    const now = ts();
+    const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`);
+    const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(incomingRef);
+      const status = existing.exists ? (existing.get('status') || 'pending') : 'pending';
+      if (status === 'accepted') return; // already connected
+      const payload = { fromUid: fromUid, orgId, schoolId, note: note || null, status: 'pending', createdAt: existing.exists ? (existing.get('createdAt') || now) : now, updatedAt: now };
+      tx.set(incomingRef, payload, { merge: true });
+      tx.set(outgoingRef, { toUid, orgId, schoolId, note: note || null, status: 'pending', createdAt: now, updatedAt: now }, { merge: true });
+    });
+
+    return { ok: true };
+  });
+
+  // Respond to an incoming request: accept or decline
+  // Input: { fromUid, orgId, schoolId, action }
+  exports.respondParentConnectRequest = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const toUid = req.auth.uid;
+    const { fromUid, orgId, schoolId, action } = req.data || {};
+    if (!fromUid || !orgId || !schoolId || !action) throw new HttpsError('invalid-argument', 'fromUid, orgId, schoolId, action required.');
+    const act = String(action).toLowerCase();
+    if (!['accept','decline'].includes(act)) throw new HttpsError('invalid-argument', 'action must be accept or decline');
+
+    const now = ts();
+    const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`);
+    const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+
+    await db.runTransaction(async (tx) => {
+      const inc = await tx.get(incomingRef);
+      if (!inc.exists) throw new HttpsError('not-found', 'No incoming request.');
+      const cur = inc.data() || {};
+      if (cur.orgId !== orgId || cur.schoolId !== schoolId) throw new HttpsError('failed-precondition', 'Context mismatch.');
+      const newStatus = act === 'accept' ? 'accepted' : 'declined';
+      tx.set(incomingRef, { status: newStatus, respondedAt: now, updatedAt: now }, { merge: true });
+      tx.set(outgoingRef, { status: newStatus, respondedAt: now, updatedAt: now }, { merge: true });
+
+      if (newStatus === 'accepted') {
+        const aRef = db.doc(`users/${toUid}/parentConnections/${fromUid}`);
+        const bRef = db.doc(`users/${fromUid}/parentConnections/${toUid}`);
+        const conn = { orgId, schoolId, since: now };
+        tx.set(aRef, conn, { merge: true });
+        tx.set(bRef, conn, { merge: true });
+      }
+    });
+
+    return { ok: true };
+  });
+
+  // List my incoming/outgoing requests and current connections
+  exports.listMyParentConnections = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const [incoming, outgoing, links] = await Promise.all([
+      db.collection(`users/${uid}/parentConnectIncoming`).orderBy('updatedAt','desc').limit(50).get(),
+      db.collection(`users/${uid}/parentConnectOutgoing`).orderBy('updatedAt','desc').limit(50).get(),
+      db.collection(`users/${uid}/parentConnections`).limit(200).get(),
+    ]);
+
+    const mapDoc = (d) => ({ id: d.id, ...(d.data() || {}) });
+    return {
+      ok: true,
+      incoming: incoming.docs.map(mapDoc),
+      outgoing: outgoing.docs.map(mapDoc),
+      connections: links.docs.map(mapDoc),
+    };
+  });

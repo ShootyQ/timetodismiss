@@ -126,6 +126,63 @@
       </div>
     </section>
 
+    <!-- PROFILE & CONNECT -->
+    <section id="connect" class="section" aria-labelledby="connect-h">
+      <div class="ux-wrap">
+        <h2 id="connect-h" class="animatable">Parent profile & connect</h2>
+        <div class="cards cols-3" style="margin-top:12px;">
+          <!-- Profile card -->
+          <div class="card animatable" id="profileCard">
+            <h3 style="margin:0 0 8px;">Your profile</h3>
+            <p class="muted" style="margin:0 0 10px;">Set the name other parents see and whether you’re discoverable at your school.</p>
+            <div class="grid" style="grid-template-columns: 1fr;">
+              <label>Display name
+                <input id="profName" placeholder="e.g., Alex Johnson" />
+              </label>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input id="profDisc" type="checkbox" />
+                <span>Let other parents find me</span>
+              </label>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
+              <button id="profSave" class="btn" type="button">Save</button>
+              <span id="profStatus" class="muted"></span>
+            </div>
+          </div>
+
+          <!-- Discover card -->
+          <div class="card animatable" id="discoverCard">
+            <h3 style="margin:0 0 8px;">Find parents</h3>
+            <p class="muted" style="margin:0 0 10px;">Browse parents connected to your school and send a connect request.</p>
+            <div id="discoverList" class="list" style="max-height:280px; overflow:auto;"></div>
+            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet.</div>
+          </div>
+
+          <!-- Requests card -->
+          <div class="card animatable" id="requestsCard">
+            <h3 style="margin:0 0 8px;">Requests & connections</h3>
+            <div class="grid" style="grid-template-columns: 1fr; gap:10px;">
+              <div>
+                <div class="muted" style="margin-bottom:6px;">Incoming</div>
+                <div id="reqIncoming" class="list"></div>
+                <div id="reqIncomingEmpty" class="muted" style="display:none;">No incoming requests.</div>
+              </div>
+              <div>
+                <div class="muted" style="margin-bottom:6px;">Outgoing</div>
+                <div id="reqOutgoing" class="list"></div>
+                <div id="reqOutgoingEmpty" class="muted" style="display:none;">No outgoing requests.</div>
+              </div>
+              <div>
+                <div class="muted" style="margin-bottom:6px;">Connections</div>
+                <div id="connList" class="list"></div>
+                <div id="connEmpty" class="muted" style="display:none;">No connections yet.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- CTA BAND -->
     <section class="section" aria-label="Need help?">
       <div class="ux-wrap">
@@ -462,6 +519,130 @@
       }); } catch{} };
       // Load grants after claims
       document.addEventListener('sd:claims-ready', () => { loadGrants(); });
+
+      // ───────── Profile & Connect wiring ─────────
+      const profName = document.getElementById('profName');
+      const profDisc = document.getElementById('profDisc');
+      const profSave = document.getElementById('profSave');
+      const profStatus = document.getElementById('profStatus');
+      const discoverList = document.getElementById('discoverList');
+      const discoverEmpty = document.getElementById('discoverEmpty');
+      const reqIncoming = document.getElementById('reqIncoming');
+      const reqOutgoing = document.getElementById('reqOutgoing');
+      const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
+      const reqOutgoingEmpty = document.getElementById('reqOutgoingEmpty');
+      const connList = document.getElementById('connList');
+      const connEmpty = document.getElementById('connEmpty');
+
+      function callable(name){ return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
+
+      async function loadProfile(){
+        try {
+          const call = callable('getMyParentProfile'); if (!call) return;
+          const resp = await call({}); const d = (resp?.data)||{};
+          if (d?.ok){
+            if (profName) profName.value = d.displayName || '';
+            if (profDisc) profDisc.checked = !!d.discoverable;
+          }
+        } catch(e){ console.warn('loadProfile failed', e); }
+      }
+      async function saveProfile(){
+        try {
+          const call = callable('updateMyParentProfile'); if (!call) return;
+          profStatus.textContent = 'Saving…';
+          await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
+          profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
+          // Refresh discovery list if we toggled discoverable
+          await loadDiscoverable();
+        } catch(e){ profStatus.textContent = 'Save failed'; setTimeout(()=>profStatus.textContent='', 2200); }
+      }
+      profSave?.addEventListener('click', saveProfile);
+
+      function renderDiscoverable(list){
+        discoverList.innerHTML = '';
+        if (!Array.isArray(list) || list.length === 0){ discoverList.style.display='none'; discoverEmpty.style.display=''; return; }
+        discoverEmpty.style.display='none'; discoverList.style.display='grid';
+        list.forEach(p => {
+          const row = document.createElement('div'); row.className='row';
+          row.innerHTML = `
+            <div><div class="who">${(p.displayName||'Parent')}</div><div class="meta">${p.uid}</div></div>
+            <div style="display:flex; gap:8px;"><button class="btn" type="button" data-uid="${p.uid}">Connect</button></div>
+          `;
+          discoverList.appendChild(row);
+        });
+        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+          const toUid = e.currentTarget.getAttribute('data-uid');
+          try {
+            const call = callable('sendParentConnectRequest'); if (!call) return alert('Backend unavailable');
+            const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+            if (!orgId || !schoolId) return alert('Select a school first');
+            await call({ toUid, orgId, schoolId });
+            e.currentTarget.textContent = 'Requested'; e.currentTarget.disabled = true;
+            await loadConnections();
+          } catch (err) { alert('Could not send request'); }
+        }));
+      }
+
+      async function loadDiscoverable(){
+        try {
+          const call = callable('listDiscoverableParents'); if (!call) return;
+          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+          if (!orgId || !schoolId) return;
+          const resp = await call({ orgId, schoolId, limit: 50 });
+          const list = (resp?.data?.parents)||[];
+          renderDiscoverable(list);
+        } catch(e){ console.warn('loadDiscoverable failed', e); }
+      }
+
+      function renderReqRow(where, who, metaHtml, actionsHtml){
+        const row = document.createElement('div'); row.className='row';
+        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml||''}</div></div><div style="display:flex; gap:8px;">${actionsHtml||''}</div>`;
+        where.appendChild(row);
+        return row;
+      }
+      async function loadConnections(){
+        try {
+          const call = callable('listMyParentConnections'); if (!call) return;
+          const resp = await call({}); const d = (resp?.data)||{};
+          // Incoming
+          reqIncoming.innerHTML = '';
+          const inc = Array.isArray(d.incoming) ? d.incoming : [];
+          if (!inc.length){ reqIncoming.style.display='none'; reqIncomingEmpty.style.display=''; }
+          else {
+            reqIncoming.style.display='grid'; reqIncomingEmpty.style.display='none';
+            inc.forEach(item => {
+              const row = renderReqRow(reqIncoming, item.fromUid, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
+              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+                const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
+                try {
+                  const call = callable('respondParentConnectRequest'); if (!call) return;
+                  await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
+                  await loadConnections();
+                } catch {}
+              }));
+            });
+          }
+          // Outgoing
+          reqOutgoing.innerHTML = '';
+          const out = Array.isArray(d.outgoing) ? d.outgoing : [];
+          if (!out.length){ reqOutgoing.style.display='none'; reqOutgoingEmpty.style.display=''; }
+          else {
+            reqOutgoing.style.display='grid'; reqOutgoingEmpty.style.display='none';
+            out.forEach(item => { renderReqRow(reqOutgoing, item.toUid, `${item.status||'pending'}`); });
+          }
+          // Connections
+          connList.innerHTML = '';
+          const cons = Array.isArray(d.connections) ? d.connections : [];
+          if (!cons.length){ connList.style.display='none'; connEmpty.style.display=''; }
+          else {
+            connList.style.display='grid'; connEmpty.style.display='none';
+            cons.forEach(c => { renderReqRow(connList, c.id || c.uid || 'Parent', `${c.orgId||''} · ${c.schoolId||''}`); });
+          }
+        } catch(e){ console.warn('loadConnections failed', e); }
+      }
+
+      // Refresh profile/discovery/requests after claims ready
+      document.addEventListener('sd:claims-ready', () => { loadProfile(); loadDiscoverable(); loadConnections(); });
     });
   </script>
 </body>
