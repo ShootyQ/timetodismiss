@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pickup Permissions — Time To Dismiss</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <script src="/site-header.js?v=2025-10-13-HDR6" defer></script>
+  <style>
+    :root{ --ux-max: 980px; --ux-border:#e5e7eb; --ux-shadow:0 8px 24px rgba(15,23,42,.08); }
+    .wrap{ max-width: var(--ux-max); margin:0 auto; padding: 18px; }
+    .section{ padding: 28px 0; }
+    .card{ background:#fff; border:1px solid var(--ux-border); border-radius:14px; padding:16px; box-shadow:var(--ux-shadow); }
+    .muted{ color:#64748b; }
+    .grid{ display:grid; gap:12px; }
+    .row{ display:grid; gap:10px; grid-template-columns: 1fr 1fr; }
+    label{ font-weight:700; }
+    input, select{ width:100%; border:1px solid var(--ux-border); border-radius:10px; padding:.6rem .7rem; }
+    .list{ display:grid; gap:12px; }
+    .item{ display:flex; align-items:center; justify-content:space-between; gap:10px; border:1px solid var(--ux-border); border-radius:12px; padding:12px; }
+    .badge{ display:inline-block; font-weight:800; font-size:.72rem; padding:4px 8px; border-radius:999px; border:1px solid #e2e8f0; color:#0f172a; background:#f8fafc; }
+  </style>
+</head>
+<body class="sd-body">
+  <main class="wrap">
+    <header style="margin:8px 0 16px;">
+      <h1 style="margin:0 0 4px;">Pickup permissions</h1>
+      <p class="muted" id="intro">Grant permanent or today-only pickup access for trusted adults.</p>
+    </header>
+
+    <section class="section">
+      <div class="card">
+        <h3 style="margin:0 0 8px;">Add a trusted adult</h3>
+        <div class="grid">
+          <div class="row">
+            <label>Adult email
+              <input id="email" type="email" placeholder="adult@example.com" />
+            </label>
+            <label>Display name (optional)
+              <input id="name" placeholder="e.g., Pat Taylor" />
+            </label>
+          </div>
+          <div class="row">
+            <label>Applies to students
+              <select id="students" multiple size="4"></select>
+            </label>
+            <div>
+              <label>Permission window
+                <select id="window" >
+                  <option value="always" selected>Permanent</option>
+                  <option value="today">Today only</option>
+                </select>
+              </label>
+              <p class="muted" style="margin:6px 0 0;">More options (specific dates/times) coming soon.</p>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <button id="addBtn" class="btn" type="button">Add</button>
+            <span id="status" class="muted"></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h3 style="margin:0 0 8px;">Your pickup permissions</h3>
+      <div id="empty" class="card" style="display:none;">
+        <strong>No permissions yet</strong>
+        <p class="muted" style="margin:6px 0 0;">Add a trusted adult above. You can revoke any time.</p>
+      </div>
+      <div id="list" class="list"></div>
+    </section>
+  </main>
+
+  <script>
+    async function loadLinkedStudents(){
+      try {
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyLinkedStudents') : null;
+        if (!call) return [];
+        const resp = await call({});
+        const arr = (resp?.data?.students)||[];
+        return arr.map(s => ({ id: s.studentId, name: s.name || s.studentId, orgId: s.orgId, schoolId: s.schoolId }));
+      } catch(e){ console.warn('loadLinkedStudents failed', e); return []; }
+    }
+    async function loadGrants(){
+      const list = document.getElementById('list');
+      const empty = document.getElementById('empty');
+      list.innerHTML = '';
+      try{
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyGrantedAccess') : null;
+        if (!call) return;
+        const resp = await call({});
+        const grants = (resp?.data?.grants)||[];
+        if (!grants.length){ empty.style.display=''; return; }
+        empty.style.display='none';
+        grants.forEach(g => {
+          const row = document.createElement('div'); row.className='item';
+          row.innerHTML = `<div><div style="font-weight:800;">${g.name || g.email}</div><div class='muted'>${g.students} · <span class='badge'>${g.window}</span></div></div><div><button class='btn' data-path='${g.path}'>Revoke</button></div>`;
+          list.appendChild(row);
+        });
+        list.querySelectorAll('button[data-path]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+          const path = e.currentTarget.getAttribute('data-path');
+          if (!confirm('Revoke this access grant?')) return;
+          try { const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeAccessGrant') : null; if (!call) return; const r = await call({ path }); if (r?.data?.ok) loadGrants(); } catch {}
+        }));
+      } catch(e){ console.warn('loadGrants failed', e); }
+    }
+    async function addGrant(){
+      const email = document.getElementById('email').value.trim();
+      const name  = document.getElementById('name').value.trim();
+      const windowType = document.getElementById('window').value;
+      const select = document.getElementById('students');
+      const status = document.getElementById('status');
+      const selected = Array.from(select.selectedOptions).map(o => o.value);
+      if (!email) return alert('Enter an email');
+      if (!selected.length) return alert('Choose at least one student');
+      try{
+        status.textContent='Adding…';
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
+        if (!call) throw new Error('Backend unavailable');
+        const resp = await call({ orgId, schoolId, studentIds: selected, granteeEmail: email, granteeName: name, windowType });
+        if (!resp?.data?.ok) throw new Error('Failed');
+        status.textContent='Added'; setTimeout(()=>status.textContent='', 1200);
+        document.getElementById('email').value=''; document.getElementById('name').value='';
+        await loadGrants();
+      } catch(e){ status.textContent = 'Error: ' + (e.message||''); setTimeout(()=>status.textContent='', 3200); }
+    }
+
+    document.addEventListener('sd:claims-ready', async ()=>{
+      // Populate students
+      const sel = document.getElementById('students');
+      sel.innerHTML = '';
+      (await loadLinkedStudents()).forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
+      await loadGrants();
+    });
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('addBtn').addEventListener('click', addGrant);
+    });
+  </script>
+</body>
+</html>

@@ -75,11 +75,11 @@
     <div class="hero-bg"></div>
     <div class="hero-inner animatable">
       <span class="eyebrow">Parent Portal</span>
-      <h1>Your passes and pickup permissions</h1>
-      <p class="lead">View today's boarding passes and manage who can pick up your student. QR codes rotate for security and scan fast at dismissal.</p>
+      <h1 id="greeting">Your passes and pickup permissions</h1>
+      <p class="lead" id="summary">View today's boarding passes and manage who can pick up your student. QR codes rotate for security and scan fast at dismissal.</p>
       <div class="cta">
         <a class="btn primary" href="#today">See today's passes</a>
-        <a class="btn ghost" href="#permissions">Manage permissions</a>
+        <a class="btn ghost" href="/permissions.html">Manage permissions</a>
       </div>
     </div>
   </header>
@@ -154,6 +154,17 @@
           <div class="card animatable" id="discoverCard">
             <h3 style="margin:0 0 8px;">Find parents</h3>
             <p class="muted" style="margin:0 0 10px;">Browse parents connected to your school and send a connect request.</p>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+              <label style="display:flex; align-items:center; gap:8px;">
+                <span class="muted">School</span>
+                <select id="discSchool" style="min-width:220px;"></select>
+              </label>
+              <div style="flex:1"></div>
+              <label style="display:flex; align-items:center; gap:8px;">
+                <input id="discEmail" placeholder="Add by email" style="min-width:220px;" />
+                <button id="discEmailBtn" class="btn" type="button">Add</button>
+              </label>
+            </div>
             <div id="discoverList" class="list" style="max-height:280px; overflow:auto;"></div>
             <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet.</div>
           </div>
@@ -322,7 +333,7 @@
         }
       }
 
-      function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
+  function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
       function setSignedIn(){ out.style.display = 'none'; }
 
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
@@ -386,6 +397,22 @@
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
         const uid = claims.uid;
+        // Personalize greeting
+        try {
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('getMyParentProfile') : null;
+          const greetEl = document.getElementById('greeting');
+          const sumEl = document.getElementById('summary');
+          let name = '';
+          if (call) {
+            const resp = await call({});
+            if (resp?.data?.ok) name = resp.data.displayName || '';
+          }
+          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch {} }
+          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch {} }
+          if (name && greetEl) greetEl.textContent = 'Hi, ' + name;
+          // We’ll enrich summary when we know linked students and school names
+          if (sumEl) sumEl.dataset.base = sumEl.textContent;
+        } catch {}
         // Guardian callout: if signed-in but not guardian, prompt to claim
         if (!claims.guardian) {
           document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
@@ -405,6 +432,40 @@
           if (existing) existing.remove();
         }
         let linked = await loadLinkedStudents(uid);
+        // Compute school list for discovery selector
+        const schoolList = [];
+        const seenSchool = new Set();
+        for (const s of linked){ if (s.orgId && s.schoolId){ const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)){ seenSchool.add(key); schoolList.push({ orgId:s.orgId, schoolId:s.schoolId }); } } }
+        const discSelect = document.getElementById('discSchool');
+        if (discSelect){
+          discSelect.innerHTML = '';
+          for (const sc of schoolList){ const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
+        }
+        // Best-effort: resolve school names for nicer summary and dropdown labels
+        try{
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (db){
+            const nameByKey = new Map();
+            for (const sc of schoolList){
+              try {
+                const ref = db.doc(`orgs/${sc.orgId}/schools/${sc.schoolId}`);
+                const snap = await ref.get();
+                const data = snap.exists ? (snap.data()||{}) : {};
+                const nm = data.name || sc.schoolId;
+                const key = sc.orgId + '|' + sc.schoolId; nameByKey.set(key, nm);
+              } catch {}
+            }
+            if (discSelect){ Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
+            const sumEl = document.getElementById('summary');
+            if (sumEl && linked.length){
+              const bySchool = new Map();
+              linked.forEach(s => { const k = s.orgId+'|'+s.schoolId; const arr = bySchool.get(k)||[]; arr.push(s.name||s.id); bySchool.set(k, arr); });
+              const parts = [];
+              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length>1?'s':''} at ${sn}`); });
+              sumEl.textContent = parts.join(' · ');
+            }
+          }
+        } catch{}
         // Hydrate friendly names if they look like IDs and we have org/school
         try{
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
@@ -521,12 +582,15 @@
       document.addEventListener('sd:claims-ready', () => { loadGrants(); });
 
       // ───────── Profile & Connect wiring ─────────
-      const profName = document.getElementById('profName');
+  const profName = document.getElementById('profName');
       const profDisc = document.getElementById('profDisc');
       const profSave = document.getElementById('profSave');
       const profStatus = document.getElementById('profStatus');
       const discoverList = document.getElementById('discoverList');
       const discoverEmpty = document.getElementById('discoverEmpty');
+  const discSchool = document.getElementById('discSchool');
+  const discEmail = document.getElementById('discEmail');
+  const discEmailBtn = document.getElementById('discEmailBtn');
       const reqIncoming = document.getElementById('reqIncoming');
       const reqOutgoing = document.getElementById('reqOutgoing');
       const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
@@ -586,13 +650,30 @@
       async function loadDiscoverable(){
         try {
           const call = callable('listDiscoverableParents'); if (!call) return;
-          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return;
           const resp = await call({ orgId, schoolId, limit: 50 });
           const list = (resp?.data?.parents)||[];
           renderDiscoverable(list);
         } catch(e){ console.warn('loadDiscoverable failed', e); }
       }
+      discSchool?.addEventListener('change', loadDiscoverable);
+
+      async function addByEmail(){
+        const email = (discEmail?.value||'').trim(); if (!email) return;
+        try{
+          const call = callable('sendParentConnectRequestByEmail'); if (!call) return alert('Backend unavailable');
+          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+          if (!orgId || !schoolId) return alert('Select a school first');
+          await call({ email, orgId, schoolId });
+          discEmail.value='';
+          await loadConnections();
+          alert('Request sent');
+        } catch (e){ alert((e?.message)||'Could not send request'); }
+      }
+      discEmailBtn?.addEventListener('click', addByEmail);
 
       function renderReqRow(where, who, metaHtml, actionsHtml){
         const row = document.createElement('div'); row.className='row';

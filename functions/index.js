@@ -1350,6 +1350,42 @@ async function computeClaims(uid, email) {
     return { ok: true };
   });
 
+  // Send a parent-to-parent connect request by email (if user exists)
+  // Input: { email, orgId, schoolId, note? }
+  exports.sendParentConnectRequestByEmail = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const fromUid = req.auth.uid;
+    const { email, orgId, schoolId, note = null } = req.data || {};
+    const emailLower = norm(email || '');
+    if (!emailLower || !orgId || !schoolId) throw new HttpsError('invalid-argument', 'email, orgId, schoolId required.');
+
+    const callerOk = await canSeeParentsForSchool(req.auth.token || {}, orgId, schoolId, fromUid);
+    if (!callerOk) throw new HttpsError('permission-denied', 'Caller not in this school.');
+
+    let toUid = null;
+    try { const u = await auth.getUserByEmail(emailLower); toUid = u?.uid || null; } catch {}
+    if (!toUid) throw new HttpsError('not-found', 'No account found for that email.');
+    if (toUid === fromUid) throw new HttpsError('invalid-argument', 'Cannot connect to yourself.');
+
+    // Ensure target is part of this school
+    const targetLinks = await db.collection(`users/${toUid}/guardianLinks`)
+      .where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(1).get();
+    if (targetLinks.empty) throw new HttpsError('failed-precondition', 'Target is not part of this school.');
+
+    const now = ts();
+    const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`);
+    const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+    await db.runTransaction(async (tx) => {
+      const existing = await tx.get(incomingRef);
+      const status = existing.exists ? (existing.get('status') || 'pending') : 'pending';
+      if (status === 'accepted') return;
+      const payload = { fromUid: fromUid, orgId, schoolId, note: note || null, status: 'pending', createdAt: existing.exists ? (existing.get('createdAt') || now) : now, updatedAt: now };
+      tx.set(incomingRef, payload, { merge: true });
+      tx.set(outgoingRef, { toUid, orgId, schoolId, note: note || null, status: 'pending', createdAt: now, updatedAt: now }, { merge: true });
+    });
+    return { ok: true };
+  });
+
   // Respond to an incoming request: accept or decline
   // Input: { fromUid, orgId, schoolId, action }
   exports.respondParentConnectRequest = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
