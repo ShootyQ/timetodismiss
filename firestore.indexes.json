@@ -9,6 +9,30 @@
       ]
     },
     {
+      "collectionGroup": "accessGrants",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "granteeUid",  "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accessGrants",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status",           "order": "ASCENDING" },
+        { "fieldPath": "granteeEmailLower", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "accessGrants",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status",      "order": "ASCENDING" },
+        { "fieldPath": "grantorUid",  "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "invites",
       "queryScope": "COLLECTION_GROUP",
       "fields": [

@@ -259,7 +259,7 @@ async function computeClaims(uid, email) {
     if (canManageOrg(claims, orgId)) return true;
     const ref = db.doc(`orgs/${orgId}/schools/${schoolId}/members/${uid}`);
     const snap = await ref.get();
-    const d = snap.data() || {};
+    const d = snap.data() || {}; 
     const f = flagsFrom(d);
     return (d.status || 'active') === 'active' && f.admin;
   };
@@ -274,7 +274,6 @@ async function computeClaims(uid, email) {
     }
     await auth.setCustomUserClaims(req.auth.uid, {
       role: 'owner',
-      owner: true,
       orgIds: ['*'],
       schoolIds: ['*'],
       roles: ['owner']
@@ -287,7 +286,6 @@ async function computeClaims(uid, email) {
     } catch (e) {
       console.warn('Failed to persist owner flag', e);
     }
-    // Do NOT revoke refresh tokens here; it forces an immediate re-login and causes a
     // "takes two times to login" experience. Instead, bump claimsVersion so clients
     // refresh their ID token on the next tick via the header listener.
     await bumpClaimsVersion(req.auth.uid, { reason: 'owner-grant' });
@@ -339,6 +337,108 @@ async function computeClaims(uid, email) {
     return { ok: true, orgId: orgRef.id, uid: user.uid };
   });
 
+
+    // Create an access grant (guardian -> trusted adult) for selected students
+    // Input: { orgId, schoolId, studentIds: string[], granteeEmail: string, granteeName?: string, windowType?: 'always'|'today' }
+    exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+      assertAuthed(req);
+      const grantorUid = req.auth.uid;
+      const grantorEmailLower = norm(req.auth.token?.email || '');
+      const { orgId, schoolId, studentIds, granteeEmail, granteeName = '', windowType = 'always' } = req.data || {};
+      if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+      const list = Array.isArray(studentIds) ? studentIds.map(s=>String(s||'').trim()).filter(Boolean) : [];
+      if (!list.length) throw new HttpsError('invalid-argument', 'At least one student required.');
+      const grEmail = String(granteeEmail || '').trim();
+      if (!grEmail) throw new HttpsError('invalid-argument', 'granteeEmail required.');
+      const grLower = norm(grEmail);
+      if (grLower === grantorEmailLower) throw new HttpsError('failed-precondition', 'Cannot grant to your own email.');
+
+      // Verify grantor is guardian for each student
+      for (const sid of list){
+        const ok = await isGuardianForStudent(grantorUid, orgId, schoolId, sid);
+        if (!ok) throw new HttpsError('permission-denied', `Not a guardian for student ${sid}.`);
+      }
+
+      // Attempt to resolve grantee uid
+      let granteeUid = null;
+      try { const u = await auth.getUserByEmail(grEmail); granteeUid = u?.uid || null; } catch {}
+
+      const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('accessGrants').doc();
+      const payload = {
+        grantorUid,
+        grantorEmailLower,
+        granteeEmailLower: grLower,
+        granteeName: String(granteeName || ''),
+        granteeUid: granteeUid || null,
+        studentIds: Array.from(new Set(list)).slice(0, 20),
+        window: { type: (windowType === 'today' ? 'today' : 'always') },
+        status: 'active',
+        createdAt: ts(),
+        updatedAt: ts(),
+      };
+      await ref.set(payload, { merge: true });
+      return { ok: true, id: ref.id, path: ref.path };
+    });
+
+    // List my granted access (as grantor)
+    exports.listMyGrantedAccess = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+      assertAuthed(req);
+      const uid = req.auth.uid;
+      const rows = [];
+      try {
+        const snap = await db.collectionGroup('accessGrants')
+          .where('status','==','active')
+          .where('grantorUid','==', uid)
+          .limit(50).get();
+        for (const d of snap.docs){
+          const g = d.data() || {};
+          const seg = d.ref.path.split('/');
+          if (seg.length < 6) continue;
+          const orgId = seg[1]; const schoolId = seg[3];
+          const students = Array.isArray(g.studentIds) ? g.studentIds.slice(0, 20) : [];
+          // Resolve names (best-effort)
+          let names = [];
+          for (const sid of students){
+            try {
+              const sSnap = await db.doc(`orgs/${orgId}/schools/${schoolId}/students/${sid}`).get();
+              const s = sSnap.exists ? (sSnap.data() || {}) : {};
+              const nm = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || sid;
+              names.push(nm);
+            } catch { names.push(sid); }
+          }
+          rows.push({
+            id: d.id,
+            path: d.ref.path,
+            orgId, schoolId,
+            name: g.granteeName || g.granteeEmailLower,
+            email: g.granteeEmailLower || '',
+            students: names.join(', '),
+            window: (g.window && g.window.type === 'today') ? 'Today only' : 'Always',
+          });
+        }
+      } catch (e){ console.warn('[listMyGrantedAccess] failed', e); }
+      return { ok: true, grants: rows };
+    });
+
+    // Revoke an access grant (grantor only)
+    // Input: { path } where path is orgs/{orgId}/schools/{schoolId}/accessGrants/{id}
+    exports.revokeAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+      assertAuthed(req);
+      const uid = req.auth.uid;
+      const { path } = req.data || {};
+      if (!path || typeof path !== 'string') throw new HttpsError('invalid-argument', 'path required.');
+      const seg = path.split('/');
+      if (seg.length < 6 || seg[0] !== 'orgs' || seg[2] !== 'schools' || seg[4] !== 'accessGrants') {
+        throw new HttpsError('invalid-argument', 'Invalid grant path.');
+      }
+      const ref = db.doc(path);
+      const snap = await ref.get();
+      if (!snap.exists) throw new HttpsError('not-found', 'Grant not found.');
+      const g = snap.data() || {};
+      if (g.grantorUid !== uid) throw new HttpsError('permission-denied', 'Only the grantor can revoke this grant.');
+      await ref.set({ status: 'revoked', revokedAt: ts(), updatedAt: ts() }, { merge: true });
+      return { ok: true };
+    });
   // Owner: add/remove superintendent
   exports.ownerAddSuperintendent = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
     assertAuthed(req);
@@ -983,5 +1083,174 @@ async function computeClaims(uid, email) {
       // Don't surface 500s to the client; return empty list so UI can degrade gracefully
       return { ok: true, students: out };
     }
+    return { ok: true, students: out };
+  });
+
+  // ───────────────── Parent-to-parent Access Grants ─────────────────
+  // Helper: check guardian link for a student
+  async function isGuardianForStudent(uid, orgId, schoolId, studentId){
+    try {
+      const ref = db.doc(`orgs/${orgId}/schools/${schoolId}/students/${studentId}/guardians/${uid}`);
+      const snap = await ref.get();
+      return snap.exists;
+    } catch { return false; }
+  }
+
+  // Create an access grant (guardian -> trusted adult) for selected students
+  // Input: { orgId, schoolId, studentIds: string[], granteeEmail: string, granteeName?: string, windowType?: 'always'|'today' }
+  exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const grantorUid = req.auth.uid;
+    const grantorEmailLower = norm(req.auth.token?.email || '');
+    const { orgId, schoolId, studentIds, granteeEmail, granteeName = '', windowType = 'always' } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+    const list = Array.isArray(studentIds) ? studentIds.map(s=>String(s||'').trim()).filter(Boolean) : [];
+    if (!list.length) throw new HttpsError('invalid-argument', 'At least one student required.');
+    const grEmail = String(granteeEmail || '').trim();
+    if (!grEmail) throw new HttpsError('invalid-argument', 'granteeEmail required.');
+    const grLower = norm(grEmail);
+    if (grLower === grantorEmailLower) throw new HttpsError('failed-precondition', 'Cannot grant to your own email.');
+
+    // Verify grantor is guardian for each student
+    for (const sid of list){
+      const ok = await isGuardianForStudent(grantorUid, orgId, schoolId, sid);
+      if (!ok) throw new HttpsError('permission-denied', `Not a guardian for student ${sid}.`);
+    }
+
+    // Attempt to resolve grantee uid
+    let granteeUid = null;
+    try { const u = await auth.getUserByEmail(grEmail); granteeUid = u?.uid || null; } catch {}
+
+    const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('accessGrants').doc();
+    const payload = {
+      grantorUid,
+      grantorEmailLower,
+      granteeEmailLower: grLower,
+      granteeName: String(granteeName || ''),
+      granteeUid: granteeUid || null,
+      studentIds: Array.from(new Set(list)).slice(0, 20),
+      window: { type: (windowType === 'today' ? 'today' : 'always') },
+      status: 'active',
+      createdAt: ts(),
+      updatedAt: ts(),
+    };
+    await ref.set(payload, { merge: true });
+    return { ok: true, id: ref.id, path: ref.path };
+  });
+
+  // List my granted access (as grantor)
+  exports.listMyGrantedAccess = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const rows = [];
+    try {
+      const snap = await db.collectionGroup('accessGrants')
+        .where('status','==','active')
+        .where('grantorUid','==', uid)
+        .limit(50).get();
+      for (const d of snap.docs){
+        const g = d.data() || {};
+        const seg = d.ref.path.split('/');
+        if (seg.length < 6) continue;
+        const orgId = seg[1]; const schoolId = seg[3];
+        const students = Array.isArray(g.studentIds) ? g.studentIds.slice(0, 20) : [];
+        // Resolve names (best-effort)
+        let names = [];
+        for (const sid of students){
+          try {
+            const sSnap = await db.doc(`orgs/${orgId}/schools/${schoolId}/students/${sid}`).get();
+            const s = sSnap.exists ? (sSnap.data() || {}) : {};
+            const nm = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || sid;
+            names.push(nm);
+          } catch { names.push(sid); }
+        }
+        rows.push({
+          id: d.id,
+          path: d.ref.path,
+          orgId, schoolId,
+          name: g.granteeName || g.granteeEmailLower,
+          email: g.granteeEmailLower || '',
+          students: names.join(', '),
+          window: (g.window && g.window.type === 'today') ? 'Today only' : 'Always',
+        });
+      }
+    } catch (e){ console.warn('[listMyGrantedAccess] failed', e); }
+    return { ok: true, grants: rows };
+  });
+
+  // Revoke an access grant (grantor only)
+  // Input: { path } where path is orgs/{orgId}/schools/{schoolId}/accessGrants/{id}
+  exports.revokeAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const { path } = req.data || {};
+    if (!path || typeof path !== 'string') throw new HttpsError('invalid-argument', 'path required.');
+    const seg = path.split('/');
+    if (seg.length < 6 || seg[0] !== 'orgs' || seg[2] !== 'schools' || seg[4] !== 'accessGrants') {
+      throw new HttpsError('invalid-argument', 'Invalid grant path.');
+    }
+    const ref = db.doc(path);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Grant not found.');
+    const g = snap.data() || {};
+    if (g.grantorUid !== uid) throw new HttpsError('permission-denied', 'Only the grantor can revoke this grant.');
+    await ref.set({ status: 'revoked', revokedAt: ts(), updatedAt: ts() }, { merge: true });
+    return { ok: true };
+  });
+
+  // Union of guardianship + active grants for the current user
+  exports.listMyStudentsAndGrants = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const uid = req.auth.uid;
+    const emailLower = norm(req.auth.token?.email || '');
+    const out = [];
+    const seen = new Set();
+    // Start from existing helper output
+    try {
+      const resp = await exports.listMyLinkedStudents.run({ auth: req.auth, data: {} });
+      const list = (resp && resp.data && resp.data.students) ? resp.data.students : [];
+      for (const s of list){
+        const key = `${s.orgId}|${s.schoolId}|${s.studentId}`;
+        if (!seen.has(key)) { seen.add(key); out.push(s); }
+      }
+    } catch {}
+    // Add grants by uid
+    const addFromGrants = async (snap) => {
+      for (const d of snap.docs){
+        const g = d.data() || {};
+        const seg = d.ref.path.split('/');
+        if (seg.length < 6) continue;
+        const orgId = seg[1]; const schoolId = seg[3];
+        const students = Array.isArray(g.studentIds) ? g.studentIds.slice(0, 20) : [];
+        for (const studentId of students){
+          const key = `${orgId}|${schoolId}|${studentId}`;
+          if (seen.has(key)) continue;
+          try {
+            const sRef = db.doc(`orgs/${orgId}/schools/${schoolId}/students/${studentId}`);
+            const sSnap = await sRef.get();
+            const s = sSnap.exists ? (sSnap.data() || {}) : {};
+            const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+            const tag = String(s.carTag || s.tag || '').toUpperCase().trim();
+            seen.add(key); out.push({ orgId, schoolId, studentId, name, tag });
+          } catch {}
+        }
+      }
+    };
+    try {
+      const q1 = await db.collectionGroup('accessGrants')
+        .where('status','==','active')
+        .where('granteeUid','==', uid)
+        .limit(50).get();
+      await addFromGrants(q1);
+    } catch {}
+    try {
+      if (emailLower){
+        const q2 = await db.collectionGroup('accessGrants')
+          .where('status','==','active')
+          .where('granteeEmailLower','==', emailLower)
+          .limit(50).get();
+        await addFromGrants(q2);
+      }
+    } catch {}
     return { ok: true, students: out };
   });

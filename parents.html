@@ -381,9 +381,70 @@
         }
       } catch { setSignedOut(); }
 
-      document.getElementById('addTrusted')?.addEventListener('click', () => {
-        alert('Coming soon: Add trusted adult flow');
+      // Access Grants UI (simplified MVP)
+      const addBtn = document.getElementById('addTrusted');
+      function openGrantPrompt(students){
+        const emails = prompt('Trusted adult email (Google/Microsoft account):');
+        if (!emails) return;
+        const name = prompt('Name (optional for display):') || '';
+        const windowType = confirm('Limit to today only? OK = Today only, Cancel = Always') ? 'today' : 'always';
+        const studentIds = students.map(s => s.id);
+        createGrant(studentIds, emails.trim(), name.trim(), windowType);
+      }
+      async function createGrant(studentIds, grEmail, grName, windowType){
+        const statusEl = document.getElementById('passesSubtitle');
+        try {
+          statusEl.textContent = 'Creating access grant…';
+          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+          if (!orgId || !schoolId) throw new Error('No school context');
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
+          if (!call) throw new Error('Backend unavailable');
+          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType });
+          if (!resp?.data?.ok) throw new Error('Grant creation failed');
+          statusEl.textContent = 'Access grant created.';
+          await loadGrants();
+        } catch(e){
+          console.warn(e);
+          statusEl.textContent = 'Grant failed: ' + (e.message || 'Error');
+          setTimeout(()=>{ statusEl.textContent = 'Swipe between students. Each pass shows a scannable QR during your pickup window.'; }, 4000);
+        }
+      }
+      async function loadGrants(){
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        if (!orgId || !schoolId) return;
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyGrantedAccess') : null;
+        if (!call) return;
+        try {
+          const resp = await call({});
+          const grants = (resp?.data?.grants)||[];
+          renderGrants(grants.map(g => ({ id: g.id, name: g.name || g.email, students: g.students, window: g.window, path: g.path })));
+        } catch(e){ console.warn('loadGrants failed', e); }
+      }
+      async function revokeGrant(path){
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeAccessGrant') : null;
+        if (!call) return alert('Backend unavailable');
+        if (!confirm('Revoke this access grant?')) return;
+        try { const resp = await call({ path }); if (resp?.data?.ok) await loadGrants(); else alert('Could not revoke'); } catch(e){ alert('Error revoking: ' + (e.message||'')); }
+      }
+      addBtn?.addEventListener('click', async () => {
+        // Use current linked students for selection; in MVP we grant access to ALL linked students
+        const currentCards = wrap.querySelectorAll('.pass .std');
+        const passes = [];
+        currentCards.forEach(c => { const nm = c.textContent.trim(); const base = c.closest('.pass')?.querySelector('.qr-host')?.getAttribute('data-base')||''; passes.push(nm); });
+        const linked = (window.__linkedStudentsCache||[]);
+        if (!linked.length) { alert('No linked students to grant access for yet.'); return; }
+        openGrantPrompt(linked);
       });
+      // Override renderPasses to keep a cache for grant creation
+      const _origRender = renderPasses;
+      renderPasses = function(passes){ window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
+      // Enhance renderGrants with revoke buttons
+      const _origRenderGrants = renderGrants;
+      renderGrants = function(grants){ _origRenderGrants(grants); try { grantsList.querySelectorAll('.row').forEach((row,i)=>{
+        const g = grants[i]; if (!g) return; const revokeBtn = row.querySelector('button[title="Revoke"]'); if (revokeBtn){ revokeBtn.onclick = () => revokeGrant(g.path); }
+      }); } catch{} };
+      // Load grants after claims
+      document.addEventListener('sd:claims-ready', () => { loadGrants(); });
     });
   </script>
 </body>

@@ -1,4 +1,10 @@
 {
+  "projects": {
+    "dev": "dismissalcallerdev",
+    "prod": "dismissalcaller"
+  }
+}
+{
 	"projects": { "default": "dismissalcaller" },
 	"targets": {
 		"dismissalcaller": {

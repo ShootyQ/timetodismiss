@@ -203,6 +203,24 @@ service cloud.firestore {
             allow get, list: if isAuthed() && inSchool(orgId, schoolId);
             allow update, delete: if false; // append-only
           }
+
+          // Trusted adult / access grants collection under school scope
+          // Path: orgs/{orgId}/schools/{schoolId}/accessGrants/{grantId}
+          // Server-only writes via Cloud Functions; clients (grantor or grantee) may read.
+          match /accessGrants/{grantId} {
+            allow get: if isAuthed() && (
+              inSchool(orgId, schoolId) && isAtLeastViewer() ||
+              // Grantor or grantee may always read regardless of explicit school membership claims
+              (request.auth.uid == resource.data.grantorUid) ||
+              (request.auth.uid == resource.data.granteeUid)
+            );
+            allow list: if isAuthed() && (
+              inSchool(orgId, schoolId) && isAtLeastViewer() ||
+              // Listing constrained to grantor - filter applied client-side (reads are non-sensitive: only metadata)
+              (request.query == null && request.auth.uid == resource.data.grantorUid)
+            );
+            allow create, update, delete: if false; // server-only
+          }
         }
 
         // SETTINGS

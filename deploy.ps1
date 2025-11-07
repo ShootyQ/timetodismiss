@@ -1,6 +1,10 @@
 Param(
-  [string]$ProjectId = "dismissalcaller",
-  [switch]$All
+  [string]$ProjectId = "dismissalcallerdev",
+  [switch]$All,
+  [switch]$Functions,
+  [switch]$Hosting,
+  [switch]$Rules,
+  [switch]$Indexes
 )
 
 Write-Host "=== TimeToDismiss Deploy Helper ===" -ForegroundColor Cyan
@@ -28,12 +32,19 @@ try {
   }
 } catch { firebase login }
 
-# 4. Set project
+# 4. Safety guard for production deploys
+if ($ProjectId -eq "dismissalcaller" -and -not $env:CI) {
+  Write-Host "\nYou are deploying to PRODUCTION (dismissalcaller)." -ForegroundColor Yellow
+  $confirm = Read-Host "Type PROD to continue"
+  if ($confirm -ne "PROD") { Write-Error "Aborted by user."; exit 1 }
+}
+
+# 5. Select project (for emulator-compatible commands) and also pass --project explicitly later
 Write-Host "Using project: $ProjectId" -ForegroundColor Cyan
 firebase use $ProjectId
 if ($LASTEXITCODE -ne 0) { Write-Error "Failed to select project $ProjectId"; exit 1 }
 
-# 5. Install function deps
+# 6. Install function deps
 if (Test-Path functions/package.json) {
   Write-Host "Installing functions dependencies..." -ForegroundColor Cyan
   pushd functions
@@ -41,7 +52,7 @@ if (Test-Path functions/package.json) {
   popd
 } else { Write-Error "functions/package.json not found"; exit 1 }
 
-# 6. Determine function names from index.js
+# 7. Determine function names from index.js
 $indexPath = Join-Path functions 'index.js'
 if (-not (Test-Path $indexPath)) { Write-Error "functions/index.js missing"; exit 1 }
 $src = Get-Content $indexPath -Raw
@@ -51,14 +62,32 @@ Write-Host "Detected callable exports: $($exports -join ', ')" -ForegroundColor 
 $target = @('setTeacherClasses','listSchoolClasses','listSchoolMembers')
 $present = $exports | Where-Object { $_ -in $target }
 
-if ($All -or $present.Count -eq 0) {
-  Write-Host "Deploying ALL functions (flag --All or missing target functions)." -ForegroundColor Yellow
-  firebase deploy --only functions
-} else {
-  $arg = 'functions:' + ($present -join ',functions:')
-  Write-Host "Deploying: $arg" -ForegroundColor Cyan
-  firebase deploy --only $arg
+function Invoke-Deploy {
+  param([string[]]$Parts)
+
+  if ($Parts.Count -eq 0 -or $All) { $Parts = @('functions','hosting','firestore:rules','firestore:indexes') }
+  $only = ($Parts -join ',')
+  Write-Host "Deploying parts: $only" -ForegroundColor Cyan
+  firebase deploy --project $ProjectId --only $only
 }
+
+# Build deploy parts from switches; default to functions if none specified
+$parts = @()
+if ($Functions) { $parts += 'functions' }
+if ($Hosting)   { $parts += 'hosting' }
+if ($Rules)     { $parts += 'firestore:rules' }
+if ($Indexes)   { $parts += 'firestore:indexes' }
+
+if ($parts -contains 'functions' -or $parts.Count -eq 0 -or $All) {
+  if ($All -or $present.Count -eq 0) {
+    Write-Host "Detected callable exports: $($exports -join ', ')" -ForegroundColor Gray
+  } else {
+    $arg = 'functions:' + ($present -join ',functions:')
+    Write-Host "Limiting to: $arg" -ForegroundColor Gray
+  }
+}
+
+Invoke-Deploy -Parts $parts
 
 if ($LASTEXITCODE -ne 0) { Write-Error "Deployment failed."; exit 1 }
 
