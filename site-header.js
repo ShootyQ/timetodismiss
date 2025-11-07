@@ -50,6 +50,12 @@
   // bfcache guard: if page is restored from back/forward cache, force a reload
   window.addEventListener('pageshow', (e) => {
     if (e.persisted) {
+      // Reload at most once per page to avoid loops on some browsers
+      try {
+        const key = 'SD_PGREL_' + (location.pathname || '/');
+        if (sessionStorage.getItem(key) === '1') return;
+        sessionStorage.setItem(key, '1');
+      } catch {}
       const url = new URL(location.href);
       url.searchParams.set('v', BUILD_ID);
       location.replace(url.toString());
@@ -59,7 +65,12 @@
   // Version mismatch guard: if stored build differs, force a fresh load with version param
   try {
     const prev = localStorage.getItem('SD_BUILD_ID');
-    if (prev && prev !== BUILD_ID) {
+    // Reload at most once per session to avoid loops if storage is flaky
+    const sesKey = 'SD_BUILD_RELOADED_' + BUILD_ID;
+    const alreadyReloaded = (()=>{ try { return sessionStorage.getItem(sesKey) === '1'; } catch { return false; } })();
+    const urlHasBuild = (()=>{ try { return new URL(location.href).searchParams.get('v') === BUILD_ID; } catch { return false; } })();
+    if (prev && prev !== BUILD_ID && !alreadyReloaded && !urlHasBuild) {
+      try { sessionStorage.setItem(sesKey, '1'); } catch {}
       const url = new URL(location.href);
       url.searchParams.set('v', BUILD_ID);
       location.replace(url.toString());
@@ -1167,9 +1178,15 @@
           const isClaim = path.endsWith('/claim.html');
           const isProtected = PROTECTED.has(path);
           // Rule 1: Non-staff and not guardian -> single redirect to claim page
-          if (!isStaff && !isGuardian && !isClaim && !isProtected && !window.__sd_parentFlowRedirectDone) {
-            window.__sd_parentFlowRedirectDone = true;
-            try { location.replace('/claim.html'); } catch {}
+          {
+            // Persist a per-session guard to ensure this redirect only happens once
+            let parentDone = !!window.__sd_parentFlowRedirectDone;
+            try { parentDone = parentDone || (sessionStorage.getItem('SD_PARENT_REDIRECT_DONE') === '1'); } catch {}
+            if (!isStaff && !isGuardian && !isClaim && !isProtected && !parentDone) {
+              window.__sd_parentFlowRedirectDone = true;
+              try { sessionStorage.setItem('SD_PARENT_REDIRECT_DONE', '1'); } catch {}
+              try { location.replace('/claim.html'); } catch {}
+            }
           }
           // Rule 2: Just gained guardian while on claim page -> single redirect to parents
           if (window.__sd_prevGuardian === false && isGuardian && isClaim && !window.__sd_claimToParentRedirectDone) {

@@ -1,11 +1,9 @@
 {
-  "projects": {
-    "dev": "dismissalcallerdev",
-    "prod": "dismissalcaller"
-  }
-}
-{
-	"projects": { "default": "dismissalcaller" },
+	"projects": {
+		"default": "dismissalcaller",
+		"dev": "dismissalcallerdev",
+		"prod": "dismissalcaller"
+	},
 	"targets": {
 		"dismissalcaller": {
 			"hosting": {
