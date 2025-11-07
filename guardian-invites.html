@@ -27,8 +27,8 @@
   <main>
     <section class="section">
       <div class="wrap">
-        <h1>Guardian Invites</h1>
-        <p class="muted">Create a one-time link or code to let a guardian claim a student.</p>
+  <h1>Guardian Invites</h1>
+  <p class="muted">Create a one-time link or code to let a guardian claim a student. Recent invites appear below for quick copy or revocation.</p>
 
         <div id="guard" class="card" style="display:none; margin-top:10px;">
           <p><strong>Access denied.</strong> You need Admin access for a school to create invites.</p>
@@ -81,6 +81,15 @@
           <div class="actions" style="margin-top:8px;">
             <button id="copyLink" class="btn" type="button">Copy link</button>
             <button id="newInvite" class="btn btn-outline" type="button">New invite</button>
+          </div>
+        </div>
+
+        <div id="invitesCard" class="card" style="display:none; margin-top:10px;">
+          <h3 style="margin:0 0 10px;">Recent Invites</h3>
+          <div id="invitesEmpty" class="muted" style="display:none;">No invites yet.</div>
+          <div id="invitesList" style="display:grid; gap:10px;"></div>
+          <div class="actions" style="margin-top:12px;">
+            <button id="refreshInvites" class="btn" type="button">Refresh</button>
           </div>
         </div>
       </div>
@@ -138,6 +147,65 @@
         } catch(e){ return { error: 'lookup-failed', message: e?.message || String(e) }; }
       }
 
+      function renderInvites(invites){
+        const list = document.getElementById('invitesList');
+        const empty = document.getElementById('invitesEmpty');
+        list.innerHTML='';
+        if (!invites.length){ empty.style.display=''; list.style.display='none'; return; }
+        empty.style.display='none'; list.style.display='grid';
+        for (const inv of invites){
+          const row = document.createElement('div');
+          row.style.display='grid';
+          row.style.gridTemplateColumns='minmax(160px,1fr) minmax(200px,2fr) minmax(110px,1fr) auto';
+          row.style.gap='10px';
+          row.style.alignItems='center';
+          row.style.border='1px solid #e5e7eb';
+          row.style.padding='8px 10px';
+          row.style.borderRadius='10px';
+          const statusColor = inv.status==='pending' ? '#2563eb' : (inv.status==='consumed' ? '#16a34a' : '#6b7280');
+          row.innerHTML = `
+            <div style="font-weight:600;">${inv.studentName}</div>
+            <div style="font-size:.8rem; word-break:break-all; color:#475569;">${inv.link}</div>
+            <div style="font-size:.75rem; font-weight:700; color:${statusColor}; text-transform:uppercase; letter-spacing:.5px;">${inv.status}</div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-sm" data-copy="${inv.link}" type="button">Copy</button>
+              ${inv.status==='pending' ? `<button class="btn btn-sm btn-outline" data-revoke="${inv.id}" type="button">Revoke</button>`:''}
+            </div>`;
+          list.appendChild(row);
+        }
+        // Wire copy/revoke
+        list.querySelectorAll('[data-copy]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const val = btn.getAttribute('data-copy');
+            try { await navigator.clipboard.writeText(val); btn.textContent='Copied'; setTimeout(()=>btn.textContent='Copy',900); } catch {}
+          });
+        });
+        list.querySelectorAll('[data-revoke]').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-revoke');
+            if (!confirm('Revoke this invite?')) return;
+            try {
+              const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeGuardianInvite') : null;
+              if (!call) throw new Error('Backend unavailable');
+              const resp = await call({ orgId, schoolId, inviteId: id });
+              if (!resp?.data?.ok) throw new Error('Failed to revoke');
+              await loadInvites();
+            } catch(e){ alert('Could not revoke: ' + (e.message||'error')); }
+          });
+        });
+      }
+
+      async function loadInvites(){
+        try {
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listGuardianInvites') : null;
+          if (!call) return;
+          const resp = await call({ orgId, schoolId, status: 'all', limit: 50 });
+          const invites = resp?.data?.invites || [];
+          document.getElementById('invitesCard').style.display='';
+          renderInvites(invites);
+        } catch(e){ console.warn('Invite list failed', e); }
+      }
+
       async function create(){
         const studentId = document.getElementById('studentId').value.trim();
         const email = document.getElementById('email').value.trim();
@@ -163,6 +231,8 @@
           codeOut.textContent = data.code8 || '';
           res.style.display = '';
           status.textContent = 'Invite ready';
+          // Refresh recent invites list
+          loadInvites();
         } catch (e) {
           console.error(e);
           alert('Could not create invite: ' + (e.message || e.code || 'error'));
@@ -175,6 +245,9 @@
         try { await navigator.clipboard.writeText(linkOut.textContent); copyLink.textContent = 'Copied!'; setTimeout(()=>copyLink.textContent='Copy link', 1200); } catch {}
       });
       newInvite.addEventListener('click', () => { res.style.display = 'none'; status.textContent=''; document.getElementById('studentId').focus(); });
+      document.getElementById('refreshInvites').addEventListener('click', loadInvites);
+      // Initial load of existing invites
+      loadInvites();
     }
 
     // Listen on document (site-header dispatches on document)

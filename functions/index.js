@@ -915,6 +915,70 @@ async function computeClaims(uid, email) {
     return { ok: true, inviteId, code8, token, link };
   });
 
+  // Admin/staff: list guardian invites for a school (recent first)
+  // Input: { orgId, schoolId, status?: 'pending'|'consumed'|'revoked'|"all", limit?: number }
+  exports.listGuardianInvites = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const { orgId, schoolId, status = 'all', limit = 50 } = req.data || {};
+    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin for this school required.');
+
+    let q = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('invites')
+      .orderBy('createdAt', 'desc')
+      .limit(Math.max(1, Math.min(200, Number(limit)||50)));
+    const s = String(status||'all').toLowerCase();
+    if (s !== 'all') q = q.where('status','==', s);
+
+    const snap = await q.get();
+    const rows = [];
+    for (const d of snap.docs){
+      const x = d.data() || {};
+      if (x.type !== 'guardian-claim') continue;
+      const link = `/claim.html?inv=${encodeURIComponent(d.id)}&token=${encodeURIComponent(x.token || '')}`;
+      // Best-effort student name
+      let studentName = String(x.studentId || '');
+      try {
+        const sref = db.doc(`orgs/${orgId}/schools/${schoolId}/students/${x.studentId}`);
+        const ss = await sref.get();
+        if (ss.exists){ const sd = ss.data() || {}; studentName = sd.name || [sd.firstName, sd.lastName].filter(Boolean).join(' ') || studentName; }
+      } catch {}
+      rows.push({
+        id: d.id,
+        studentId: String(x.studentId||''),
+        studentName,
+        relationshipType: String(x.relationshipType||'primary'),
+        email: x.email || null,
+        code8: x.code8 || null,
+        link,
+        status: String(x.status||'pending'),
+        createdAt: x.createdAt || null,
+        consumedAt: x.consumedAt || null,
+        consumedByUid: x.consumedByUid || null,
+      });
+    }
+    return { ok: true, invites: rows };
+  });
+
+  // Admin/staff: revoke a pending guardian invite
+  // Input: { orgId, schoolId, inviteId }
+  exports.revokeGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+    assertAuthed(req);
+    const claims = req.auth.token || {};
+    const { orgId, schoolId, inviteId } = req.data || {};
+    if (!orgId || !schoolId || !inviteId) throw new HttpsError('invalid-argument', 'orgId, schoolId, inviteId required.');
+    const allowed = await canManageSchool(claims, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin for this school required.');
+    const ref = db.doc(`orgs/${orgId}/schools/${schoolId}/invites/${inviteId}`);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError('not-found', 'Invite not found.');
+    const cur = snap.data() || {};
+    if ((cur.status || 'pending') !== 'pending') throw new HttpsError('failed-precondition', 'Invite is not pending.');
+    await ref.set({ status: 'revoked', revokedAt: ts(), updatedAt: ts() }, { merge: true });
+    return { ok: true };
+  });
+
   // Signed-in guardian: claim invite via inv+token OR code
   // Input: { inv, token } OR { code }
   exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
