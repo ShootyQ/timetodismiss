@@ -1439,3 +1439,108 @@ async function computeClaims(uid, email) {
       connections: links.docs.map(mapDoc),
     };
   });
+
+  // ───────────────── HTTP CORS shims for Parent Profile & Connect ─────────────────
+
+  // Helper to read auth from Bearer header
+  async function requireUserFromRequest(req, res){
+    const authHeader = String(req.headers.authorization||'');
+    const idToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!idToken) { res.status(401).json({ ok:false, error:'unauthenticated' }); return null; }
+    try { return await auth.verifyIdToken(idToken); } catch { res.status(401).json({ ok:false, error:'unauthenticated' }); return null; }
+  }
+
+  exports.getMyParentProfileHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'GET') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const uid = decoded.uid;
+    const snap = await db.doc(`users/${uid}`).get();
+    const d = snap.exists ? (snap.data() || {}) : {};
+    res.json({ ok:true, uid, displayName: d.displayName || decoded.name || null, discoverable: !!d.discoverable, emailLower: d.emailLower || decoded.email || null, guardian: !!d.guardian });
+  }));
+
+  exports.updateMyParentProfileHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const uid = decoded.uid;
+    const { displayName = undefined, discoverable = undefined } = req.body || {};
+    const payload = { updatedAt: ts() };
+    if (displayName !== undefined){ const name = String(displayName||'').trim(); if (name && (name.length < 2 || name.length > 60)) { res.status(400).json({ ok:false, error:'invalid-argument' }); return; } payload.displayName = name || null; }
+    if (discoverable !== undefined){ payload.discoverable = !!discoverable; }
+    if (decoded.email) payload.emailLower = String(decoded.email).toLowerCase();
+    await db.doc(`users/${uid}`).set(payload, { merge: true });
+    res.json({ ok:true });
+  }));
+
+  exports.listDiscoverableParentsHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'GET') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const uid = decoded.uid;
+    const orgId = String(req.query.orgId||''); const schoolId = String(req.query.schoolId||'');
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit)||50));
+    if (!orgId || !schoolId) { res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    const ok = await canSeeParentsForSchool(decoded, orgId, schoolId, uid);
+    if (!ok){ res.status(403).json({ ok:false, error:'permission-denied' }); return; }
+    const q = await db.collectionGroup('guardianLinks').where('orgId','==',orgId).where('schoolId','==',schoolId).limit(limit).get();
+    const seen = new Set(); const parents = [];
+    for (const doc of q.docs){ try { const pUid = doc.ref.parent.parent.id; if (!pUid || seen.has(pUid) || pUid === uid) continue; seen.add(pUid); const s = await db.doc(`users/${pUid}`).get(); const u = s.exists ? (s.data()||{}) : {}; if (u.discoverable) parents.push({ uid:pUid, displayName: u.displayName || null }); if (parents.length >= limit) break; } catch {} }
+    res.json({ ok:true, parents });
+  }));
+
+  exports.sendParentConnectRequestHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const fromUid = decoded.uid;
+    const { toUid, orgId, schoolId, note = null } = req.body || {};
+    if (!toUid || !orgId || !schoolId){ res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    if (toUid === fromUid){ res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    const callerOk = await canSeeParentsForSchool(decoded, orgId, schoolId, fromUid);
+    if (!callerOk){ res.status(403).json({ ok:false, error:'permission-denied' }); return; }
+    const targetLinks = await db.collection(`users/${toUid}/guardianLinks`).where('orgId','==',orgId).where('schoolId','==',schoolId).limit(1).get();
+    if (targetLinks.empty){ res.status(412).json({ ok:false, error:'failed-precondition' }); return; }
+    const now = ts(); const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`); const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+    await db.runTransaction(async (tx)=>{ const existing = await tx.get(incomingRef); const status = existing.exists ? (existing.get('status')||'pending') : 'pending'; if (status==='accepted') return; const payload = { fromUid, orgId, schoolId, note: note||null, status:'pending', createdAt: existing.exists ? (existing.get('createdAt')||now) : now, updatedAt: now }; tx.set(incomingRef, payload, { merge:true }); tx.set(outgoingRef, { toUid, orgId, schoolId, note: note||null, status:'pending', createdAt: now, updatedAt: now }, { merge:true }); });
+    res.json({ ok:true });
+  }));
+
+  exports.sendParentConnectRequestByEmailHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const fromUid = decoded.uid;
+    const { email, orgId, schoolId, note = null } = req.body || {};
+    const emailLower = norm(email || '');
+    if (!emailLower || !orgId || !schoolId){ res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    const callerOk = await canSeeParentsForSchool(decoded, orgId, schoolId, fromUid);
+    if (!callerOk){ res.status(403).json({ ok:false, error:'permission-denied' }); return; }
+    let toUid = null; try { const u = await auth.getUserByEmail(emailLower); toUid = u?.uid || null; } catch {}
+    if (!toUid){ res.status(404).json({ ok:false, error:'not-found' }); return; }
+    if (toUid === fromUid){ res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    const targetLinks = await db.collection(`users/${toUid}/guardianLinks`).where('orgId','==',orgId).where('schoolId','==',schoolId).limit(1).get();
+    if (targetLinks.empty){ res.status(412).json({ ok:false, error:'failed-precondition' }); return; }
+    const now = ts(); const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`); const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+    await db.runTransaction(async (tx)=>{ const existing = await tx.get(incomingRef); const status = existing.exists ? (existing.get('status')||'pending') : 'pending'; if (status==='accepted') return; const payload = { fromUid, orgId, schoolId, note: note||null, status:'pending', createdAt: existing.exists ? (existing.get('createdAt')||now) : now, updatedAt: now }; tx.set(incomingRef, payload, { merge:true }); tx.set(outgoingRef, { toUid, orgId, schoolId, note: note||null, status:'pending', createdAt: now, updatedAt: now }, { merge:true }); });
+    res.json({ ok:true });
+  }));
+
+  exports.respondParentConnectRequestHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'POST') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const toUid = decoded.uid; const { fromUid, orgId, schoolId, action } = req.body || {}; const act = String(action||'').toLowerCase();
+    if (!fromUid || !orgId || !schoolId || !['accept','decline'].includes(act)) { res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
+    const now = ts(); const incomingRef = db.doc(`users/${toUid}/parentConnectIncoming/${fromUid}`); const outgoingRef = db.doc(`users/${fromUid}/parentConnectOutgoing/${toUid}`);
+    await db.runTransaction(async (tx)=>{ const inc = await tx.get(incomingRef); if (!inc.exists) throw new Error('not-found'); const cur = inc.data()||{}; if (cur.orgId !== orgId || cur.schoolId !== schoolId) throw new Error('failed-precondition'); const newStatus = act==='accept' ? 'accepted' : 'declined'; tx.set(incomingRef, { status:newStatus, respondedAt: now, updatedAt: now }, { merge:true }); tx.set(outgoingRef, { status:newStatus, respondedAt: now, updatedAt: now }, { merge:true }); if (newStatus==='accepted'){ const aRef = db.doc(`users/${toUid}/parentConnections/${fromUid}`); const bRef = db.doc(`users/${fromUid}/parentConnections/${toUid}`); const conn = { orgId, schoolId, since: now }; tx.set(aRef, conn, { merge:true }); tx.set(bRef, conn, { merge:true }); } });
+    res.json({ ok:true });
+  }));
+
+  exports.listMyParentConnectionsHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
+    if (req.method !== 'GET') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
+    const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
+    const uid = decoded.uid;
+    const [incoming, outgoing, links] = await Promise.all([
+      db.collection(`users/${uid}/parentConnectIncoming`).orderBy('updatedAt','desc').limit(50).get(),
+      db.collection(`users/${uid}/parentConnectOutgoing`).orderBy('updatedAt','desc').limit(50).get(),
+      db.collection(`users/${uid}/parentConnections`).limit(200).get(),
+    ]);
+    const mapDoc = (d) => ({ id: d.id, ...(d.data() || {}) });
+    res.json({ ok:true, incoming: incoming.docs.map(mapDoc), outgoing: outgoing.docs.map(mapDoc), connections: links.docs.map(mapDoc) });
+  }));

@@ -608,13 +608,37 @@
             if (profName) profName.value = d.displayName || '';
             if (profDisc) profDisc.checked = !!d.discoverable;
           }
-        } catch(e){ console.warn('loadProfile failed', e); }
+        } catch(e){
+          console.warn('loadProfile failed', e);
+          // HTTP fallback to avoid preview CORS on callables
+          try {
+            const user = window.firebase?.auth()?.currentUser; if (!user) return;
+            const token = await user.getIdToken();
+            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', { headers: { 'Authorization': 'Bearer ' + token } });
+            const d = await res.json();
+            if (d?.ok){
+              if (profName) profName.value = d.displayName || '';
+              if (profDisc) profDisc.checked = !!d.discoverable;
+            }
+          } catch(err){ console.warn('HTTP getMyParentProfileHttp failed', err); }
+        }
       }
       async function saveProfile(){
         try {
           const call = callable('updateMyParentProfile'); if (!call) return;
           profStatus.textContent = 'Saving…';
-          await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
+          try {
+            await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
+          } catch(e1){
+            // HTTP fallback
+            const user = window.firebase?.auth()?.currentUser; if (user){
+              const token = await user.getIdToken();
+              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
+                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                body: JSON.stringify({ displayName: profName?.value || '', discoverable: !!profDisc?.checked })
+              });
+            } else { throw e1; }
+          }
           profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
           // Refresh discovery list if we toggled discoverable
           await loadDiscoverable();
@@ -645,7 +669,18 @@
             const call = callable('sendParentConnectRequest'); if (!call) return alert('Backend unavailable');
             const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
             if (!orgId || !schoolId) return alert('Select a school first');
-            await call({ toUid, orgId, schoolId });
+            try {
+              await call({ toUid, orgId, schoolId });
+            } catch(_){
+              // HTTP fallback
+              const user = window.firebase?.auth()?.currentUser; if (user){
+                const token = await user.getIdToken();
+                await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
+                  method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                  body: JSON.stringify({ toUid, orgId, schoolId })
+                });
+              } else { throw _; }
+            }
             e.currentTarget.textContent = 'Requested'; e.currentTarget.disabled = true;
             await loadConnections();
           } catch (err) { alert('Could not send request'); }
@@ -658,9 +693,22 @@
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
           if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return;
-          const resp = await call({ orgId, schoolId, limit: 50 });
-          const list = (resp?.data?.parents)||[];
-          renderDiscoverable(list);
+          try {
+            const resp = await call({ orgId, schoolId, limit: 50 });
+            const list = (resp?.data?.parents)||[];
+            renderDiscoverable(list);
+          } catch(e1){
+            console.warn('listDiscoverableParents callable failed', e1);
+            // HTTP shim fallback
+            try {
+              const user = window.firebase?.auth()?.currentUser; if (!user) return;
+              const token = await user.getIdToken();
+              const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
+              const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+              const d = await res.json(); const list = (d?.parents)||[];
+              renderDiscoverable(list);
+            } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
+          }
         } catch(e){ console.warn('loadDiscoverable failed', e); }
       }
       discSchool?.addEventListener('change', loadDiscoverable);
@@ -672,7 +720,17 @@
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
           if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return alert('Select a school first');
-          await call({ email, orgId, schoolId });
+          try {
+            await call({ email, orgId, schoolId });
+          } catch(_){
+            const user = window.firebase?.auth()?.currentUser; if (user){
+              const token = await user.getIdToken();
+              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
+                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                body: JSON.stringify({ email, orgId, schoolId })
+              });
+            } else { throw _; }
+          }
           discEmail.value='';
           await loadConnections();
           alert('Request sent');
@@ -689,7 +747,19 @@
       async function loadConnections(){
         try {
           const call = callable('listMyParentConnections'); if (!call) return;
-          const resp = await call({}); const d = (resp?.data)||{};
+          let d = {};
+          try {
+            const resp = await call({}); d = (resp?.data)||{};
+          } catch(e1){
+            console.warn('listMyParentConnections callable failed', e1);
+            // HTTP shim fallback
+            try {
+              const user = window.firebase?.auth()?.currentUser; if (!user) return;
+              const token = await user.getIdToken();
+              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
+              d = await res.json();
+            } catch(e2){ console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
+          }
           // Incoming
           reqIncoming.innerHTML = '';
           const inc = Array.isArray(d.incoming) ? d.incoming : [];
@@ -702,7 +772,18 @@
                 const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
                 try {
                   const call = callable('respondParentConnectRequest'); if (!call) return;
-                  await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
+                  try {
+                    await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
+                  } catch(_){
+                    // HTTP fallback
+                    const user = window.firebase?.auth()?.currentUser; if (user){
+                      const token = await user.getIdToken();
+                      await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
+                        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                        body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
+                      });
+                    } else { throw _; }
+                  }
                   await loadConnections();
                 } catch {}
               }));
