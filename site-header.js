@@ -1158,25 +1158,24 @@
         window.claims = mergedClaims; // optional shim for older code
         document.dispatchEvent(new CustomEvent('sd:claims-ready', { detail: { claims: mergedClaims } }));
 
-        // Minimal-intrusion parent flow redirects
+        // Minimal-intrusion parent flow redirects (single-run guarded)
         try {
           window.__sd_prevGuardian = (typeof window.__sd_prevGuardian === 'boolean') ? window.__sd_prevGuardian : null;
           const isStaff = !!(mergedClaims.owner || mergedClaims.superintendent || mergedClaims.admin || mergedClaims.caller);
           const isGuardian = !!mergedClaims.guardian;
           const path = (location.pathname || '').replace(/\/+$/, '').toLowerCase();
-          // Rule 1: Non-staff and not guardian -> send to claim.html when not already there and not on protected page
-          if (!isStaff && !isGuardian) {
-            const isClaim = path.endsWith('/claim.html');
-            const isProtected = PROTECTED.has(path);
-            if (!isClaim && !isProtected) {
-              try { location.replace('/claim.html'); } catch {}
-            }
+          const isClaim = path.endsWith('/claim.html');
+          const isProtected = PROTECTED.has(path);
+          // Rule 1: Non-staff and not guardian -> single redirect to claim page
+          if (!isStaff && !isGuardian && !isClaim && !isProtected && !window.__sd_parentFlowRedirectDone) {
+            window.__sd_parentFlowRedirectDone = true;
+            try { location.replace('/claim.html'); } catch {}
           }
-          // Rule 2: If user just gained guardian and is currently on claim page -> go to parents.html
-          if (window.__sd_prevGuardian === false && isGuardian && path.endsWith('/claim.html')) {
+          // Rule 2: Just gained guardian while on claim page -> single redirect to parents
+          if (window.__sd_prevGuardian === false && isGuardian && isClaim && !window.__sd_claimToParentRedirectDone) {
+            window.__sd_claimToParentRedirectDone = true;
             setTimeout(() => { try { location.replace('/parents.html'); } catch {} }, 350);
           }
-          // Update previous state marker (initialize on first pass)
           window.__sd_prevGuardian = (window.__sd_prevGuardian === null) ? isGuardian : isGuardian;
         } catch {}
 
@@ -1204,22 +1203,9 @@
               window.SD.claims = freshClaims;
               document.dispatchEvent(new CustomEvent('sd:claims-ready', { detail: { claims: freshClaims } }));
 
-              // Re-run minimal parent redirects on bump
+              // Do NOT re-run parent flow redirects here (prevents flicker/loop). Only update guardian marker.
               try {
-                window.__sd_prevGuardian = (typeof window.__sd_prevGuardian === 'boolean') ? window.__sd_prevGuardian : null;
-                const isStaff2 = !!(freshClaims.owner || freshClaims.superintendent || freshClaims.admin || freshClaims.caller);
                 const isGuardian2 = !!freshClaims.guardian;
-                const path2 = (location.pathname || '').replace(/\/+$/, '').toLowerCase();
-                if (!isStaff2 && !isGuardian2) {
-                  const isClaim2 = path2.endsWith('/claim.html');
-                  const isProtected2 = PROTECTED.has(path2);
-                  if (!isClaim2 && !isProtected2) {
-                    try { location.replace('/claim.html'); } catch {}
-                  }
-                }
-                if (window.__sd_prevGuardian === false && isGuardian2 && path2.endsWith('/claim.html')) {
-                  setTimeout(() => { try { location.replace('/parents.html'); } catch {} }, 250);
-                }
                 window.__sd_prevGuardian = (window.__sd_prevGuardian === null) ? isGuardian2 : isGuardian2;
               } catch {}
               pendingClaimsRefresh = false;
