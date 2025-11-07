@@ -218,15 +218,44 @@ export function onClassStudents(classId, cb) {
   (async () => {
     try {
       await waitForTenant();
-      const qy = query(
-        colPath('students'),
-        where('classId', '==', classId),
-        orderBy('name', 'asc')
-      );
-      unsub = onSnapshot(qy,
-  (snap) => cb(snap.docs.map(d => ({ ...d.data(), id: d.id })) ),
-        (err) => console.error('[onClassStudents] listener error:', err)
-      );
+      const base = colPath('students');
+      const qyPrimary = query(base, where('classId', '==', classId), orderBy('name', 'asc'));
+      const qyFallback = query(base, where('classId', '==', classId));
+
+      const handle = (snap) => cb(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+
+      let triedFallback = false;
+      function startPrimary() {
+        try {
+          unsub = onSnapshot(qyPrimary, handle, (err) => {
+            if (!triedFallback) {
+              console.warn('[onClassStudents] primary listener failed; using fallback without order:', err?.message || err);
+              triedFallback = true;
+              startFallback();
+            } else {
+              console.error('[onClassStudents] listener error after fallback:', err);
+            }
+          });
+        } catch (e) {
+          console.warn('[onClassStudents] startPrimary threw; using fallback:', e?.message || e);
+          startFallback();
+        }
+      }
+
+      function startFallback() {
+        try { unsub(); } catch {}
+        try {
+          unsub = onSnapshot(qyFallback, (snap) => {
+            const rows = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+            rows.sort((a,b) => (a?.name || '').localeCompare(b?.name || ''));
+            cb(rows);
+          }, (err2) => console.error('[onClassStudents] fallback listener error:', err2));
+        } catch (e2) {
+          console.error('[onClassStudents] fallback failed:', e2);
+        }
+      }
+
+      startPrimary();
     } catch (e) { console.error('[onClassStudents] init failed:', e); }
   })();
   return () => { try { unsub(); } catch {} };

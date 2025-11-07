@@ -32,6 +32,14 @@
         { "fieldPath": "schoolId",  "order": "ASCENDING" },
         { "fieldPath": "sessionId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionId": "students",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "classId", "order": "ASCENDING" },
+        { "fieldPath": "name",    "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
