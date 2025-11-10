@@ -2,7 +2,7 @@
 // Node 18  •  Firebase Functions v2  •  CommonJS
 
 // ───────────────── Imports ─────────────────
-const { onCall, HttpsError }       = require('firebase-functions/v2/https');
+const { onCall, HttpsError, onRequest }       = require('firebase-functions/v2/https');
 const { onSchedule }               = require('firebase-functions/v2/scheduler');
 const { onDocumentWritten }        = require('firebase-functions/v2/firestore');
 const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
@@ -15,6 +15,19 @@ const crypto = require('crypto');
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
 const db   = getFirestore();
+// Basic CORS wrapper for HTTP shim endpoints (preview channel safe)
+const allowCors = (handler) => async (req, res) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  // Allow credentials if you later restrict origins
+  // res.set('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
+  try { await handler(req, res); } catch (e) {
+    console.warn('[allowCors] handler error', e);
+    if (!res.headersSent) res.status(500).json({ ok:false, error:'internal' });
+  }
+};
 // Prefer runtime param (deployable via .env or CLI). Fallback to process.env for backward compatibility.
 // Safety-first: default disabled to prevent sign-in outages if indexes are missing or queries are slow.
 const PARAM_ENABLE_BEFORE_SIGNIN = defineBoolean('ENABLE_BEFORE_SIGNIN', { default: false });

@@ -602,7 +602,8 @@
 
       async function loadProfile(){
         try {
-          const call = callable('getMyParentProfile'); if (!call) return;
+          const call = callable('getMyParentProfile');
+          if (!call) throw new Error('no-callable');
           const resp = await call({}); const d = (resp?.data)||{};
           if (d?.ok){
             if (profName) profName.value = d.displayName || '';
@@ -625,9 +626,10 @@
       }
       async function saveProfile(){
         try {
-          const call = callable('updateMyParentProfile'); if (!call) return;
+          const call = callable('updateMyParentProfile');
           profStatus.textContent = 'Saving…';
           try {
+            if (!call) throw new Error('no-callable');
             await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
           } catch(e1){
             // HTTP fallback
@@ -689,11 +691,12 @@
 
       async function loadDiscoverable(){
         try {
-          const call = callable('listDiscoverableParents'); if (!call) return;
+          const call = callable('listDiscoverableParents');
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
           if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return;
           try {
+            if (!call) throw new Error('no-callable');
             const resp = await call({ orgId, schoolId, limit: 50 });
             const list = (resp?.data?.parents)||[];
             renderDiscoverable(list);
@@ -716,11 +719,12 @@
       async function addByEmail(){
         const email = (discEmail?.value||'').trim(); if (!email) return;
         try{
-          const call = callable('sendParentConnectRequestByEmail'); if (!call) return alert('Backend unavailable');
+          const call = callable('sendParentConnectRequestByEmail');
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
           if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return alert('Select a school first');
           try {
+            if (!call) throw new Error('no-callable');
             await call({ email, orgId, schoolId });
           } catch(_){
             const user = window.firebase?.auth()?.currentUser; if (user){
@@ -746,9 +750,10 @@
       }
       async function loadConnections(){
         try {
-          const call = callable('listMyParentConnections'); if (!call) return;
+          const call = callable('listMyParentConnections');
           let d = {};
           try {
+            if (!call) throw new Error('no-callable');
             const resp = await call({}); d = (resp?.data)||{};
           } catch(e1){
             console.warn('listMyParentConnections callable failed', e1);
