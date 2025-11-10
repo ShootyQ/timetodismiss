@@ -393,7 +393,7 @@
         return results;
       }
 
-      async function applyFromClaims(claims){
+  async function applyFromClaims(claims){
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
         const uid = claims.uid;
@@ -487,6 +487,8 @@
         } catch{}
         if (!linked.length){
           renderPasses([]);
+          // Even if we have no linked students yet, still try to refresh discovery/requests later
+          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); } catch {}
           return;
         }
         // Build base payload for QR: prefer car tag else student id
@@ -496,6 +498,8 @@
           return { student: s.name, status: 'Linked', window: '', basePayload: base };
         });
         renderPasses(passes);
+        // Now that school context and dropdown are populated, load discovery and connections
+        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); } catch {}
       }
 
       // Listen for claims from site-header.js
@@ -830,8 +834,8 @@
         } catch(e){ console.warn('loadConnections failed', e); }
       }
 
-      // Refresh profile/discovery/requests after claims ready
-      document.addEventListener('sd:claims-ready', () => { loadProfile(); loadDiscoverable(); loadConnections(); });
+  // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
+  document.addEventListener('sd:claims-ready', () => { loadProfile(); });
     });
   </script>
 </body>
