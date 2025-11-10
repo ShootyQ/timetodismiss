@@ -1302,33 +1302,104 @@ async function computeClaims(uid, email) {
     assertAuthed(req);
     const { orgId, schoolId, limit = 50 } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
+    const max = Math.max(1, Math.min(100, Number(limit) || 50));
+    try {
+      const ok = await canSeeParentsForSchool(req.auth.token || {}, orgId, schoolId, req.auth.uid);
+      if (!ok) throw new HttpsError('permission-denied', 'Not a member of this school.');
 
-    const ok = await canSeeParentsForSchool(req.auth.token || {}, orgId, schoolId, req.auth.uid);
-    if (!ok) throw new HttpsError('permission-denied', 'Not a member of this school.');
+      // Collect connected/pending so we can exclude them from discovery
+      const [incomingSnap, outgoingSnap, connSnap] = await Promise.all([
+        db.collection(`users/${req.auth.uid}/parentConnectIncoming`).where('orgId','==',String(orgId)).where('schoolId','==',String(schoolId)).limit(200).get().catch(()=>({docs:[]})),
+        db.collection(`users/${req.auth.uid}/parentConnectOutgoing`).where('orgId','==',String(orgId)).where('schoolId','==',String(schoolId)).limit(200).get().catch(()=>({docs:[]})),
+        db.collection(`users/${req.auth.uid}/parentConnections`).where('orgId','==',String(orgId)).where('schoolId','==',String(schoolId)).limit(400).get().catch(()=>({docs:[]})),
+      ]);
+      const exclude = new Set();
+      for (const d of incomingSnap.docs){ exclude.add(d.id); }
+      for (const d of outgoingSnap.docs){ exclude.add(d.id); }
+      for (const d of connSnap.docs){ exclude.add(d.id); }
 
-    const q = await db.collectionGroup('guardianLinks')
-      .where('orgId', '==', String(orgId))
-      .where('schoolId', '==', String(schoolId))
-      .limit(Math.max(1, Math.min(100, Number(limit) || 50)))
-      .get();
+      const candidateUids = new Set();
 
-    const seen = new Set();
-    const results = [];
-    for (const doc of q.docs) {
-      try {
-        const parentUid = doc.ref.parent.parent.id;
-        if (!parentUid || seen.has(parentUid)) continue;
-        seen.add(parentUid);
-        if (parentUid === req.auth.uid) continue;
-        const uSnap = await db.doc(`users/${parentUid}`).get();
-        const uData = uSnap.exists ? (uSnap.data() || {}) : {};
-        if (uData.discoverable) {
-          results.push({ uid: parentUid, displayName: uData.displayName || null });
+      // Query guardianLinks ONLY by orgId, then filter schoolId in memory to avoid composite index requirement
+      const glSnap = await db.collectionGroup('guardianLinks')
+        .where('orgId','==', String(orgId))
+        .limit(max * 10) // allow slack; we'll filter
+        .get().catch(()=>null);
+      if (glSnap){
+        for (const doc of glSnap.docs){
+          try {
+            const data = doc.data() || {};
+            if (String(data.schoolId||'') !== String(schoolId)) continue;
+            const pUid = doc.ref.parent.parent.id;
+            if (!pUid || pUid === req.auth.uid) continue;
+            candidateUids.add(pUid);
+          } catch {}
         }
-        if (results.length >= limit) break;
-      } catch {}
+      }
+
+      // Fallback A: scan guardians collectionGroup by orgId only, filter schoolId in memory, backfill missing reverse indexes
+      if (candidateUids.size < max) {
+        const gSnap = await db.collectionGroup('guardians').where('orgId','==',String(orgId)).limit(800).get().catch(()=>null);
+        if (gSnap){
+          for (const d of gSnap.docs){
+            try {
+              const g = d.data() || {};
+              if (String(g.schoolId||'') !== String(schoolId)) continue;
+              const pUid = String(g.uid||'');
+              if (!pUid || pUid === req.auth.uid) continue;
+              candidateUids.add(pUid);
+              // Reverse index backfill (best-effort)
+              const seg = d.ref.parent.parent.path.split('/'); // .../students/{studentId}
+              const studentId = seg[5];
+              if (studentId) {
+                const revKey = `${orgId}__${schoolId}__${studentId}`;
+                db.doc(`users/${pUid}/guardianLinks/${revKey}`).set({ orgId, schoolId, studentId, linkedAt: ts() }, { merge: true }).catch(()=>{});
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // Fallback B: include parents participating via accessGrants (grantor or grantee) in this school
+      if (candidateUids.size < max) {
+        const agSnap = await db.collectionGroup('accessGrants').where('status','==','active').limit(500).get().catch(()=>null);
+        if (agSnap){
+          for (const d of agSnap.docs){
+            try {
+              const seg = d.ref.path.split('/'); // orgs/{orgId}/schools/{schoolId}/accessGrants/{id}
+              if (seg.length < 6) continue;
+              const oId = seg[1]; const sId = seg[3];
+              if (oId !== orgId || sId !== schoolId) continue;
+              const g = d.data() || {};
+              if (g.grantorUid && g.grantorUid !== req.auth.uid) candidateUids.add(g.grantorUid);
+              if (g.granteeUid && g.granteeUid !== req.auth.uid) candidateUids.add(g.granteeUid);
+            } catch {}
+          }
+        }
+      }
+
+      // Remove excluded (pending/connected)
+      const filtered = Array.from(candidateUids).filter(u => !exclude.has(u));
+      if (!filtered.length) return { ok:true, parents: [] };
+
+      // Load user docs in batches
+      const parents = [];
+      for (const uidChunk of filtered.slice(0, max+5)){
+        try {
+          const snap = await db.doc(`users/${uidChunk}`).get();
+          if (snap.exists){
+            const u = snap.data() || {};
+            if (u.discoverable) parents.push({ uid: uidChunk, displayName: u.displayName || null });
+          }
+          if (parents.length >= max) break;
+        } catch {}
+      }
+      return { ok:true, parents };
+    } catch (e){
+      console.warn('[listDiscoverableParents] degraded due to error', e?.message || e);
+      // Do not surface internal errors — return empty list so client can show placeholder
+      return { ok:true, parents: [] };
     }
-    return { ok: true, parents: results };
   });
 
   // Send a parent-to-parent connect request
@@ -1488,16 +1559,91 @@ async function computeClaims(uid, email) {
   exports.listDiscoverableParentsHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {
     if (req.method !== 'GET') { res.status(405).json({ ok:false, error:'method-not-allowed' }); return; }
     const decoded = await requireUserFromRequest(req, res); if (!decoded) return;
-    const uid = decoded.uid;
+    const selfUid = decoded.uid;
     const orgId = String(req.query.orgId||''); const schoolId = String(req.query.schoolId||'');
     const limit = Math.max(1, Math.min(100, Number(req.query.limit)||50));
     if (!orgId || !schoolId) { res.status(400).json({ ok:false, error:'invalid-argument' }); return; }
-    const ok = await canSeeParentsForSchool(decoded, orgId, schoolId, uid);
-    if (!ok){ res.status(403).json({ ok:false, error:'permission-denied' }); return; }
-    const q = await db.collectionGroup('guardianLinks').where('orgId','==',orgId).where('schoolId','==',schoolId).limit(limit).get();
-    const seen = new Set(); const parents = [];
-    for (const doc of q.docs){ try { const pUid = doc.ref.parent.parent.id; if (!pUid || seen.has(pUid) || pUid === uid) continue; seen.add(pUid); const s = await db.doc(`users/${pUid}`).get(); const u = s.exists ? (s.data()||{}) : {}; if (u.discoverable) parents.push({ uid:pUid, displayName: u.displayName || null }); if (parents.length >= limit) break; } catch {} }
-    res.json({ ok:true, parents });
+    try {
+      const ok = await canSeeParentsForSchool(decoded, orgId, schoolId, selfUid);
+      if (!ok){ res.status(403).json({ ok:false, error:'permission-denied' }); return; }
+
+      // Gather exclusion set
+      const [incomingSnap, outgoingSnap, connSnap] = await Promise.all([
+        db.collection(`users/${selfUid}/parentConnectIncoming`).where('orgId','==',orgId).where('schoolId','==',schoolId).limit(200).get().catch(()=>({docs:[]})),
+        db.collection(`users/${selfUid}/parentConnectOutgoing`).where('orgId','==',orgId).where('schoolId','==',schoolId).limit(200).get().catch(()=>({docs:[]})),
+        db.collection(`users/${selfUid}/parentConnections`).where('orgId','==',orgId).where('schoolId','==',schoolId).limit(400).get().catch(()=>({docs:[]})),
+      ]);
+      const exclude = new Set();
+      for (const d of incomingSnap.docs) exclude.add(d.id);
+      for (const d of outgoingSnap.docs) exclude.add(d.id);
+      for (const d of connSnap.docs) exclude.add(d.id);
+
+      const candidateUids = new Set();
+      const glSnap = await db.collectionGroup('guardianLinks').where('orgId','==',orgId).limit(limit*10).get().catch(()=>null);
+      if (glSnap){
+        for (const doc of glSnap.docs){
+          try {
+            const data = doc.data() || {};
+            if (String(data.schoolId||'') !== schoolId) continue;
+            const pUid = doc.ref.parent.parent.id;
+            if (!pUid || pUid === selfUid) continue;
+            candidateUids.add(pUid);
+          } catch {}
+        }
+      }
+      if (candidateUids.size < limit){
+        const gSnap = await db.collectionGroup('guardians').where('orgId','==',orgId).limit(800).get().catch(()=>null);
+        if (gSnap){
+          for (const d of gSnap.docs){
+            try {
+              const g = d.data() || {};
+              if (String(g.schoolId||'') !== schoolId) continue;
+              const pUid = String(g.uid||'');
+              if (!pUid || pUid === selfUid) continue;
+              candidateUids.add(pUid);
+              const seg = d.ref.parent.parent.path.split('/');
+              const studentId = seg[5];
+              if (studentId){
+                const revKey = `${orgId}__${schoolId}__${studentId}`;
+                db.doc(`users/${pUid}/guardianLinks/${revKey}`).set({ orgId, schoolId, studentId, linkedAt: ts() }, { merge: true }).catch(()=>{});
+              }
+            } catch {}
+          }
+        }
+      }
+      if (candidateUids.size < limit){
+        const agSnap = await db.collectionGroup('accessGrants').where('status','==','active').limit(500).get().catch(()=>null);
+        if (agSnap){
+          for (const d of agSnap.docs){
+            try {
+              const seg = d.ref.path.split('/');
+              if (seg.length < 6) continue;
+              const oId = seg[1]; const sId = seg[3];
+              if (oId !== orgId || sId !== schoolId) continue;
+              const g = d.data() || {};
+              if (g.grantorUid && g.grantorUid !== selfUid) candidateUids.add(g.grantorUid);
+              if (g.granteeUid && g.granteeUid !== selfUid) candidateUids.add(g.granteeUid);
+            } catch {}
+          }
+        }
+      }
+      const filtered = Array.from(candidateUids).filter(u => !exclude.has(u));
+      const parents = [];
+      for (const u of filtered.slice(0, limit+5)){
+        try {
+          const snap = await db.doc(`users/${u}`).get();
+          if (snap.exists){
+            const data = snap.data() || {};
+            if (data.discoverable) parents.push({ uid: u, displayName: data.displayName || null });
+          }
+          if (parents.length >= limit) break;
+        } catch {}
+      }
+      res.json({ ok:true, parents });
+    } catch (e){
+      console.warn('[listDiscoverableParentsHttp] degraded due to error', e?.message || e);
+      res.json({ ok:true, parents: [] });
+    }
   }));
 
   exports.sendParentConnectRequestHttp = onRequest({ region: 'us-central1', invoker: 'public', minInstances: 0 }, allowCors(async (req, res) => {

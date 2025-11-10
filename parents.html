@@ -166,7 +166,7 @@
               </label>
             </div>
             <div id="discoverList" class="list" style="max-height:280px; overflow:auto;"></div>
-            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet.</div>
+            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet. You may already be connected or have pending requests with everyone at this school.</div>
           </div>
 
           <!-- Requests card -->
@@ -706,16 +706,7 @@
           try {
             if (!call) throw new Error('no-callable');
             const resp = await call({ orgId, schoolId, limit: 50 });
-            let list = (resp?.data?.parents)||[];
-            // If nothing returned yet, show self as a placeholder so the UI doesn't look empty
-            if (!Array.isArray(list) || list.length === 0){
-              try {
-                const u = window.firebase?.auth()?.currentUser; if (u) {
-                  const nm = (profName?.value||'').trim() || u.displayName || 'You';
-                  list = [{ uid: u.uid, displayName: nm }];
-                }
-              } catch {}
-            }
+            const list = (resp?.data?.parents)||[];
             const cu = window.firebase?.auth()?.currentUser?.uid || null;
             renderDiscoverable(list, cu);
           } catch(e1){
@@ -726,10 +717,7 @@
               const token = await user.getIdToken();
               const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
               const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-              const d = await res.json(); let list = (d?.parents)||[];
-              if (!Array.isArray(list) || list.length === 0){
-                try { const nm = (profName?.value||'').trim() || user.displayName || 'You'; list = [{ uid: user.uid, displayName: nm }]; } catch {}
-              }
+              const d = await res.json(); const list = (d?.parents)||[];
               renderDiscoverable(list, user?.uid || null);
             } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
           }
