@@ -653,20 +653,24 @@
       }
       profSave?.addEventListener('click', saveProfile);
 
-      function renderDiscoverable(list){
+      function renderDiscoverable(list, currentUid){
         discoverList.innerHTML = '';
         if (!Array.isArray(list) || list.length === 0){ discoverList.style.display='none'; discoverEmpty.style.display=''; return; }
         discoverEmpty.style.display='none'; discoverList.style.display='grid';
         list.forEach(p => {
           const row = document.createElement('div'); row.className='row';
           row.innerHTML = `
-            <div><div class="who">${(p.displayName||'Parent')}</div><div class="meta">${p.uid}</div></div>
-            <div style="display:flex; gap:8px;"><button class="btn" type="button" data-uid="${p.uid}">Connect</button></div>
+            <div><div class="who">${(p.displayName||'Parent')}${p.uid && currentUid && p.uid===currentUid ? ' · You' : ''}</div><div class="meta">${p.uid||''}</div></div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid===currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
+            </div>
           `;
           discoverList.appendChild(row);
         });
         discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
           const toUid = e.currentTarget.getAttribute('data-uid');
+          // Prevent attempting to connect to self
+          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
           try {
             const call = callable('sendParentConnectRequest'); if (!call) return alert('Backend unavailable');
             const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
@@ -698,8 +702,18 @@
           try {
             if (!call) throw new Error('no-callable');
             const resp = await call({ orgId, schoolId, limit: 50 });
-            const list = (resp?.data?.parents)||[];
-            renderDiscoverable(list);
+            let list = (resp?.data?.parents)||[];
+            // If nothing returned yet, show self as a placeholder so the UI doesn't look empty
+            if (!Array.isArray(list) || list.length === 0){
+              try {
+                const u = window.firebase?.auth()?.currentUser; if (u) {
+                  const nm = (profName?.value||'').trim() || u.displayName || 'You';
+                  list = [{ uid: u.uid, displayName: nm }];
+                }
+              } catch {}
+            }
+            const cu = window.firebase?.auth()?.currentUser?.uid || null;
+            renderDiscoverable(list, cu);
           } catch(e1){
             console.warn('listDiscoverableParents callable failed', e1);
             // HTTP shim fallback
@@ -708,8 +722,11 @@
               const token = await user.getIdToken();
               const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
               const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-              const d = await res.json(); const list = (d?.parents)||[];
-              renderDiscoverable(list);
+              const d = await res.json(); let list = (d?.parents)||[];
+              if (!Array.isArray(list) || list.length === 0){
+                try { const nm = (profName?.value||'').trim() || user.displayName || 'You'; list = [{ uid: user.uid, displayName: nm }]; } catch {}
+              }
+              renderDiscoverable(list, user?.uid || null);
             } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
           }
         } catch(e){ console.warn('loadDiscoverable failed', e); }
