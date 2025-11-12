@@ -1703,3 +1703,85 @@ async function computeClaims(uid, email) {
     const mapDoc = (d) => ({ id: d.id, ...(d.data() || {}) });
     res.json({ ok:true, incoming: incoming.docs.map(mapDoc), outgoing: outgoing.docs.map(mapDoc), connections: links.docs.map(mapDoc) });
   }));
+
+  // ───────────────── Maintenance / One-time Backfill Utilities ─────────────────
+  // backfillGuardianIndexes: Owner-only callable to (a) ensure guardians docs have orgId/schoolId
+  // fields and (b) create missing reverse index docs at users/{uid}/guardianLinks/{orgId__schoolId__studentId}.
+  // This is idempotent and processes up to `limit` guardians per invocation (default 300) to avoid timeouts.
+  // Remove or disable after successful backfill.
+  exports.backfillGuardianIndexes = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const { orgId = null, schoolId = null, limit = 300, dryRun = false } = req.data || {};
+    const isScoped = !!orgId && !!schoolId;
+    const isOwner = !!req.auth.token?.owner;
+    if (!isOwner) {
+      if (!isScoped) throw new HttpsError('permission-denied', 'Owner only (global). Provide orgId and schoolId to run as admin/superintendent.');
+      const allowed = await canManageSchool(req.auth.token || {}, String(orgId), String(schoolId), req.auth.uid);
+      if (!allowed) throw new HttpsError('permission-denied', 'Requires Owner or Admin/Superintendent of that school.');
+    }
+    const max = Math.max(1, Math.min(1000, Number(limit) || 300));
+    const results = { scanned: 0, updatedGuardianDocs: 0, createdReverseLinks: 0, skippedExisting: 0 };
+
+    // Strategy:
+    // 1. Query collectionGroup('guardians') optionally narrowed by orgId/schoolId if provided (so we can run in chunks).
+    // 2. For each doc, parse path: orgs/{orgId}/schools/{schoolId}/students/{studentId}/guardians/{uid}
+    // 3. If guardian doc missing orgId/schoolId, patch them.
+    // 4. Ensure reverse link doc exists.
+    // NOTE: We limit to `max` docs per call to keep execution < 1 min.
+
+    // Build base query; we can't add both orgId & schoolId filters safely if older docs lack those fields, so we filter in memory.
+    let q = db.collectionGroup('guardians');
+    if (orgId) q = q.where('orgId', '==', String(orgId));
+    // schoolId filter only if provided AND orgId provided (to avoid requiring composite index for partial data); else in-memory filter
+    if (orgId && schoolId) q = q.where('schoolId', '==', String(schoolId));
+
+    let snap;
+    try { snap = await q.limit(max).get(); }
+    catch (e){ throw new HttpsError('internal', 'Query failed (indexes missing?) ' + (e.message || e)); }
+
+    const batch = db.batch();
+    for (const d of (snap?.docs || [])) {
+      if (results.scanned >= max) break; // safeguard
+      results.scanned++;
+      const ref = d.ref;
+      const seg = ref.parent.parent.path.split('/'); // .../students/{studentId}
+      if (seg.length < 6) { continue; }
+      const parsedOrgId = seg[1];
+      const parsedSchoolId = seg[3];
+      const studentId = seg[5];
+      const uid = ref.id;
+      if (orgId && parsedOrgId !== orgId) continue; // extra safety
+      if (schoolId && parsedSchoolId !== schoolId) continue;
+
+      const data = d.data() || {};
+      let needsUpdate = (!data.orgId || data.orgId !== parsedOrgId) || (!data.schoolId || data.schoolId !== parsedSchoolId);
+      if (needsUpdate && dryRun) {
+        results.updatedGuardianDocs++; // count as potential updates
+      } else if (needsUpdate && !dryRun) {
+        batch.set(ref, { orgId: parsedOrgId, schoolId: parsedSchoolId, updatedAt: ts() }, { merge: true });
+        results.updatedGuardianDocs++;
+      }
+
+      // Reverse link key
+      const revKey = `${parsedOrgId}__${parsedSchoolId}__${studentId}`;
+      const revRef = db.doc(`users/${uid}/guardianLinks/${revKey}`);
+      // We'll read minimal: assume missing if we can't get quickly; reading individually is fine (small N)
+      let exists = false;
+      try { const rSnap = await revRef.get(); exists = rSnap.exists; } catch {}
+      if (!exists) {
+        if (dryRun) {
+          results.createdReverseLinks++;
+        } else {
+          batch.set(revRef, { orgId: parsedOrgId, schoolId: parsedSchoolId, studentId, linkedAt: ts() }, { merge: true });
+          results.createdReverseLinks++;
+        }
+      } else {
+        results.skippedExisting++;
+      }
+    }
+
+    if (!dryRun) {
+      try { await batch.commit(); } catch (e){ throw new HttpsError('internal', 'Batch commit failed: ' + (e.message || e)); }
+    }
+    return { ok: true, dryRun: !!dryRun, ...results };
+  });

@@ -677,7 +677,8 @@
           try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
           try {
             const call = callable('sendParentConnectRequest'); if (!call) return alert('Backend unavailable');
-            const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+            let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+            if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
             if (!orgId || !schoolId) return alert('Select a school first');
             try {
               await call({ toUid, orgId, schoolId });
