@@ -672,29 +672,56 @@
           discoverList.appendChild(row);
         });
         discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
-          const toUid = e.currentTarget.getAttribute('data-uid');
+          const el = e.currentTarget;
+          const toUid = el.getAttribute('data-uid');
           // Prevent attempting to connect to self
           try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
+          // Resolve org/school (dropdown overrides SD)
+          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+          if (!orgId || !schoolId){ try { el.title = 'Select a school first'; } catch {}; return; }
+
+          const prevText = el.textContent; el.textContent = 'Requesting…'; el.disabled = true;
+          let success = false; let lastErr = null;
           try {
-            const call = callable('sendParentConnectRequest'); if (!call) return alert('Backend unavailable');
-            let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-            if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-            if (!orgId || !schoolId) return alert('Select a school first');
+            const call = callable('sendParentConnectRequest');
+            if (!call) throw new Error('Backend unavailable');
             try {
-              await call({ toUid, orgId, schoolId });
-            } catch(_){
+              const resp = await call({ toUid, orgId, schoolId });
+              success = resp?.data?.ok !== false; // treat absence of ok as success
+            } catch (e1){
               // HTTP fallback
-              const user = window.firebase?.auth()?.currentUser; if (user){
+              try {
+                const user = window.firebase?.auth()?.currentUser; if (!user) throw e1;
                 const token = await user.getIdToken();
-                await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
+                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
                   method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
                   body: JSON.stringify({ toUid, orgId, schoolId })
                 });
-              } else { throw _; }
+                if (res.ok){
+                  const j = await res.json().catch(()=>({}));
+                  success = j?.ok !== false;
+                } else {
+                  lastErr = new Error('HTTP '+res.status);
+                  throw lastErr;
+                }
+              } catch(e2){ lastErr = e2; throw e2; }
             }
-            e.currentTarget.textContent = 'Requested'; e.currentTarget.disabled = true;
-            await loadConnections();
-          } catch (err) { alert('Could not send request'); }
+          } catch (err) {
+            lastErr = err;
+          } finally {
+            try { await loadConnections(); } catch {}
+            try { await loadDiscoverable(); } catch {}
+          }
+          if (success){
+            el.textContent = 'Requested'; el.disabled = true; el.classList.add('is-requested');
+            try { el.title = 'Request sent'; } catch {}
+          } else {
+            // Revert and show subtle hint instead of blocking alert
+            el.disabled = false; el.textContent = prevText;
+            try { el.title = String(lastErr?.message || 'Could not send request'); } catch {}
+            console.warn('sendParentConnectRequest failed', lastErr);
+          }
         }));
       }
 
@@ -728,27 +755,33 @@
 
       async function addByEmail(){
         const email = (discEmail?.value||'').trim(); if (!email) return;
+        let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+        if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+        if (!orgId || !schoolId){ try { discEmailBtn.title = 'Select a school first'; } catch {}; return; }
+        const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
+        let ok = false; let lastErr = null;
         try{
           const call = callable('sendParentConnectRequestByEmail');
-          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId) return alert('Select a school first');
+          if (!call) throw new Error('Backend unavailable');
           try {
-            if (!call) throw new Error('no-callable');
-            await call({ email, orgId, schoolId });
+            await call({ email, orgId, schoolId }); ok = true;
           } catch(_){
-            const user = window.firebase?.auth()?.currentUser; if (user){
-              const token = await user.getIdToken();
-              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
-                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-                body: JSON.stringify({ email, orgId, schoolId })
-              });
-            } else { throw _; }
+            const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
+            const token = await user.getIdToken();
+            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
+              method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+              body: JSON.stringify({ email, orgId, schoolId })
+            });
+            if (res.ok) ok = true; else { lastErr = new Error('HTTP '+res.status); throw lastErr; }
           }
-          discEmail.value='';
-          await loadConnections();
-          alert('Request sent');
-        } catch (e){ alert((e?.message)||'Could not send request'); }
+        } catch (e){ lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
+        try { await loadConnections(); } catch {}
+        if (ok){
+          if (discEmail) discEmail.value='';
+          if (discEmailBtn){ discEmailBtn.textContent = 'Sent'; setTimeout(()=>{ try{ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; } catch{} }, 1000); }
+        } else {
+          if (discEmailBtn){ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch {} }
+        }
       }
       discEmailBtn?.addEventListener('click', addByEmail);
 
@@ -782,7 +815,8 @@
           else {
             reqIncoming.style.display='grid'; reqIncomingEmpty.style.display='none';
             inc.forEach(item => {
-              const row = renderReqRow(reqIncoming, item.fromUid, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
+              const who = item.displayName || item.fromUid || 'Parent';
+              const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
               row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
                 const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
                 try {
@@ -810,7 +844,7 @@
           if (!out.length){ reqOutgoing.style.display='none'; reqOutgoingEmpty.style.display=''; }
           else {
             reqOutgoing.style.display='grid'; reqOutgoingEmpty.style.display='none';
-            out.forEach(item => { renderReqRow(reqOutgoing, item.toUid, `${item.status||'pending'}`); });
+            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status||'pending'}`); });
           }
           // Connections
           connList.innerHTML = '';
@@ -818,7 +852,7 @@
           if (!cons.length){ connList.style.display='none'; connEmpty.style.display=''; }
           else {
             connList.style.display='grid'; connEmpty.style.display='none';
-            cons.forEach(c => { renderReqRow(connList, c.id || c.uid || 'Parent', `${c.orgId||''} · ${c.schoolId||''}`); });
+            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId||''} · ${c.schoolId||''}`); });
           }
         } catch(e){ console.warn('loadConnections failed', e); }
       }
