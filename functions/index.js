@@ -1081,7 +1081,7 @@ async function computeClaims(uid, email) {
 
   // Create an access grant (guardian -> trusted adult) for selected students
   // Input: { orgId, schoolId, studentIds: string[], granteeUid?: string, granteeEmail?: string, granteeName?: string, windowType?: 'always'|'today' }
-  exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
     assertAuthed(req);
     const grantorUid = req.auth.uid;
     const grantorEmailLower = norm(req.auth.token?.email || '');
@@ -1129,7 +1129,7 @@ async function computeClaims(uid, email) {
   });
 
   // List my granted access (as grantor)
-  exports.listMyGrantedAccess = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.listMyGrantedAccess = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
     assertAuthed(req);
     const uid = req.auth.uid;
     const rows = [];
@@ -1170,7 +1170,7 @@ async function computeClaims(uid, email) {
 
   // Revoke an access grant (grantor only)
   // Input: { path } where path is orgs/{orgId}/schools/{schoolId}/accessGrants/{id}
-  exports.revokeAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
+  exports.revokeAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
     assertAuthed(req);
     const uid = req.auth.uid;
     const { path } = req.data || {};

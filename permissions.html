@@ -133,15 +133,19 @@
         }));
       } catch(e){ console.warn('loadGrants failed', e); }
     }
+    let __connSeq = 0;
     async function loadConnections(){
+      const mySeq = ++__connSeq;
       const connList = document.getElementById('connList');
       const connEmpty = document.getElementById('connEmpty');
       const pick = document.getElementById('connPick');
-      connList.innerHTML = ''; if (pick) pick.innerHTML = '<option value="">— Select a connection —</option>';
+      // We won't clear immediately to avoid race-induced double renders; clear when this seq wins
       try{
         const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyParentConnections') : null;
         if (!call) return;
         const resp = await call({});
+        if (mySeq !== __connSeq) return; // a newer call finished; drop these results
+        connList.innerHTML = ''; if (pick) pick.innerHTML = '<option value="">— Select a connection —</option>';
         const cons = Array.isArray(resp?.data?.connections) ? resp.data.connections : [];
         // Deduplicate by uid
         const seen = new Set(); const uniq = [];
