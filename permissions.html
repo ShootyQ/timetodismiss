@@ -34,26 +34,28 @@
       <h1 style="margin:0 0 4px;">Pickup permissions</h1>
       <p class="muted" id="intro">Grant permanent or today-only pickup access for trusted adults.</p>
     </header>
-
     <section class="section">
       <div class="card">
         <h3 style="margin:0 0 8px;">Add a trusted adult</h3>
-        <div class="grid">
+        <div class="grid" id="grantGrid">
           <div>
-            <label>Pick from your connections (optional)
+            <label>Pick from your connections
               <select id="connPick">
                 <option value="">— Select a connection —</option>
               </select>
             </label>
-            <p class="muted" style="margin:6px 0 0;">Use this to quickly select who you want to grant pickup permission to, then enter their email.</p>
+            <p class="muted" style="margin:6px 0 0;">When you pick a connection, we’ll grant directly — no email needed.</p>
           </div>
-          <div class="row">
+          <div class="row" id="manualRow" style="display:none;">
             <label>Adult email
               <input id="email" type="email" placeholder="adult@example.com" />
             </label>
             <label>Display name (optional)
               <input id="name" placeholder="e.g., Pat Taylor" />
             </label>
+          </div>
+          <div class="muted" id="manualHint" style="display:block;">
+            Can’t find them in your connections? <a href="#" id="toggleManual">Enter an email instead</a>.
           </div>
           <div class="row">
             <label>Applies to students
@@ -96,13 +98,16 @@
   </main>
 
   <script>
+    let __selectedConnUid = '';
     async function loadLinkedStudents(){
       try {
         const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyLinkedStudents') : null;
         if (!call) return [];
         const resp = await call({});
         const arr = (resp?.data?.students)||[];
-        return arr.map(s => ({ id: s.studentId, name: s.name || s.studentId, orgId: s.orgId, schoolId: s.schoolId }));
+        const seen = new Set(); const out = [];
+        for (const s of arr){ const id = s.studentId; if (!id || seen.has(id)) continue; seen.add(id); out.push({ id, name: s.name || id, orgId: s.orgId, schoolId: s.schoolId }); }
+        return out;
       } catch(e){ console.warn('loadLinkedStudents failed', e); return []; }
     }
     async function loadGrants(){
@@ -138,22 +143,27 @@
         if (!call) return;
         const resp = await call({});
         const cons = Array.isArray(resp?.data?.connections) ? resp.data.connections : [];
-        if (!cons.length){ connEmpty.style.display=''; return; }
+        // Deduplicate by uid
+        const seen = new Set(); const uniq = [];
+        for (const c of cons){ const id = String(c.id || c.uid || '').trim(); if (!id || seen.has(id)) continue; seen.add(id); uniq.push(c); }
+        if (!uniq.length){ connEmpty.style.display=''; return; }
         connEmpty.style.display='none';
-        cons.forEach(c => {
+        uniq.sort((a,b)=>String(a.displayName||a.id||'').localeCompare(String(b.displayName||b.id||''), 'en', {sensitivity:'base'}));
+        uniq.forEach(c => {
           const who = c.displayName || c.id || c.uid || 'Parent';
+          const uid = c.id || c.uid || '';
           const row = document.createElement('div'); row.className='item';
-          row.innerHTML = `<div style="font-weight:800;">${who}</div><div><button class='btn btn-outline' data-prefill='${who}'>Grant pickup for my kids</button></div>`;
+          row.innerHTML = `<div style="font-weight:800;">${who}</div><div><button class='btn btn-outline' data-uid='${uid}' data-prefill='${who}'>Grant pickup for my kids</button></div>`;
           connList.appendChild(row);
-          if (pick){ const opt = document.createElement('option'); opt.value = who; opt.textContent = who; pick.appendChild(opt); }
+          if (pick){ const opt = document.createElement('option'); opt.value = uid; opt.textContent = who; pick.appendChild(opt); }
         });
-        // Prefill helper just focuses the form; email remains required
         connList.querySelectorAll('button[data-prefill]')?.forEach(btn => btn.addEventListener('click', ()=>{
-          try { document.getElementById('email').focus(); } catch {}
+          __selectedConnUid = btn.getAttribute('data-uid') || '';
           try { document.getElementById('name').value = btn.getAttribute('data-prefill') || ''; } catch {}
+          try { document.getElementById('manualRow').style.display = 'none'; document.getElementById('manualHint').style.display='block'; } catch {}
           window.scrollTo({ top: document.querySelector('.wrap').offsetTop + 120, behavior: 'smooth' });
         }));
-        if (pick){ pick.addEventListener('change', ()=>{ const nm = pick.value || ''; try { document.getElementById('name').value = nm; document.getElementById('email').focus(); } catch {} }); }
+  if (pick){ pick.addEventListener('change', ()=>{ __selectedConnUid = pick.value || ''; try { const optText = pick.selectedOptions && pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : ''; if (__selectedConnUid) { document.getElementById('name').value = optText || ''; document.getElementById('manualRow').style.display = 'none'; document.getElementById('manualHint').style.display='block'; } } catch {} }); }
       } catch(e){ console.warn('loadConnections failed', e); }
     }
     async function addGrant(){
@@ -163,7 +173,8 @@
       const select = document.getElementById('students');
       const status = document.getElementById('status');
       const selected = Array.from(select.selectedOptions).map(o => o.value);
-      if (!email){ status.textContent = 'Enter an email'; setTimeout(()=>status.textContent='', 1600); return; }
+      const usingConn = !!__selectedConnUid;
+      if (!usingConn && !email){ status.textContent = 'Pick a connection or enter an email'; setTimeout(()=>status.textContent='', 1800); return; }
       if (!selected.length){ status.textContent = 'Choose at least one student'; setTimeout(()=>status.textContent='', 1600); return; }
       try{
         const addBtn = document.getElementById('addBtn');
@@ -171,10 +182,12 @@
         const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
         const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
         if (!call) throw new Error('Backend unavailable');
-        const resp = await call({ orgId, schoolId, studentIds: selected, granteeEmail: email, granteeName: name, windowType });
+        const payload = usingConn ? { orgId, schoolId, studentIds: selected, granteeUid: __selectedConnUid, granteeName: name, windowType }
+                                  : { orgId, schoolId, studentIds: selected, granteeEmail: email, granteeName: name, windowType };
+        const resp = await call(payload);
         if (!resp?.data?.ok) throw new Error('Failed');
         status.textContent='Added'; setTimeout(()=>status.textContent='', 1200);
-        document.getElementById('email').value=''; document.getElementById('name').value='';
+        document.getElementById('email').value=''; document.getElementById('name').value=''; __selectedConnUid=''; const pick = document.getElementById('connPick'); if (pick) pick.value='';
         await loadGrants();
         await loadConnections();
       } catch(e){ status.textContent = 'Error: ' + (e.message||''); setTimeout(()=>status.textContent='', 3200); }
@@ -192,6 +205,7 @@
 
     document.addEventListener('DOMContentLoaded', ()=>{
       document.getElementById('addBtn').addEventListener('click', addGrant);
+      document.getElementById('toggleManual').addEventListener('click', (e)=>{ e.preventDefault(); const row = document.getElementById('manualRow'); const hint = document.getElementById('manualHint'); const showing = row.style.display !== 'none'; row.style.display = showing ? 'none' : ''; hint.style.display = showing ? 'block' : 'none'; __selectedConnUid=''; });
     });
   </script>
 </body>

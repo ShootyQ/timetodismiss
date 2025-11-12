@@ -1080,19 +1080,21 @@ async function computeClaims(uid, email) {
   }
 
   // Create an access grant (guardian -> trusted adult) for selected students
-  // Input: { orgId, schoolId, studentIds: string[], granteeEmail: string, granteeName?: string, windowType?: 'always'|'today' }
+  // Input: { orgId, schoolId, studentIds: string[], granteeUid?: string, granteeEmail?: string, granteeName?: string, windowType?: 'always'|'today' }
   exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public' }, async (req) => {
     assertAuthed(req);
     const grantorUid = req.auth.uid;
     const grantorEmailLower = norm(req.auth.token?.email || '');
-    const { orgId, schoolId, studentIds, granteeEmail, granteeName = '', windowType = 'always' } = req.data || {};
+    const { orgId, schoolId, studentIds, granteeEmail, granteeUid: rawUid, granteeName = '', windowType = 'always' } = req.data || {};
     if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
     const list = Array.isArray(studentIds) ? studentIds.map(s=>String(s||'').trim()).filter(Boolean) : [];
     if (!list.length) throw new HttpsError('invalid-argument', 'At least one student required.');
+    const grUid = String(rawUid || '').trim();
     const grEmail = String(granteeEmail || '').trim();
-    if (!grEmail) throw new HttpsError('invalid-argument', 'granteeEmail required.');
-    const grLower = norm(grEmail);
-    if (grLower === grantorEmailLower) throw new HttpsError('failed-precondition', 'Cannot grant to your own email.');
+    let grLower = norm(grEmail);
+    if (!grUid && !grLower) throw new HttpsError('invalid-argument', 'Provide granteeUid or granteeEmail.');
+    if (grUid && grUid === grantorUid) throw new HttpsError('failed-precondition', 'Cannot grant to yourself.');
+    if (!grUid && grLower === grantorEmailLower) throw new HttpsError('failed-precondition', 'Cannot grant to your own email.');
 
     // Verify grantor is guardian for each student
     for (const sid of list){
@@ -1100,15 +1102,20 @@ async function computeClaims(uid, email) {
       if (!ok) throw new HttpsError('permission-denied', `Not a guardian for student ${sid}.`);
     }
 
-    // Attempt to resolve grantee uid
+    // Resolve target
     let granteeUid = null;
-    try { const u = await auth.getUserByEmail(grEmail); granteeUid = u?.uid || null; } catch {}
+    if (grUid) {
+      // Prefer provided uid
+      try { const u = await auth.getUser(grUid); granteeUid = u?.uid || grUid; if (!grLower) grLower = norm(u?.email || ''); } catch { granteeUid = grUid; }
+    } else if (grLower) {
+      try { const u = await auth.getUserByEmail(grLower); granteeUid = u?.uid || null; } catch {}
+    }
 
     const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('accessGrants').doc();
     const payload = {
       grantorUid,
       grantorEmailLower,
-      granteeEmailLower: grLower,
+      granteeEmailLower: grLower || null,
       granteeName: String(granteeName || ''),
       granteeUid: granteeUid || null,
       studentIds: Array.from(new Set(list)).slice(0, 20),
