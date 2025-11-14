@@ -170,6 +170,16 @@
   if (pick){ pick.addEventListener('change', ()=>{ __selectedConnUid = pick.value || ''; try { const optText = pick.selectedOptions && pick.selectedOptions[0] ? pick.selectedOptions[0].textContent : ''; if (__selectedConnUid) { document.getElementById('name').value = optText || ''; document.getElementById('manualRow').style.display = 'none'; document.getElementById('manualHint').style.display='block'; } } catch {} }); }
       } catch(e){ console.warn('loadConnections failed', e); }
     }
+    function updateAddDisabled(){
+      try {
+        const addBtn = document.getElementById('addBtn');
+        const email = document.getElementById('email').value.trim();
+        const sel = document.getElementById('students');
+        const hasStudents = Array.from(sel.selectedOptions).length > 0;
+        const hasTarget = !!__selectedConnUid || !!email;
+        addBtn.disabled = !(hasTarget && hasStudents);
+      } catch {}
+    }
     async function addGrant(){
       const email = document.getElementById('email').value.trim();
       const name  = document.getElementById('name').value.trim();
@@ -183,7 +193,14 @@
       try{
         const addBtn = document.getElementById('addBtn');
         status.textContent='Adding…'; if (addBtn) { addBtn.disabled = true; addBtn.textContent = 'Adding…'; }
-        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        // Prefer header context; if missing, derive from first selected student's data attributes
+        let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+        if ((!orgId || !schoolId) && select.selectedOptions && select.selectedOptions[0]){
+          const o = select.selectedOptions[0];
+          orgId = orgId || o.getAttribute('data-org-id') || o.dataset.orgId || '';
+          schoolId = schoolId || o.getAttribute('data-school-id') || o.dataset.schoolId || '';
+        }
+        if (!orgId || !schoolId){ status.textContent = 'Error: orgId and schoolId required.'; setTimeout(()=>status.textContent='', 2600); throw new Error('missing-context'); }
         const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
         if (!call) throw new Error('Backend unavailable');
         const payload = usingConn ? { orgId, schoolId, studentIds: selected, granteeUid: __selectedConnUid, granteeName: name, windowType }
@@ -202,14 +219,20 @@
       // Populate students
       const sel = document.getElementById('students');
       sel.innerHTML = '';
-      (await loadLinkedStudents()).forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; sel.appendChild(o); });
+      (await loadLinkedStudents()).forEach(s => { const o = document.createElement('option'); o.value = s.id; o.textContent = s.name; if (s.orgId) o.dataset.orgId = s.orgId; if (s.schoolId) o.dataset.schoolId = s.schoolId; sel.appendChild(o); });
+      updateAddDisabled();
       await loadGrants();
       await loadConnections();
     });
 
     document.addEventListener('DOMContentLoaded', ()=>{
       document.getElementById('addBtn').addEventListener('click', addGrant);
-      document.getElementById('toggleManual').addEventListener('click', (e)=>{ e.preventDefault(); const row = document.getElementById('manualRow'); const hint = document.getElementById('manualHint'); const showing = row.style.display !== 'none'; row.style.display = showing ? 'none' : ''; hint.style.display = showing ? 'block' : 'none'; __selectedConnUid=''; });
+      document.getElementById('toggleManual').addEventListener('click', (e)=>{ e.preventDefault(); const row = document.getElementById('manualRow'); const hint = document.getElementById('manualHint'); const showing = row.style.display !== 'none'; row.style.display = showing ? 'none' : ''; hint.style.display = showing ? 'block' : 'none'; __selectedConnUid=''; updateAddDisabled(); });
+      // Live validation wiring
+      try { document.getElementById('students').addEventListener('change', updateAddDisabled); } catch {}
+      try { document.getElementById('email').addEventListener('input', updateAddDisabled); } catch {}
+      try { document.getElementById('connPick').addEventListener('change', ()=>{ updateAddDisabled(); }); } catch {}
+      updateAddDisabled();
     });
   </script>
 </body>
