@@ -1080,13 +1080,12 @@ async function computeClaims(uid, email) {
   }
 
   // Create an access grant (guardian -> trusted adult) for selected students
-  // Input: { orgId, schoolId, studentIds: string[], granteeUid?: string, granteeEmail?: string, granteeName?: string, windowType?: 'always'|'today' }
+  // Input: { orgId?, schoolId?, studentIds: string[], granteeUid?: string, granteeEmail?: string, granteeName?: string, windowType?: 'always'|'today' }
   exports.createAccessGrant = onCall({ region: 'us-central1', minInstances: 0, invoker: 'public', cors: true }, async (req) => {
     assertAuthed(req);
     const grantorUid = req.auth.uid;
     const grantorEmailLower = norm(req.auth.token?.email || '');
     const { orgId, schoolId, studentIds, granteeEmail, granteeUid: rawUid, granteeName = '', windowType = 'always' } = req.data || {};
-    if (!orgId || !schoolId) throw new HttpsError('invalid-argument', 'orgId and schoolId required.');
     const list = Array.isArray(studentIds) ? studentIds.map(s=>String(s||'').trim()).filter(Boolean) : [];
     if (!list.length) throw new HttpsError('invalid-argument', 'At least one student required.');
     const grUid = String(rawUid || '').trim();
@@ -1096,11 +1095,62 @@ async function computeClaims(uid, email) {
     if (grUid && grUid === grantorUid) throw new HttpsError('failed-precondition', 'Cannot grant to yourself.');
     if (!grUid && grLower === grantorEmailLower) throw new HttpsError('failed-precondition', 'Cannot grant to your own email.');
 
-    // Verify grantor is guardian for each student
+    // Determine org/school context. If not provided or doesn't match, resolve from reverse index.
+    // Accumulate candidate pairs for each student; ensure they all match one school.
+    const pairs = [];
     for (const sid of list){
-      const ok = await isGuardianForStudent(grantorUid, orgId, schoolId, sid);
+      let o = String(orgId || '');
+      let s = String(schoolId || '');
+      let ok = false;
+      if (o && s) {
+        ok = await isGuardianForStudent(grantorUid, o, s, sid);
+      }
+      if (!ok) {
+        // Try reverse index under users/{uid}/guardianLinks where studentId == sid
+        try {
+          const q = await db.collection(`users/${grantorUid}/guardianLinks`).where('studentId','==', sid).limit(5).get();
+          if (!q.empty) {
+            // Prefer a deterministic first doc
+            const d = q.docs[0]; const data = d.data() || {};
+            const ro = String(data.orgId || '');
+            const rs = String(data.schoolId || '');
+            if (ro && rs) {
+              o = ro; s = rs; ok = await isGuardianForStudent(grantorUid, o, s, sid);
+            }
+          }
+        } catch {}
+      }
+      if (!ok) {
+        // Fallback: scan guardians by uid and match studentId from path (no extra indexes required)
+        try {
+          const snap = await db.collectionGroup('guardians').where('uid','==', grantorUid).limit(200).get();
+          for (const d of snap.docs){
+            if (ok) break;
+            try {
+              const guardiansColl = d.ref.parent;                 // .../students/{studentId}/guardians
+              const studentRef = guardiansColl.parent;            // .../students/{studentId}
+              const seg = studentRef.path.split('/');
+              if (seg.length < 6) continue;
+              const foundStudentId = seg[5];
+              if (foundStudentId !== sid) continue;
+              const ro = seg[1]; const rs = seg[3];
+              if (ro && rs) {
+                o = ro; s = rs; ok = true; // doc existence already implies guardianship
+              }
+            } catch {}
+          }
+        } catch {}
+      }
       if (!ok) throw new HttpsError('permission-denied', `Not a guardian for student ${sid}.`);
+      if (!o || !s) throw new HttpsError('invalid-argument', 'Could not resolve school context.');
+      pairs.push({ orgId: o, schoolId: s });
     }
+
+    // Ensure all students share the same school context
+    const first = pairs[0];
+    const allSame = pairs.every(p => p.orgId === first.orgId && p.schoolId === first.schoolId);
+    if (!allSame) throw new HttpsError('failed-precondition', 'All selected students must belong to the same school.');
+    const finalOrgId = first.orgId; const finalSchoolId = first.schoolId;
 
     // Resolve target
     let granteeUid = null;
@@ -1111,7 +1161,7 @@ async function computeClaims(uid, email) {
       try { const u = await auth.getUserByEmail(grLower); granteeUid = u?.uid || null; } catch {}
     }
 
-    const ref = db.collection('orgs').doc(orgId).collection('schools').doc(schoolId).collection('accessGrants').doc();
+    const ref = db.collection('orgs').doc(finalOrgId).collection('schools').doc(finalSchoolId).collection('accessGrants').doc();
     const payload = {
       grantorUid,
       grantorEmailLower,

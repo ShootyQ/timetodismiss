@@ -107,6 +107,23 @@
       </div>
     </section>
 
+    <!-- TRUSTED PICKUPS (grantee view) -->
+    <section id="trusted" class="section" aria-labelledby="trusted-h">
+      <div class="ux-wrap">
+        <h2 id="trusted-h" class="animatable">Trusted pickups</h2>
+        <p class="muted animatable" data-delay="1" id="trustedSubtitle">These are students you can pick up because another parent granted you access.</p>
+
+        <div id="trustedEmpty" class="card animatable" style="display:none;">
+          <strong>No pickup permissions yet</strong>
+          <p class="muted" style="margin:6px 0 0;">When another parent grants you pickup access, you'll see their students here.</p>
+        </div>
+
+        <div id="trustedWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
+          <!-- Trusted pickup cards injected by JS -->
+        </div>
+      </div>
+    </section>
+
     <!-- MANAGE PERMISSIONS -->
     <section id="permissions" class="section" aria-labelledby="perm-h">
       <div class="ux-wrap">
@@ -224,6 +241,8 @@
       const out   = document.getElementById('signedOutCallout');
       const none  = document.getElementById('noPasses');
       const wrap  = document.getElementById('passesWrap');
+      const trustedWrap = document.getElementById('trustedWrap');
+      const trustedEmpty = document.getElementById('trustedEmpty');
       const grantsList = document.getElementById('grantsList');
       const grantsEmpty= document.getElementById('grantsEmpty');
 
@@ -488,7 +507,7 @@
         if (!linked.length){
           renderPasses([]);
           // Even if we have no linked students yet, still try to refresh discovery/requests later
-          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); } catch {}
+          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
           return;
         }
         // Build base payload for QR: prefer car tag else student id
@@ -498,8 +517,8 @@
           return { student: s.name, status: 'Linked', window: '', basePayload: base };
         });
         renderPasses(passes);
-        // Now that school context and dropdown are populated, load discovery and connections
-        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); } catch {}
+        // Now that school context and dropdown are populated, load discovery, connections, and trusted pickups
+        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
       }
 
       // Listen for claims from site-header.js
@@ -584,6 +603,65 @@
       }); } catch{} };
       // Load grants after claims
       document.addEventListener('sd:claims-ready', () => { loadGrants(); });
+
+      // Trusted pickups: render grants where I am the grantee
+      function renderTrusted(pickups){
+        trustedWrap.innerHTML = '';
+        if (!Array.isArray(pickups) || !pickups.length){
+          trustedWrap.style.display = 'none';
+          trustedEmpty.style.display = '';
+          return;
+        }
+        trustedEmpty.style.display = 'none';
+        trustedWrap.style.display = 'flex';
+
+        for (const p of pickups){
+          const card = document.createElement('div');
+          card.className = 'pass';
+          const who = p.studentName || p.studentId;
+          const by  = p.grantorName ? `Granted by ${p.grantorName}` : '';
+          const note = p.note ? ` · ${p.note}` : '';
+          card.innerHTML = `
+            <div class="hdr">
+              <div class="std">${formatName(who)}</div>
+              <span class="badge" title="Trusted pickup">Trusted</span>
+            </div>
+            <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload||'')}"></div></div>
+          `;
+          trustedWrap.appendChild(card);
+        }
+
+        trustedWrap.querySelectorAll('.qr-host').forEach(host => {
+          const base = host.getAttribute('data-base') || '';
+          drawQrInto(host, base);
+        });
+      }
+
+      async function loadTrustedPickups(){
+        try {
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
+          if (!call) return;
+          const resp = await call({});
+          const data = (resp && resp.data) || resp || {};
+          const pickups = Array.isArray(data.pickups) ? data.pickups : [];
+          const mapped = pickups.map(p => {
+            const tag = (p.tag||'').toString().trim();
+            const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(p.studentId));
+            return {
+              studentId: p.studentId,
+              studentName: p.studentName,
+              window: p.window,
+              grantorName: p.grantorName,
+              note: p.note,
+              basePayload: base,
+            };
+          });
+          renderTrusted(mapped);
+        } catch (e){
+          console.warn('[parents] loadTrustedPickups failed', e);
+        }
+      }
 
       // ───────── Profile & Connect wiring ─────────
   const profName = document.getElementById('profName');
