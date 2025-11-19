@@ -1668,12 +1668,41 @@ exports.listMyParentConnections = onCall({ region: 'us-central1', minInstances: 
     db.collection(`users/${uid}/parentConnections`).limit(200).get(),
   ]);
 
-  const mapDoc = (d) => ({ id: d.id, ...(d.data() || {}) });
+  // Collect UIDs to resolve names
+  const uids = new Set();
+  incoming.docs.forEach(d => { const x = d.data() || {}; if (x.fromUid) uids.add(x.fromUid); });
+  outgoing.docs.forEach(d => { const x = d.data() || {}; if (x.toUid) uids.add(x.toUid); });
+  links.docs.forEach(d => { uids.add(d.id); });
+
+  const names = new Map();
+  if (uids.size > 0) {
+    // Fetch in batches of 10
+    const all = Array.from(uids);
+    for (let i = 0; i < all.length; i += 10) {
+      const chunk = all.slice(i, i + 10);
+      await Promise.all(chunk.map(async (u) => {
+        try {
+          const s = await db.doc(`users/${u}`).get();
+          if (s.exists) {
+            const d = s.data() || {};
+            if (d.displayName) names.set(u, d.displayName);
+          }
+        } catch { }
+      }));
+    }
+  }
+
+  const mapDoc = (d, field) => {
+    const data = d.data() || {};
+    const otherUid = field ? data[field] : d.id;
+    return { id: d.id, ...data, displayName: names.get(otherUid) || null };
+  };
+
   return {
     ok: true,
-    incoming: incoming.docs.map(mapDoc),
-    outgoing: outgoing.docs.map(mapDoc),
-    connections: links.docs.map(mapDoc),
+    incoming: incoming.docs.map(d => mapDoc(d, 'fromUid')),
+    outgoing: outgoing.docs.map(d => mapDoc(d, 'toUid')),
+    connections: links.docs.map(d => mapDoc(d, null)),
   };
 });
 
