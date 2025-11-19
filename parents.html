@@ -362,497 +362,865 @@
           <strong>No pickup permissions yet</strong>
           <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view
             their passes on pickup days.</p>
-          })();
+        </div>
 
-          function formatName(name) {
-          const raw = String(name || '').trim();
-          if (!raw) return '';
-          let first = '', last = '';
-          if (raw.includes(',')) {
+        <div id="grantsList" class="list animatable" style="margin-top:12px; display:none;">
+          <!-- Rows injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- DISCOVERABLE PARENTS (new) -->
+    <section id="discoverable" class="section" aria-labelledby="discoverable-h">
+      <div class="ux-wrap">
+        <h2 id="discoverable-h" class="animatable">Discoverable parents</h2>
+        <p class="muted animatable" data-delay="1">Connect with other parents at your school.</p>
+
+        <div id="discoverEmpty" class="card animatable" style="display:none;">
+          <strong>No discoverable parents yet</strong>
+          <p class="muted" style="margin:6px 0 0;">Once you have connections, they will appear here. You can also add
+            parents by email.</p>
+        </div>
+
+        <div id="discoverList" class="list animatable" style="margin-top:12px; display:none;">
+          <!-- Rows injected by JS -->
+        </div>
+
+        <div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
+          <select id="discSchool" class="card" style="flex:1 1 280px; min-width:200px; display:none;" aria-label="School filter">
+            <option value="">Select your school</option>
+            <!-- Options injected by JS -->
+          </select>
+          <button id="discEmailBtn" class="btn" style="flex:none;">Add by email</button>
+        </div>
+        <input id="discEmail" class="card" placeholder="Enter parent email" style="margin-top:12px; display:none;" />
+      </div>
+    </section>
+
+    <!-- CONNECTION REQUESTS (new) -->
+    <section id="connections" class="section" aria-labelledby="connections-h">
+      <div class="ux-wrap">
+        <h2 id="connections-h" class="animatable">Connection requests</h2>
+        <p class="muted animatable" data-delay="1">Manage your connection requests.</p>
+
+        <div id="reqIncomingEmpty" class="card animatable" style="display:none;">
+          <strong>No new requests</strong>
+          <p class="muted" style="margin:6px 0 0;">When other parents send you requests, they will appear here.</p>
+        </div>
+
+        <div id="reqIncoming" class="list animatable" style="margin-top:12px; display:none;">
+          <!-- Rows injected by JS -->
+        </div>
+
+        <div id="reqOutgoingEmpty" class="card animatable" style="display:none; margin-top:24px;">
+          <strong>No sent requests</strong>
+          <p class="muted" style="margin:6px 0 0;">Your sent requests will appear here. You can cancel them anytime.</p>
+        </div>
+
+        <div id="reqOutgoing" class="list animatable" style="margin-top:12px; display:none;">
+          <!-- Rows injected by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- MY CONNECTIONS (new) -->
+    <section id="myConnections" class="section" aria-labelledby="myConnections-h">
+      <div class="ux-wrap">
+        <h2 id="myConnections-h" class="animatable">My connections</h2>
+        <p class="muted animatable" data-delay="1">Parents you are connected with.</p>
+
+        <div id="connEmpty" class="card animatable" style="display:none;">
+          <strong>No connections yet</strong>
+          <p class="muted" style="margin:6px 0 0;">Connect with parents to see them here. Use the Discoverable parents
+            section above to find parents at your school.</p>
+        </div>
+
+        <div id="connList" class="list animatable" style="margin-top:12px; display:none;">
+          <!-- Rows injected by JS -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========================================== -->
+  <!-- ========== PROFILE & CONNECT ============ -->
+  <!-- ========================================== -->
+  <div style="display:none;">
+    <div id="profileSheet" class="sd-sheet">
+      <div class="sd-sheet-content">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2 style="margin:0;">My profile</h2>
+          <button id="profClose" class="sd-sheet-close" title="Close sheet">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
+              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M18 6l-12 12" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style="margin-top:12px;">
+          <label for="profName" class="sd-sheet-label">Name</label>
+          <input id="profName" class="sd-sheet-input" placeholder="Enter your name" />
+        </div>
+
+        <div style="margin-top:12px;">
+          <label for="profDisc" class="sd-sheet-label">
+            <input id="profDisc" type="checkbox" class="sd-sheet-checkbox" />
+            <span style="margin-left:8px;">Allow parents to discover me</span>
+          </label>
+        </div>
+
+        <div style="margin-top:24px; display:flex; gap:12px; justify-content:flex-end;">
+          <button id="profSave" class="btn" type="button">Save changes</button>
+          <span id="profStatus" class="muted" style="white-space:nowrap; display:none;">Saved!</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONNECTION REQUEST SHEET (new) -->
+    <div id="requestSheet" class="sd-sheet">
+      <div class="sd-sheet-content">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2 style="margin:0;">Connection request</h2>
+          <button id="reqClose" class="sd-sheet-close" title="Close sheet">
+            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
+              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
+              stroke-linejoin="round">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+              <path d="M18 6l-12 12" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div id="reqDetails" class="muted" style="margin-top:12px; line-height:1.4;">
+          <!-- Injected by JS -->
+        </div>
+
+        <div style="margin-top:24px; display:flex; gap:12px; justify-content:flex-end;">
+          <button id="reqAccept" class="btn" type="button" data-action="accept">Accept request</button>
+          <button id="reqDecline" class="btn" type="button" data-action="decline">Decline request</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Simple reveal-on-scroll
+    const animatables = document.querySelectorAll('.animatable');
+    const obs = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
+    }, { threshold: 0.12 });
+    animatables.forEach(a => obs.observe(a));
+
+    // Minimal client logic:
+    // - Toggle signed-in/out prompts
+    // - Load linked students (callable -> reverse index -> collectionGroup)
+    // - Render passes with formatted names and rotating QR payloads
+    document.addEventListener('DOMContentLoaded', () => {
+      const out   = document.getElementById('signedOutCallout');
+      const none  = document.getElementById('noPasses');
+      const wrap  = document.getElementById('passesWrap');
+      const trustedWrap = document.getElementById('trustedWrap');
+      const trustedEmpty = document.getElementById('trustedEmpty');
+      const grantsList = document.getElementById('grantsList');
+      const grantsEmpty= document.getElementById('grantsEmpty');
+
+      // Profile & Connect elements
+      const profName = document.getElementById('profName');
+      const profDisc = document.getElementById('profDisc');
+      const profSave = document.getElementById('profSave');
+      const profStatus = document.getElementById('profStatus');
+      const discoverList = document.getElementById('discoverList');
+      const discoverEmpty = document.getElementById('discoverEmpty');
+      const discSchool = document.getElementById('discSchool');
+      const discEmail = document.getElementById('discEmail');
+      const discEmailBtn = document.getElementById('discEmailBtn');
+      const reqIncoming = document.getElementById('reqIncoming');
+      const reqOutgoing = document.getElementById('reqOutgoing');
+      const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
+      const reqOutgoingEmpty = document.getElementById('reqOutgoingEmpty');
+      const connList = document.getElementById('connList');
+      const connEmpty = document.getElementById('connEmpty');
+
+      // Ensure QRCode library (qrcodejs) is available
+      (function ensureQRCode(){
+        if (window.QRCode) return;
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        s.crossOrigin = 'anonymous';
+        document.head.appendChild(s);
+      })();
+
+      function formatName(name){
+        const raw = String(name||'').trim();
+        if (!raw) return '';
+        let first = '', last = '';
+        if (raw.includes(',')){
           // "Last, First [Middle]"
           const [l, r] = raw.split(',');
-          last = (l || '').trim();
-          first = (r || '').trim().split(/\s+/)[0] || '';
-          } else {
+          last = (l||'').trim();
+          first = (r||'').trim().split(/\s+/)[0] || '';
+        } else {
           const parts = raw.split(/\s+/).filter(Boolean);
           if (parts.length === 1) { first = parts[0]; last = ''; }
-          else { first = parts[0]; last = parts[parts.length - 1]; }
-          }
-          const li = last ? (last[0].toUpperCase() + '.') : '';
-          return [first, li].filter(Boolean).join(' ');
-          }
+          else { first = parts[0]; last = parts[parts.length-1]; }
+        }
+        const li = last ? (last[0].toUpperCase() + '.') : '';
+        return [first, li].filter(Boolean).join(' ');
+      }
 
-          function drawQrInto(el, basePayload) {
-          if (!el) return;
-          // Rotate every 30s to vary the code visually while keeping scanners compatible
-          const rot = Math.floor(Date.now() / 30000); // changes every 30s
-          const payload = basePayload + '&r=' + rot;
-          el.innerHTML = '';
-          const host = document.createElement('div');
-          host.style.width = '180px'; host.style.height = '180px';
-          el.appendChild(host);
-          const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel:
-          (window.QRCode?.CorrectLevel?.M) || 2 }); } catch { } };
-          if (window.QRCode) draw(); else {
-          const t = setInterval(() => { if (window.QRCode) { clearInterval(t); draw(); } }, 60);
-          }
-          }
+      function drawQrInto(el, basePayload){
+        if (!el) return;
+        // Rotate every 30s to vary the code visually while keeping scanners compatible
+        const rot = Math.floor(Date.now()/30000); // changes every 30s
+        const payload = basePayload + '&r=' + rot;
+        el.innerHTML = '';
+        const host = document.createElement('div');
+        host.style.width = '180px'; host.style.height = '180px';
+        el.appendChild(host);
+        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M)||2 }); } catch {} };
+        if (window.QRCode) draw(); else {
+          const t = setInterval(()=>{ if (window.QRCode){ clearInterval(t); draw(); } }, 60);
+        }
+      }
 
-          let qrTimer = null;
-          function renderPasses(passes) {
-          wrap.innerHTML = '';
-          if (qrTimer) { try { clearInterval(qrTimer); } catch { } qrTimer = null; }
-          if (!passes || !passes.length) {
+      let qrTimer = null;
+      function renderPasses(passes){
+        wrap.innerHTML = '';
+        if (qrTimer) { try { clearInterval(qrTimer); } catch{} qrTimer = null; }
+        if (!passes || !passes.length) {
           wrap.style.display = 'none';
           none.style.display = '';
           return;
-          }
-          none.style.display = 'none';
-          wrap.style.display = 'flex';
-          for (const p of passes) {
+        }
+        none.style.display = 'none';
+        wrap.style.display = 'flex';
+        for (const p of passes){
           const card = document.createElement('div');
           card.className = 'pass';
           card.innerHTML = `
-          <div class="hdr">
-            <div class="std">${formatName(p.student)}</div>
-            <span class="badge" title="Status">${p.status}</span>
-          </div>
-          <div class="win" aria-label="Pickup window">${p.window}</div>
-          <div class="qr" aria-label="QR code">
-            <div class="qr-host" data-base="${p.basePayload || ''}"></div>
-          </div>
+            <div class="hdr">
+              <div class="std">${formatName(p.student)}</div>
+              <span class="badge" title="Status">${p.status}</span>
+            </div>
+            <div class="win" aria-label="Pickup window">${p.window}</div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload||''}"></div></div>
           `;
           wrap.appendChild(card);
-          }
+        }
 
-          // Initial draw
-          wrap.querySelectorAll('.qr-host').forEach(host => {
+        // Initial draw
+        wrap.querySelectorAll('.qr-host').forEach(host => {
           const base = host.getAttribute('data-base') || '';
           drawQrInto(host, base);
-          });
-          // Rotate every 30s
-          qrTimer = setInterval(() => {
+        });
+        // Rotate every 30s
+        qrTimer = setInterval(() => {
           wrap.querySelectorAll('.qr-host').forEach(host => {
-          const base = host.getAttribute('data-base') || '';
-          drawQrInto(host, base);
+            const base = host.getAttribute('data-base') || '';
+            drawQrInto(host, base);
           });
-          }, 30000);
-          }
-          function renderGrants(grants) {
-          grantsList.innerHTML = '';
-          if (!grants || !grants.length) {
+        }, 30000);
+      }
+      function renderGrants(grants){
+        grantsList.innerHTML = '';
+        if (!grants || !grants.length) {
           grantsList.style.display = 'none';
           grantsEmpty.style.display = '';
           return;
-          }
-          grantsEmpty.style.display = 'none';
-          grantsList.style.display = 'grid';
-          for (const g of grants) {
+        }
+        grantsEmpty.style.display = 'none';
+        grantsList.style.display = 'grid';
+        for (const g of grants){
           const row = document.createElement('div');
           row.className = 'row';
           row.innerHTML = `
-          <div>
-            <div class="who">${g.name}</div>
-            <div class="meta">${g.students} · ${g.window}</div>
-          </div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn" type="button" title="Edit">Edit</button>
-            <button class="btn" type="button" title="Revoke">Revoke</button>
-          </div>
+            <div>
+              <div class="who">${g.name}</div>
+              <div class="meta">${g.students} · ${g.window}</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" title="Edit">Edit</button>
+              <button class="btn" type="button" title="Revoke">Revoke</button>
+            </div>
           `;
           grantsList.appendChild(row);
-          }
-          }
+        }
+      }
 
-          function setSignedOut() { out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none';
-          grantsList.style.display = 'none'; grantsEmpty.style.display = 'none'; }
-          function setSignedIn() { out.style.display = 'none'; }
+      function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
+      function setSignedIn(){ out.style.display = 'none'; }
 
-          // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
-          async function loadLinkedStudents(uid) {
-          // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
-          const results = [];
-          try {
+      // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
+      async function loadLinkedStudents(uid){
+        // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
+        const results = [];
+        try {
           const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyLinkedStudents') : null;
           if (call) {
-          const resp = await call({});
-          const data = (resp && resp.data) || resp || {};
-          if (data && data.ok && Array.isArray(data.students)) {
-          for (const s of data.students) {
-          results.push({ id: s.studentId, name: s.name, tag: (s.tag || '') || '', orgId: s.orgId, schoolId: s.schoolId
-          });
+            const resp = await call({});
+            const data = (resp && resp.data) || resp || {};
+            if (data && data.ok && Array.isArray(data.students)) {
+              for (const s of data.students) {
+                results.push({ id: s.studentId, name: s.name, tag: (s.tag||'') || '', orgId: s.orgId, schoolId: s.schoolId });
+              }
+              return results;
+            }
           }
-          return results;
-          }
-          }
-          } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
-          // Fallback A: direct read from reverse index users/{uid}/guardianLinks
-          try {
+        } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
+        // Fallback A: direct read from reverse index users/{uid}/guardianLinks
+        try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (db) {
-          const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
-          snap.docs.forEach(d => {
-          const x = d.data() || {}; const id = String(x.studentId || d.id);
-          const name = x.name || id; const tag = String(x.tag || '');
-          const orgId = x.orgId || null; const schoolId = x.schoolId || null;
-          results.push({ id, name, tag, orgId, schoolId });
-          });
-          if (results.length) return results;
+            const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
+            snap.docs.forEach(d => {
+              const x = d.data() || {}; const id = String(x.studentId || d.id);
+              const name = x.name || id; const tag = String(x.tag||'');
+              const orgId = x.orgId || null; const schoolId = x.schoolId || null;
+              results.push({ id, name, tag, orgId, schoolId });
+            });
+            if (results.length) return results;
           }
-          } catch (e) { console.warn('[parents] reverse index read failed', e); }
-          // Fallback B: collectionGroup read using compat Firestore
-          try {
+        } catch (e) { console.warn('[parents] reverse index read failed', e); }
+        // Fallback B: collectionGroup read using compat Firestore
+        try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (!db) return results;
-          const snap = await db.collectionGroup('guardians').where('uid', '==', uid).get();
-          for (const d of snap.docs) {
-          try {
-          const studentRef = d.ref.parent.parent; // .../students/{studentId}
-          if (!studentRef) continue;
-          const sSnap = await studentRef.get();
-          if (!sSnap.exists) continue;
-          const s = sSnap.data() || {};
-          const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
-          const tag = (s.carTag || s.tag || '').toString();
-          // Parse org/school from path if available
-          const seg = studentRef.path.split('/');
-          const orgId = seg[1] || null; const schoolId = seg[3] || null;
-          results.push({ id: studentRef.id, name, tag, orgId, schoolId });
-          } catch { }
+          const snap = await db.collectionGroup('guardians').where('uid','==', uid).get();
+          for (const d of snap.docs){
+            try {
+              const studentRef = d.ref.parent.parent; // .../students/{studentId}
+              if (!studentRef) continue;
+              const sSnap = await studentRef.get();
+              if (!sSnap.exists) continue;
+              const s = sSnap.data() || {};
+              const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
+              const tag = (s.carTag || s.tag || '').toString();
+              // Parse org/school from path if available
+              const seg = studentRef.path.split('/');
+              const orgId = seg[1] || null; const schoolId = seg[3] || null;
+              results.push({ id: studentRef.id, name, tag, orgId, schoolId });
+            } catch {}
           }
-          } catch (e) {
+        } catch (e) {
           console.warn('[parents] fallback loadLinkedStudents failed', e);
-          }
-          return results;
-          }
+        }
+        return results;
+      }
 
-          async function applyFromClaims(claims) {
-          if (!claims || !claims.uid) { setSignedOut(); return; }
-          setSignedIn();
-          const uid = claims.uid;
-          let linked = await loadLinkedStudents(uid);
-          // Hydrate friendly names if they look like IDs and we have org/school
-          try {
+      async function applyFromClaims(claims){
+        if (!claims || !claims.uid) { setSignedOut(); return; }
+        setSignedIn();
+        const uid = claims.uid;
+        // Personalize greeting
+        try {
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('getMyParentProfile') : null;
+          const greetEl = document.getElementById('greeting');
+          const sumEl = document.getElementById('summary');
+          let name = '';
+          if (call) {
+            const resp = await call({});
+            if (resp?.data?.ok) name = resp.data.displayName || '';
+          }
+          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch {} }
+          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch {} }
+          if (name && greetEl) greetEl.textContent = 'Hi, ' + name;
+          // We’ll enrich summary when we know linked students and school names
+          if (sumEl) sumEl.dataset.base = sumEl.textContent;
+        } catch {}
+        // Guardian callout: if signed-in but not guardian, prompt to claim
+        if (!claims.guardian) {
+          document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
+          // Inject lightweight claim prompt card if not present
+          let claimCard = document.getElementById('guardianClaimPrompt');
+          if (!claimCard){
+            claimCard = document.createElement('div');
+            claimCard.id = 'guardianClaimPrompt';
+            claimCard.className = 'card animatable';
+            claimCard.innerHTML = '<strong>No linked students yet</strong><p class="muted" style="margin:6px 0 10px;">Enter your invite code or open the invite link to link a student.</p><div><a class="btn" href="/claim.html">Go to claim page</a></div>';
+            out.parentElement?.insertBefore(claimCard, out.nextSibling);
+            try { claimCard.classList.add('is-visible'); } catch {}
+          }
+        } else {
+          // Remove claim prompt if guardian now
+          const existing = document.getElementById('guardianClaimPrompt');
+          if (existing) existing.remove();
+        }
+        let linked = await loadLinkedStudents(uid);
+        // Compute school list for discovery selector
+        const schoolList = [];
+        const seenSchool = new Set();
+        for (const s of linked){ if (s.orgId && s.schoolId){ const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)){ seenSchool.add(key); schoolList.push({ orgId:s.orgId, schoolId:s.schoolId }); } } }
+        const discSelect = document.getElementById('discSchool');
+        if (discSelect){
+          discSelect.innerHTML = '';
+          for (const sc of schoolList){ const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
+        }
+        // Best-effort: resolve school names for nicer summary and dropdown labels
+        try{
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db) {
-          const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId &&
-          s.schoolId);
-          for (const s of needs) {
-          try {
-          const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
-          const snap = await ref.get();
-          if (snap.exists) {
-          const d = snap.data() || {};
-          const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
-          if (nm) s.name = nm;
-          if (!s.tag) { const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
+          if (db){
+            const nameByKey = new Map();
+            for (const sc of schoolList){
+              try {
+                const ref = db.doc(`orgs/${sc.orgId}/schools/${sc.schoolId}`);
+                const snap = await ref.get();
+                const data = snap.exists ? (snap.data()||{}) : {};
+                const nm = data.name || sc.schoolId;
+                const key = sc.orgId + '|' + sc.schoolId; nameByKey.set(key, nm);
+              } catch {}
+            }
+            if (discSelect){ Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
+            const sumEl = document.getElementById('summary');
+            if (sumEl && linked.length){
+              const bySchool = new Map();
+              linked.forEach(s => { const k = s.orgId+'|'+s.schoolId; const arr = bySchool.get(k)||[]; arr.push(s.name||s.id); bySchool.set(k, arr); });
+              const parts = [];
+              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length>1?'s':''} at ${sn}`); });
+              sumEl.textContent = parts.join(' · ');
+            }
           }
-          } catch { }
+        } catch{}
+        // Hydrate friendly names if they look like IDs and we have org/school
+        try{
+          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
+          if (db){
+            const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId && s.schoolId);
+            for (const s of needs){
+              try{
+                const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
+                const snap = await ref.get();
+                if (snap.exists){
+                  const d = snap.data() || {};
+                  const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
+                  if (nm) s.name = nm;
+                  if (!s.tag){ const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
+                }
+              } catch{}
+            }
           }
-          }
-          } catch { }
-          if (!linked.length) {
-          document.getElementById('passesSubtitle').textContent = 'No linked students yet. Once you claim an invite,
-          your passes will appear here on pickup days.';
+        } catch{}
+        if (!linked.length){
           renderPasses([]);
+          // Even if we have no linked students yet, still try to refresh discovery/requests later
+          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
           return;
-          }
-          // Build base payload for QR: prefer car tag else student id
-          const passes = linked.map(s => {
-          const tag = (s.tag || '').toString().trim();
+        }
+        // Build base payload for QR: prefer car tag else student id
+        const passes = linked.map(s => {
+          const tag = (s.tag||'').toString().trim();
           const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(s.id));
           return { student: s.name, status: 'Linked', window: '', basePayload: base };
-          });
-          renderPasses(passes);
-          }
+        });
+        renderPasses(passes);
+        // Now that school context and dropdown are populated, load discovery, connections, and trusted pickups
+        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
+      }
 
-          // Listen for claims from site-header.js
-          document.addEventListener('sd:claims-ready', (e) => {
-          const claims = (e && e.detail && e.detail.claims) || null;
-          // Augment with uid if available
-          try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid =
-          window.firebase.auth().currentUser.uid; } } catch { }
-          applyFromClaims(claims);
-          });
+      // Listen for claims from site-header.js
+      document.addEventListener('sd:claims-ready', (e) => {
+        const claims = (e && e.detail && e.detail.claims) || null;
+        // Augment with uid if available
+        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch {}
+        applyFromClaims(claims);
+      });
 
-          // If already signed in before this page loads, try to apply immediately
-          try {
-          if (window.firebase?.auth()?.currentUser) {
-          const u = window.firebase.auth().currentUser;
-          applyFromClaims({ uid: u.uid, ...(window.SD?.claims || {}) });
-          } else {
-          setSignedOut();
-          }
-          } catch { setSignedOut(); }
-
-          document.getElementById('addTrusted')?.addEventListener('click', () => {
-          alert('Coming soon: Add trusted adult flow');
-          });
-          // ==========================================
-          // RESTORED MISSING FUNCTIONS & FIXES
-          // ==========================================
-
-          function callable(name) {
-          return (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable(name) : null;
-          }
-
-          function renderReqRow(container, title, subtitle, actionsHtml) {
-          const row = document.createElement('div');
-          row.className = 'row';
-          row.innerHTML = `
-          <div>
-            <div class="who">${title}</div>
-            <div class="meta">${subtitle}</div>
-          </div>
-          ${actionsHtml ? `<div style="display:flex; gap:8px;">${actionsHtml}</div>` : ''}
-          `;
-          container.appendChild(row);
-          return row;
-          }
-
-          async function loadProfile() {
-          const nameInput = document.getElementById('profName');
-          const discCheck = document.getElementById('profDisc');
-          const status = document.getElementById('profStatus');
-          if (!nameInput) return;
-
-          try {
-          const call = callable('getMyParentProfile');
-          if (call) {
+      // Access Grants UI (simplified MVP)
+      const addBtn = document.getElementById('addTrusted');
+      function openGrantPrompt(students){
+        const emails = prompt('Trusted adult email (Google/Microsoft account):');
+        if (!emails) return;
+        const name = prompt('Name (optional for display):') || '';
+        const windowType = confirm('Limit to today only? OK = Today only, Cancel = Always') ? 'today' : 'always';
+        const studentIds = students.map(s => s.id);
+        createGrant(studentIds, emails.trim(), name.trim(), windowType);
+      }
+      async function createGrant(studentIds, grEmail, grName, windowType){
+        const statusEl = document.getElementById('passesSubtitle');
+        try {
+          statusEl.textContent = 'Creating access grant…';
+          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+          if (!orgId || !schoolId) throw new Error('No school context');
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
+          if (!call) throw new Error('Backend unavailable');
+          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType });
+          if (!resp?.data?.ok) throw new Error('Grant creation failed');
+          statusEl.textContent = 'Access grant created.';
+          await loadGrants();
+        } catch(e){
+          console.warn(e);
+          statusEl.textContent = 'Grant failed: ' + (e.message || 'Error');
+          setTimeout(()=>{ statusEl.textContent = 'Swipe between students. Each pass shows a scannable QR during your pickup window.'; }, 4000);
+        }
+      }
+      async function loadGrants(){
+        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
+        if (!orgId || !schoolId) return;
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyGrantedAccess') : null;
+        if (!call) return;
+        try {
           const resp = await call({});
-          const data = resp.data || {};
-          if (data.ok) {
-          nameInput.value = data.displayName || '';
-          discCheck.checked = !!data.discoverable;
-          }
-          } else {
-          // HTTP fallback
-          const user = window.firebase?.auth()?.currentUser;
-          if (user) {
-          const token = await user.getIdToken();
-          const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', {
-          headers: { 'Authorization': 'Bearer ' + token } });
-          const data = await res.json();
-          if (data.ok) {
-          nameInput.value = data.displayName || '';
-          discCheck.checked = !!data.discoverable;
-          }
-          }
-          }
-          } catch (e) { console.warn('loadProfile failed', e); }
+          const grants = (resp?.data?.grants)||[];
+          renderGrants(grants.map(g => ({ id: g.id, name: g.name || g.email, students: g.students, window: g.window, path: g.path })));
+        } catch(e){ console.warn('loadGrants failed', e); }
+      }
+      async function revokeGrant(path){
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeAccessGrant') : null;
+        if (!call) return alert('Backend unavailable');
+        if (!confirm('Revoke this access grant?')) return;
+        try { const resp = await call({ path }); if (resp?.data?.ok) await loadGrants(); else alert('Could not revoke'); } catch(e){ alert('Error revoking: ' + (e.message||'')); }
+      }
+      addBtn?.addEventListener('click', async () => {
+        // Use current linked students for selection; in MVP we grant access to ALL linked students
+        const currentCards = wrap.querySelectorAll('.pass .std');
+        const passes = [];
+        currentCards.forEach(c => { const nm = c.textContent.trim(); const base = c.closest('.pass')?.querySelector('.qr-host')?.getAttribute('data-base')||''; passes.push(nm); });
+        const linked = (window.__linkedStudentsCache||[]);
+        if (!linked.length) { alert('No linked students to grant access for yet.'); return; }
+        openGrantPrompt(linked);
+      });
+      // Override renderPasses to keep a cache for grant creation
+      const _origRender = renderPasses;
+      renderPasses = function(passes){ window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
+      // Enhance renderGrants with revoke buttons
+      const _origRenderGrants = renderGrants;
+      renderGrants = function(grants){ _origRenderGrants(grants); try { grantsList.querySelectorAll('.row').forEach((row,i)=>{
+        const g = grants[i]; if (!g) return; const revokeBtn = row.querySelector('button[title="Revoke"]'); if (revokeBtn){ revokeBtn.onclick = () => revokeGrant(g.path); }
+      }); } catch{} };
+      // Load grants after claims
+      document.addEventListener('sd:claims-ready', () => { loadGrants(); });
 
-          // Bind save button
-          const saveBtn = document.getElementById('profSave');
-          if (saveBtn) {
-          saveBtn.onclick = async () => {
-          const prev = saveBtn.textContent;
-          saveBtn.textContent = 'Saving...';
-          saveBtn.disabled = true;
-          try {
-          const call = callable('updateMyParentProfile');
-          const payload = { displayName: nameInput.value, discoverable: discCheck.checked };
-          if (call) {
-          await call(payload);
-          } else {
-          const user = window.firebase?.auth()?.currentUser;
-          if (user) {
-          const token = await user.getIdToken();
-          await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify(payload)
-          });
-          }
-          }
-          status.textContent = 'Saved!';
-          setTimeout(() => { status.textContent = ''; }, 2000);
-          } catch (e) {
-          console.error(e);
-          status.textContent = 'Error';
-          } finally {
-          saveBtn.textContent = prev;
-          saveBtn.disabled = false;
-          }
-          };
-          }
-          }
-
-          function renderDiscoverable(parents, currentUid) {
-          const list = document.getElementById('discoverList');
-          const empty = document.getElementById('discoverEmpty');
-          if (!list) return;
-          list.innerHTML = '';
-
-          const filtered = parents.filter(p => p.uid !== currentUid);
-          if (!filtered.length) {
-          list.style.display = 'none';
-          if (empty) empty.style.display = 'block';
-          return;
-          }
-
-          list.style.display = 'grid';
-          if (empty) empty.style.display = 'none';
-
-          for (const p of filtered) {
-          const row = document.createElement('div');
-          row.className = 'row';
-          const name = p.displayName || 'Parent';
-
-          const actions = `<button class="btn" data-uid="${p.uid}">Connect</button>`;
-
-          row.innerHTML = `
-          <div>
-            <div class="who">${name}</div>
-          </div>
-          <div style="display:flex; gap:8px;">${actions}</div>
-          `;
-          list.appendChild(row);
-          }
-
-          list.querySelectorAll('button[data-uid]').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-          const toUid = btn.getAttribute('data-uid');
-          const orgId = window.SD?.orgId || (document.getElementById('discSchool')?.value?.split('|')[0]);
-          const schoolId = window.SD?.schoolId || (document.getElementById('discSchool')?.value?.split('|')[1]);
-
-          if (!orgId || !schoolId) { alert('Please select a school first.'); return; }
-
-          const prev = btn.textContent;
-          btn.textContent = '...';
-          btn.disabled = true;
-
-          try {
-          const call = callable('sendParentConnectRequest');
-          if (call) {
-          await call({ toUid, orgId, schoolId });
-          } else {
-          const user = window.firebase?.auth()?.currentUser;
-          if (user) {
-          const token = await user.getIdToken();
-          await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-          body: JSON.stringify({ toUid, orgId, schoolId })
-          });
-          }
-          }
-          btn.textContent = 'Sent';
-          btn.classList.add('ghost');
-          } catch (e) {
-          console.error(e);
-          btn.textContent = 'Error';
-          btn.disabled = false;
-          setTimeout(() => { btn.textContent = prev; }, 2000);
-          }
-          });
-          });
-          }
-
-          function renderTrusted(pickups) {
-          const trustedWrap = document.getElementById('trustedWrap');
-          const trustedEmpty = document.getElementById('trustedEmpty');
-          if (!trustedWrap) return;
-
-          trustedWrap.innerHTML = '';
-          if (!Array.isArray(pickups) || !pickups.length) {
+      // Trusted pickups: render grants where I am the grantee
+      function renderTrusted(pickups){
+        trustedWrap.innerHTML = '';
+        if (!Array.isArray(pickups) || !pickups.length){
           trustedWrap.style.display = 'none';
-          if (trustedEmpty) trustedEmpty.style.display = '';
+          trustedEmpty.style.display = '';
           return;
-          }
-          if (trustedEmpty) trustedEmpty.style.display = 'none';
-          trustedWrap.style.display = 'flex';
+        }
+        trustedEmpty.style.display = 'none';
+        trustedWrap.style.display = 'flex';
 
-          for (const p of pickups) {
+        for (const p of pickups){
           const card = document.createElement('div');
           card.className = 'pass';
           const who = p.studentName || p.studentId;
-          const by = p.grantorName ? `Granted by ${p.grantorName}` : '';
+          const by  = p.grantorName ? `Granted by ${p.grantorName}` : '';
           const note = p.note ? ` · ${p.note}` : '';
           card.innerHTML = `
-          <div class="hdr">
-            <div class="std">${formatName(who)}</div>
-            <span class="badge" title="Trusted pickup">Trusted</span>
-          </div>
-          <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
-          <div class="qr" aria-label="QR code">
-            <div class="qr-host" data-base="${(p.basePayload || '')}"></div>
-          </div>
+            <div class="hdr">
+              <div class="std">${formatName(who)}</div>
+              <span class="badge" title="Trusted pickup">Trusted</span>
+            </div>
+            <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload||'')}"></div></div>
           `;
           trustedWrap.appendChild(card);
-          }
+        }
 
-          trustedWrap.querySelectorAll('.qr-host').forEach(host => {
+        trustedWrap.querySelectorAll('.qr-host').forEach(host => {
           const base = host.getAttribute('data-base') || '';
           drawQrInto(host, base);
-          });
-          }
+        });
+      }
 
-          async function loadTrustedPickups() {
-          try {
-          const call = callable('listMyPickupAccess');
+      async function loadTrustedPickups(){
+        try {
+          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
           if (!call) return;
-
           const resp = await call({});
           const data = (resp && resp.data) || resp || {};
           const pickups = Array.isArray(data.pickups) ? data.pickups : [];
-
           const mapped = pickups.map(p => {
-          const tag = (p.tag || '').toString().trim();
-          const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' +
-          encodeURIComponent(p.studentId));
-          return {
-          studentId: p.studentId,
-          studentName: p.studentName,
-          window: p.window,
-          grantorName: p.grantorName,
-          note: p.note,
-          basePayload: base,
-          };
+            const tag = (p.tag||'').toString().trim();
+            const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(p.studentId));
+            return {
+              studentId: p.studentId,
+              studentName: p.studentName,
+              window: p.window,
+              grantorName: p.grantorName,
+              note: p.note,
+              basePayload: base,
+            };
           });
           renderTrusted(mapped);
-          } catch (e) {
+        } catch (e){
           console.warn('[parents] loadTrustedPickups failed', e);
-          }
-          }
+        }
+      }
 
-          async function loadDiscoverable() {
-          const discSchool = document.getElementById('discSchool');
+      // ───────── Profile & Connect wiring ─────────
+      function callable(name){ return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
+
+      async function loadProfile(){
+        try {
+          const call = callable('getMyParentProfile');
+          if (!call) throw new Error('no-callable');
+          const resp = await call({}); const d = (resp?.data)||{};
+          if (d?.ok){
+            if (profName) profName.value = d.displayName || '';
+            if (profDisc) profDisc.checked = !!d.discoverable;
+          }
+        } catch(e){
+          console.warn('loadProfile failed', e);
+          // HTTP fallback to avoid preview CORS on callables
           try {
+            const user = window.firebase?.auth()?.currentUser; if (!user) return;
+            const token = await user.getIdToken();
+            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', { headers: { 'Authorization': 'Bearer ' + token } });
+            const d = await res.json();
+            if (d?.ok){
+              if (profName) profName.value = d.displayName || '';
+              if (profDisc) profDisc.checked = !!d.discoverable;
+            }
+          } catch(err){ console.warn('HTTP getMyParentProfileHttp failed', err); }
+        }
+      }
+      async function saveProfile(){
+        try {
+          const call = callable('updateMyParentProfile');
+          profStatus.textContent = 'Saving…';
+          try {
+            if (!call) throw new Error('no-callable');
+            await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
+          } catch(e1){
+            // HTTP fallback
+            const user = window.firebase?.auth()?.currentUser; if (user){
+              const token = await user.getIdToken();
+              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
+                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                body: JSON.stringify({ displayName: profName?.value || '', discoverable: !!profDisc?.checked })
+              });
+            } else { throw e1; }
+          }
+          profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
+          // Refresh discovery list if we toggled discoverable
+          await loadDiscoverable();
+        } catch(e){
+          console.warn('updateMyParentProfile failed', e);
+          const msg = (e && (e.message || e.code)) ? String(e.message || e.code) : 'Save failed';
+          profStatus.textContent = msg;
+          setTimeout(()=>profStatus.textContent='', 3200);
+        }
+      }
+      profSave?.addEventListener('click', saveProfile);
+
+      function renderDiscoverable(list, currentUid){
+        discoverList.innerHTML = '';
+        if (!Array.isArray(list) || list.length === 0){ discoverList.style.display='none'; discoverEmpty.style.display=''; return; }
+        discoverEmpty.style.display='none'; discoverList.style.display='grid';
+        list.forEach(p => {
+          const row = document.createElement('div'); row.className='row';
+          row.innerHTML = `
+            <div><div class="who">${(p.displayName||'Parent')}${p.uid && currentUid && p.uid===currentUid ? ' · You' : ''}</div><div class="meta">${p.uid||''}</div></div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid===currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
+            </div>
+          `;
+          discoverList.appendChild(row);
+        });
+        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+          const el = e.currentTarget;
+          const toUid = el.getAttribute('data-uid');
+          // Prevent attempting to connect to self
+          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
+          // Resolve org/school (dropdown overrides SD)
+          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+          if (!orgId || !schoolId){ try { el.title = 'Select a school first'; } catch {}; return; }
+
+          const prevText = el.textContent; el.textContent = 'Requesting…'; el.disabled = true;
+          let success = false; let lastErr = null;
+          try {
+            const call = callable('sendParentConnectRequest');
+            if (!call) throw new Error('Backend unavailable');
+            try {
+              const resp = await call({ toUid, orgId, schoolId });
+              success = resp?.data?.ok !== false; // treat absence of ok as success
+            } catch (e1){
+              // HTTP fallback
+              try {
+                const user = window.firebase?.auth()?.currentUser; if (!user) throw e1;
+                const token = await user.getIdToken();
+                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
+                  method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                  body: JSON.stringify({ toUid, orgId, schoolId })
+                });
+                if (res.ok){
+                  const j = await res.json().catch(()=>({}));
+                  success = j?.ok !== false;
+                } else {
+                  lastErr = new Error('HTTP '+res.status);
+                  throw lastErr;
+                }
+              } catch(e2){ lastErr = e2; throw e2; }
+            }
+          } catch (err) {
+            lastErr = err;
+          } finally {
+            try { await loadConnections(); } catch {}
+            try { await loadDiscoverable(); } catch {}
+          }
+          if (success){
+            el.textContent = 'Requested'; el.disabled = true; el.classList.add('is-requested');
+            try { el.title = 'Request sent'; } catch {}
+          } else {
+            // Revert and show subtle hint instead of blocking alert
+            el.disabled = false; el.textContent = prevText;
+            try { el.title = String(lastErr?.message || 'Could not send request'); } catch {}
+            console.warn('sendParentConnectRequest failed', lastErr);
+          }
+        }));
+      }
+
+      async function loadDiscoverable(){
+        try {
           const call = callable('listDiscoverableParents');
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o;
-          schoolId = s; } }
+          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return;
-
-          let list = [];
-          if (call) {
-          const resp = await call({ orgId, schoolId, limit: 50 });
-          list = (resp?.data?.parents) || [];
-          } else {
-          const user = window.firebase?.auth()?.currentUser;
-          if (user) {
-          const token = await user.getIdToken();
-          const url =
-          `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
-          const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-          const d = await res.json();
-          list = (d?.parents) || [];
+          try {
+            if (!call) throw new Error('no-callable');
+            const resp = await call({ orgId, schoolId, limit: 50 });
+            const list = (resp?.data?.parents)||[];
+            const cu = window.firebase?.auth()?.currentUser?.uid || null;
+            renderDiscoverable(list, cu);
+          } catch(e1){
+            console.warn('listDiscoverableParents callable failed', e1);
+            // HTTP shim fallback
+            try {
+              const user = window.firebase?.auth()?.currentUser; if (!user) return;
+              const token = await user.getIdToken();
+              const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
+              const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+              const d = await res.json(); const list = (d?.parents)||[];
+              renderDiscoverable(list, user?.uid || null);
+            } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
           }
+        } catch(e){ console.warn('loadDiscoverable failed', e); }
+      }
+      discSchool?.addEventListener('change', loadDiscoverable);
+
+      async function addByEmail(){
+        const email = (discEmail?.value||'').trim(); if (!email) return;
+        let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+        if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+        if (!orgId || !schoolId){ try { discEmailBtn.title = 'Select a school first'; } catch {}; return; }
+        const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
+        let ok = false; let lastErr = null;
+        try{
+          const call = callable('sendParentConnectRequestByEmail');
+          if (!call) throw new Error('Backend unavailable');
+          try {
+            await call({ email, orgId, schoolId }); ok = true;
+          } catch(_){
+            const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
+            const token = await user.getIdToken();
+            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
+              method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+              body: JSON.stringify({ email, orgId, schoolId })
+            });
+            if (res.ok) ok = true; else { lastErr = new Error('HTTP '+res.status); throw lastErr; }
           }
-          const cu = window.firebase?.auth()?.currentUser?.uid || null;
-          renderDiscoverable(list, cu);
-          } catch (e) { console.warn('loadDiscoverable failed', e); }
+        } catch (e){ lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
+        try { await loadConnections(); } catch {}
+        if (ok){
+          if (discEmail) discEmail.value='';
+          if (discEmailBtn){ discEmailBtn.textContent = 'Sent'; setTimeout(()=>{ try{ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; } catch{} }, 1000); }
+        } else {
+          if (discEmailBtn){ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch {} }
+        }
+      }
+      discEmailBtn?.addEventListener('click', addByEmail);
+
+      function renderReqRow(where, who, metaHtml, actionsHtml){
+        const row = document.createElement('div'); row.className='row';
+        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml||''}</div></div><div style="display:flex; gap:8px;">${actionsHtml||''}</div>`;
+        where.appendChild(row);
+        return row;
+      }
+      async function loadConnections(){
+        try {
+          const call = callable('listMyParentConnections');
+          let d = {};
+          try {
+            if (!call) throw new Error('no-callable');
+            const resp = await call({}); d = (resp?.data)||{};
+          } catch(e1){
+            console.warn('listMyParentConnections callable failed', e1);
+            // HTTP shim fallback
+            try {
+              const user = window.firebase?.auth()?.currentUser; if (!user) return;
+              const token = await user.getIdToken();
+              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
+              d = await res.json();
+            } catch(e2){ console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
           }
+          // Incoming
+          reqIncoming.innerHTML = '';
+          const inc = Array.isArray(d.incoming) ? d.incoming : [];
+          if (!inc.length){ reqIncoming.style.display='none'; reqIncomingEmpty.style.display=''; }
+          else {
+            reqIncoming.style.display='grid'; reqIncomingEmpty.style.display='none';
+            inc.forEach(item => {
+              const who = item.displayName || item.fromUid || 'Parent';
+              const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
+              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+                const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
+                try {
+                  const call = callable('respondParentConnectRequest'); if (!call) return;
+                  try {
+                    await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
+                  } catch(_){
+                    // HTTP fallback
+                    const user = window.firebase?.auth()?.currentUser; if (user){
+                      const token = await user.getIdToken();
+                      await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
+                        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                        body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
+                      });
+                    } else { throw _; }
+                  }
+                  await loadConnections();
+                } catch {}
+              }));
+            });
+          }
+          // Outgoing
+          reqOutgoing.innerHTML = '';
+          const out = Array.isArray(d.outgoing) ? d.outgoing : [];
+          if (!out.length){ reqOutgoing.style.display='none'; reqOutgoingEmpty.style.display=''; }
+          else {
+            reqOutgoing.style.display='grid'; reqOutgoingEmpty.style.display='none';
+            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status||'pending'}`); });
+          }
+          // Connections
+          connList.innerHTML = '';
+          const cons = Array.isArray(d.connections) ? d.connections : [];
+          if (!cons.length){ connList.style.display='none'; connEmpty.style.display=''; }
+          else {
+            connList.style.display='grid'; connEmpty.style.display='none';
+            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId||''} · ${c.schoolId||''}`); });
+          }
+        } catch(e){ console.warn('loadConnections failed', e); }
+      }
 
-          const discSchool = document.getElementById('discSchool');
-          if (discSchool) discSchool.addEventListener('change', loadDiscoverable);
+      // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
+      document.addEventListener('sd:claims-ready', () => { loadProfile(); });
 
-          document.addEventListener('sd:claims-ready', () => {
-          loadTrustedPickups();
-          });
-
-          });
-          </script>
-</body>
-
-</html>
+      // If already signed in before this page loads, try to apply immediately
+      // MOVED TO END to ensure all vars and functions are defined
+      try {
+        if (window.firebase?.auth()?.currentUser) {
+          const u = window.firebase.auth().currentUser;
+          applyFromClaims({ uid: u.uid, ...(window.SD?.claims || {}) });
+        } else {
+          setSignedOut();
+        }
+      } catch { setSignedOut(); }
+    });
+  </script>
