@@ -947,46 +947,6 @@
               <div class="who">${g.name || g.email}</div>
               <div class="meta">${g.email} · For ${g.studentName}</div>
             </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" title="Revoke">Revoke</button>
-            </div>
-          `;
-
-          // Wire up revoke
-          const revokeBtn = row.querySelector('button[title="Revoke"]');
-          revokeBtn.onclick = () => revokeTrusted(g.studentId, g.uid);
-          const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
-          let ok = false; let lastErr = null;
-          try {
-            const call = callable('sendParentConnectRequestByEmail');
-            if (!call) throw new Error('Backend unavailable');
-            try {
-              await call({ email, orgId, schoolId }); ok = true;
-            } catch (_) {
-              const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
-              const token = await user.getIdToken();
-              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ email, orgId, schoolId })
-              });
-              if (res.ok) ok = true; else { lastErr = new Error('HTTP ' + res.status); throw lastErr; }
-            }
-          } catch (e) { lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
-          try { await loadConnections(); } catch { }
-          if (ok) {
-            if (discEmail) discEmail.value = '';
-            if (discEmailBtn) { discEmailBtn.textContent = 'Sent'; setTimeout(() => { try { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; } catch { } }, 1000); }
-          } else {
-            if (discEmailBtn) { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch { } }
-          }
-        }
-        discEmailBtn?.addEventListener('click', addByEmail);
-
-        function renderReqRow(where, who, metaHtml, actionsHtml) {
-          const row = document.createElement('div'); row.className = 'row';
-          row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml || ''}</div></div><div style="display:flex; gap:8px;">${actionsHtml || ''}</div>`;
-          where.appendChild(row);
-          return row;
         }
         async function loadConnections() {
           try {
@@ -1013,7 +973,7 @@
               reqIncoming.style.display = 'grid'; reqIncomingEmpty.style.display = 'none';
               inc.forEach(item => {
                 const who = item.displayName || item.fromUid || 'Parent';
-                const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
+                const row = renderReqRow(reqIncoming, who, `${ item.orgId || '' } · ${ item.schoolId || '' } `, ` < button class='btn' data - a='accept' data - uid='${item.fromUid}' > Accept</button > <button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
                 row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e) => {
                   const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
                   try {
@@ -1041,7 +1001,7 @@
             if (!out.length) { reqOutgoing.style.display = 'none'; reqOutgoingEmpty.style.display = ''; }
             else {
               reqOutgoing.style.display = 'grid'; reqOutgoingEmpty.style.display = 'none';
-              out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status || 'pending'}`); });
+              out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${ item.status || 'pending' } `); });
             }
             // Connections
             connList.innerHTML = '';
@@ -1049,7 +1009,7 @@
             if (!cons.length) { connList.style.display = 'none'; connEmpty.style.display = ''; }
             else {
               connList.style.display = 'grid'; connEmpty.style.display = 'none';
-              cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId || ''} · ${c.schoolId || ''}`); });
+              cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${ c.orgId || '' } · ${ c.schoolId || '' }`); });
             }
           } catch (e) { console.warn('loadConnections failed', e); }
         }
