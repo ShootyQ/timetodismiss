@@ -1,5 +1,6 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -14,59 +15,295 @@
 
   <!-- Scoped page styles to match index/how-it-works look -->
   <style>
-    :root{
-      --ux-max: 1180px; --ux-gap: 18px; --ux-radius: 14px; --ux-border:#e5e7eb;
-      --ux-dark:#0f172a; --ux-accent: var(--primary, #4f46e5); --ux-accent-2:#4338ca; --ux-muted:#475569; --ux-card:#fff;
-      --ux-shadow: 0 8px 24px rgba(15,23,42,.08);
+    :root {
+      --ux-max: 1180px;
+      --ux-gap: 18px;
+      --ux-radius: 14px;
+      --ux-border: #e5e7eb;
+      --ux-dark: #0f172a;
+      --ux-accent: var(--primary, #4f46e5);
+      --ux-accent-2: #4338ca;
+      --ux-muted: #475569;
+      --ux-card: #fff;
+      --ux-shadow: 0 8px 24px rgba(15, 23, 42, .08);
     }
-    .ux-wrap{ max-width: var(--ux-max); margin: 0 auto; padding: 0 18px; }
-    .section{ padding: 64px 0; }
-    @media (min-width: 860px){ .section{ padding: 84px 0; } }
-    .center{ text-align:center; }
+
+    .ux-wrap {
+      max-width: var(--ux-max);
+      margin: 0 auto;
+      padding: 0 18px;
+    }
+
+    .section {
+      padding: 64px 0;
+    }
+
+    @media (min-width: 860px) {
+      .section {
+        padding: 84px 0;
+      }
+    }
+
+    .center {
+      text-align: center;
+    }
 
     /* Hero styling with subtle glass background */
-    .hero{ position:relative; min-height: 40vh; display:grid; place-items:center; color:#fff; overflow:hidden; }
-    .hero::before{ content:''; position:absolute; inset:0; background: linear-gradient(180deg, rgba(2,6,23,.34) 0%, rgba(2,6,23,.42) 35%, rgba(2,6,23,.62) 100%); z-index:1; }
-    .hero::after{ content:''; position:absolute; inset:-20% -20% -10% -20%; background: conic-gradient(from 180deg at 50% 35%, rgba(79,70,229,.28), rgba(99,102,241,.18), rgba(56,189,248,.22), rgba(16,185,129,.16), rgba(79,70,229,.28)); filter: blur(70px) saturate(140%); opacity:.7; z-index:1; }
-    .hero-bg{ position:absolute; inset:0; background-image:url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670'); background-size:cover; background-position:center; transform: scale(1.08); z-index:0; }
-    .hero-inner{ position:relative; z-index:2; max-width: 960px; padding: 22px; text-align:center; background: rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.18); backdrop-filter: blur(10px) saturate(120%); -webkit-backdrop-filter: blur(10px) saturate(120%); border-radius:18px; box-shadow: 0 20px 50px rgba(2,6,23,.25); }
-    .eyebrow{ display:inline-block; background: rgba(255,255,255,.14); padding:6px 12px; border-radius:999px; font-weight:700; letter-spacing:.02em; }
-    .hero h1{ font-size: clamp(1.8rem, 2.2vw + 1rem, 2.8rem); line-height:1.08; margin:10px 0 8px; text-shadow: 0 2px 12px rgba(0,0,0,.25); }
-    .lead{ color: rgba(255,255,255,.92); font-weight:600; max-width:68ch; margin: 0 auto; text-shadow: 0 1px 6px rgba(0,0,0,.18); }
-    .cta{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:16px; }
-    .btn{ appearance:none; border:1px solid transparent; border-radius:12px; padding:12px 18px; font-weight:800; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:8px; }
-    .btn.primary{ background:var(--ux-accent); color:#fff; }
-    .btn.primary:hover{ background:var(--ux-accent-2); }
-    .btn.ghost{ background:#fff; color:var(--ux-accent); border-color:var(--ux-border); }
+    .hero {
+      position: relative;
+      min-height: 40vh;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(2, 6, 23, .34) 0%, rgba(2, 6, 23, .42) 35%, rgba(2, 6, 23, .62) 100%);
+      z-index: 1;
+    }
+
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: -20% -20% -10% -20%;
+      background: conic-gradient(from 180deg at 50% 35%, rgba(79, 70, 229, .28), rgba(99, 102, 241, .18), rgba(56, 189, 248, .22), rgba(16, 185, 129, .16), rgba(79, 70, 229, .28));
+      filter: blur(70px) saturate(140%);
+      opacity: .7;
+      z-index: 1;
+    }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background-image: url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670');
+      background-size: cover;
+      background-position: center;
+      transform: scale(1.08);
+      z-index: 0;
+    }
+
+    .hero-inner {
+      position: relative;
+      z-index: 2;
+      max-width: 960px;
+      padding: 22px;
+      text-align: center;
+      background: rgba(255, 255, 255, .06);
+      border: 1px solid rgba(255, 255, 255, .18);
+      backdrop-filter: blur(10px) saturate(120%);
+      -webkit-backdrop-filter: blur(10px) saturate(120%);
+      border-radius: 18px;
+      box-shadow: 0 20px 50px rgba(2, 6, 23, .25);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      background: rgba(255, 255, 255, .14);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-weight: 700;
+      letter-spacing: .02em;
+    }
+
+    .hero h1 {
+      font-size: clamp(1.8rem, 2.2vw + 1rem, 2.8rem);
+      line-height: 1.08;
+      margin: 10px 0 8px;
+      text-shadow: 0 2px 12px rgba(0, 0, 0, .25);
+    }
+
+    .lead {
+      color: rgba(255, 255, 255, .92);
+      font-weight: 600;
+      max-width: 68ch;
+      margin: 0 auto;
+      text-shadow: 0 1px 6px rgba(0, 0, 0, .18);
+    }
+
+    .cta {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 16px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid transparent;
+      border-radius: 12px;
+      padding: 12px 18px;
+      font-weight: 800;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn.primary {
+      background: var(--ux-accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--ux-accent-2);
+    }
+
+    .btn.ghost {
+      background: #fff;
+      color: var(--ux-accent);
+      border-color: var(--ux-border);
+    }
 
     /* Cards, grid, and carousel */
-    .grid{ display:grid; gap:18px; }
-    .cards{ display:grid; gap:18px; }
-    @media (min-width: 860px){ .cards.cols-3{ grid-template-columns: repeat(3,1fr);} }
-    .card{ background:#fff; border:1px solid var(--ux-border); border-radius:var(--ux-radius); padding:16px; box-shadow: var(--ux-shadow); }
-    .muted{ color: var(--ux-muted); }
-    .passes-carousel{ display:flex; gap:14px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:6px; }
-    .pass{ min-width: 290px; max-width: 320px; background:#fff; border:1px solid var(--ux-border); border-radius:16px; box-shadow: var(--ux-shadow); padding:14px; }
-    .pass .hdr{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
-    .pass .std{ font-weight:800; font-size:1.05rem; color:#0f172a; }
-    .pass .win{ font-weight:700; font-size:.85rem; color:#334155; }
-    .qr{ margin-top:10px; border:1px dashed #e2e8f0; border-radius:12px; height:180px; display:grid; place-items:center; color:#64748b; }
-    .badge{ display:inline-block; font-weight:800; font-size:.72rem; padding:4px 8px; border-radius:999px; border:1px solid #e2e8f0; color:#0f172a; background:#f8fafc; }
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
 
-    .list{ display:grid; gap:12px; }
-    .row{ display:flex; align-items:center; gap:12px; justify-content:space-between; border:1px solid var(--ux-border); border-radius:12px; background:#fff; padding:12px; }
-    .row .who{ font-weight:700; color:#0f172a; }
-    .row .meta{ color:#64748b; font-size:.9rem; }
+    .cards {
+      display: grid;
+      gap: 18px;
+    }
 
-    .cta-band{ background:#0b1220; color:#fff; border-radius:16px; padding:24px; text-align:center; }
+    @media (min-width: 860px) {
+      .cards.cols-3 {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
 
-    .animatable{ opacity:0; transform: translateY(18px); transition: opacity .8s ease, transform .8s ease; }
-    .animatable.is-visible{ opacity:1; transform:none; }
+    .card {
+      background: #fff;
+      border: 1px solid var(--ux-border);
+      border-radius: var(--ux-radius);
+      padding: 16px;
+      box-shadow: var(--ux-shadow);
+    }
 
-    @media (max-width:760px){ .passes-carousel{ scroll-snap-type: x mandatory; } .pass{ scroll-snap-align:start; }
+    .muted {
+      color: var(--ux-muted);
+    }
+
+    .passes-carousel {
+      display: flex;
+      gap: 14px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 6px;
+    }
+
+    .pass {
+      min-width: 290px;
+      max-width: 320px;
+      background: #fff;
+      border: 1px solid var(--ux-border);
+      border-radius: 16px;
+      box-shadow: var(--ux-shadow);
+      padding: 14px;
+    }
+
+    .pass .hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .pass .std {
+      font-weight: 800;
+      font-size: 1.05rem;
+      color: #0f172a;
+    }
+
+    .pass .win {
+      font-weight: 700;
+      font-size: .85rem;
+      color: #334155;
+    }
+
+    .qr {
+      margin-top: 10px;
+      border: 1px dashed #e2e8f0;
+      border-radius: 12px;
+      height: 180px;
+      display: grid;
+      place-items: center;
+      color: #64748b;
+    }
+
+    .badge {
+      display: inline-block;
+      font-weight: 800;
+      font-size: .72rem;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid #e2e8f0;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+
+    .list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-content: space-between;
+      border: 1px solid var(--ux-border);
+      border-radius: 12px;
+      background: #fff;
+      padding: 12px;
+    }
+
+    .row .who {
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .row .meta {
+      color: #64748b;
+      font-size: .9rem;
+    }
+
+    .cta-band {
+      background: #0b1220;
+      color: #fff;
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .animatable {
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity .8s ease, transform .8s ease;
+    }
+
+    .animatable.is-visible {
+      opacity: 1;
+      transform: none;
+    }
+
+    @media (max-width:760px) {
+      .passes-carousel {
+        scroll-snap-type: x mandatory;
+      }
+
+      .pass {
+        scroll-snap-align: start;
+      }
     }
   </style>
 </head>
+
 <body class="sd-body">
   <!-- Header injected by site-header.js -->
 
@@ -76,7 +313,8 @@
     <div class="hero-inner animatable">
       <span class="eyebrow">Parent Portal</span>
       <h1 id="greeting">Your passes and pickup permissions</h1>
-      <p class="lead" id="summary">View today's boarding passes and manage who can pick up your student. QR codes rotate for security and scan fast at dismissal.</p>
+      <p class="lead" id="summary">View today's boarding passes and manage who can pick up your student. QR codes rotate
+        for security and scan fast at dismissal.</p>
       <div class="cta">
         <a class="btn primary" href="#today">See today's passes</a>
         <a class="btn ghost" href="/permissions.html">Manage permissions</a>
@@ -89,16 +327,19 @@
     <section id="today" class="section" aria-labelledby="today-h">
       <div class="ux-wrap">
         <h2 id="today-h" class="animatable">Today's passes</h2>
-        <p class="muted animatable" data-delay="1" id="passesSubtitle">Swipe between students. Each pass shows a scannable QR during your pickup window.</p>
+        <p class="muted animatable" data-delay="1" id="passesSubtitle">Swipe between students. Each pass shows a
+          scannable QR during your pickup window.</p>
 
         <div id="signedOutCallout" class="card animatable" style="display:none;">
           <strong>Sign in to view your passes</strong>
-          <p class="muted" style="margin:6px 0 0;">Use the Sign in button in the header. If you're new, you'll receive an invite to claim your student.</p>
+          <p class="muted" style="margin:6px 0 0;">Use the Sign in button in the header. If you're new, you'll receive
+            an invite to claim your student.</p>
         </div>
 
         <div id="noPasses" class="card animatable" style="display:none;">
           <strong>No passes yet</strong>
-          <p class="muted" style="margin:6px 0 0;">You don't have any passes for today. If you expect one, check your pickup permissions below.</p>
+          <p class="muted" style="margin:6px 0 0;">You don't have any passes for today. If you expect one, check your
+            pickup permissions below.</p>
         </div>
 
         <div id="passesWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
@@ -111,11 +352,13 @@
     <section id="trusted" class="section" aria-labelledby="trusted-h">
       <div class="ux-wrap">
         <h2 id="trusted-h" class="animatable">Trusted pickups</h2>
-        <p class="muted animatable" data-delay="1" id="trustedSubtitle">These are students you can pick up because another parent granted you access.</p>
+        <p class="muted animatable" data-delay="1" id="trustedSubtitle">These are students you can pick up because
+          another parent granted you access.</p>
 
         <div id="trustedEmpty" class="card animatable" style="display:none;">
           <strong>No pickup permissions yet</strong>
-          <p class="muted" style="margin:6px 0 0;">When another parent grants you pickup access, you'll see their students here.</p>
+          <p class="muted" style="margin:6px 0 0;">When another parent grants you pickup access, you'll see their
+            students here.</p>
         </div>
 
         <div id="trustedWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
@@ -131,17 +374,43 @@
           <h2 id="perm-h" class="animatable">Manage pickup permissions</h2>
           <button id="addTrusted" class="btn" type="button" title="Add trusted adult">Add trusted adult</button>
         </div>
-        <p class="muted animatable" data-delay="1">Grant one-time or recurring pickup access to trusted adults. You can revoke anytime.</p>
+        <p class="muted animatable" data-delay="1">Grant one-time or recurring pickup access to trusted adults. You can
+          revoke anytime.</p>
 
         <div id="grantsEmpty" class="card animatable" style="display:none;">
           <strong>No pickup permissions yet</strong>
-          <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view their passes on pickup days.</p>
+          <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view
+            their passes on pickup days.</p>
         </div>
         <div id="grantsList" class="list animatable" style="display:none; margin-top:12px;">
           <!-- Grants injected by JS -->
         </div>
       </div>
     </section>
+
+    <!-- Add Trusted Adult Modal -->
+    <dialog id="addTrustedDialog"
+      style="border:none; border-radius:16px; padding:24px; max-width:400px; width:90%; box-shadow:0 20px 50px rgba(0,0,0,0.25);">
+      <h3 style="margin-top:0;">Add trusted adult</h3>
+      <p class="muted" style="margin-bottom:16px;">Invite someone to pick up your student(s). They will receive an
+        invite link.</p>
+      <form method="dialog" id="addTrustedForm">
+        <label style="display:block; margin-bottom:12px;">
+          <span class="muted" style="font-size:0.9rem; font-weight:600;">Student</span>
+          <select id="inviteStudentSelect"
+            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-top:4px;"></select>
+        </label>
+        <label style="display:block; margin-bottom:20px;">
+          <span class="muted" style="font-size:0.9rem; font-weight:600;">Their Email</span>
+          <input type="email" id="inviteEmail" required placeholder="name@example.com"
+            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-top:4px;" />
+        </label>
+        <div style="display:flex; gap:10px; justify-content:flex-end;">
+          <button type="button" class="btn ghost" onclick="this.closest('dialog').close()">Cancel</button>
+          <button type="submit" class="btn primary">Send Invite</button>
+        </div>
+      </form>
+    </dialog>
 
     <!-- PROFILE & CONNECT -->
     <section id="connect" class="section" aria-labelledby="connect-h">
@@ -151,7 +420,8 @@
           <!-- Profile card -->
           <div class="card animatable" id="profileCard">
             <h3 style="margin:0 0 8px;">Your profile</h3>
-            <p class="muted" style="margin:0 0 10px;">Set the name other parents see and whether you’re discoverable at your school.</p>
+            <p class="muted" style="margin:0 0 10px;">Set the name other parents see and whether you’re discoverable at
+              your school.</p>
             <div class="grid" style="grid-template-columns: 1fr;">
               <label>Display name
                 <input id="profName" placeholder="e.g., Alex Johnson" />
@@ -170,7 +440,8 @@
           <!-- Discover card -->
           <div class="card animatable" id="discoverCard">
             <h3 style="margin:0 0 8px;">Find parents</h3>
-            <p class="muted" style="margin:0 0 10px;">Browse parents connected to your school and send a connect request.</p>
+            <p class="muted" style="margin:0 0 10px;">Browse parents connected to your school and send a connect
+              request.</p>
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
               <label style="display:flex; align-items:center; gap:8px;">
                 <span class="muted">School</span>
@@ -183,7 +454,8 @@
               </label>
             </div>
             <div id="discoverList" class="list" style="max-height:280px; overflow:auto;"></div>
-            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet. You may already be connected or have pending requests with everyone at this school.</div>
+            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet. You may already be
+              connected or have pending requests with everyone at this school.</div>
           </div>
 
           <!-- Requests card -->
@@ -216,7 +488,8 @@
       <div class="ux-wrap">
         <div class="cta-band animatable">
           <h2 style="margin:0 0 6px;">Need help with pickup?</h2>
-          <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">Questions about passes or permissions? Reach out and we'll get you set up.</p>
+          <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">Questions about passes or permissions? Reach out and
+            we'll get you set up.</p>
           <div class="cta" style="justify-content:center; margin:0;">
             <a class="btn ghost" href="/contact.html">Contact support</a>
           </div>
@@ -229,7 +502,7 @@
     // Simple reveal-on-scroll
     const animatables = document.querySelectorAll('.animatable');
     const obs = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); } });
     }, { threshold: 0.12 });
     animatables.forEach(a => obs.observe(a));
 
@@ -238,16 +511,16 @@
     // - Load linked students (callable -> reverse index -> collectionGroup)
     // - Render passes with formatted names and rotating QR payloads
     document.addEventListener('DOMContentLoaded', () => {
-      const out   = document.getElementById('signedOutCallout');
-      const none  = document.getElementById('noPasses');
-      const wrap  = document.getElementById('passesWrap');
+      const out = document.getElementById('signedOutCallout');
+      const none = document.getElementById('noPasses');
+      const wrap = document.getElementById('passesWrap');
       const trustedWrap = document.getElementById('trustedWrap');
       const trustedEmpty = document.getElementById('trustedEmpty');
       const grantsList = document.getElementById('grantsList');
-      const grantsEmpty= document.getElementById('grantsEmpty');
+      const grantsEmpty = document.getElementById('grantsEmpty');
 
       // Ensure QRCode library (qrcodejs) is available
-      (function ensureQRCode(){
+      (function ensureQRCode() {
         if (window.QRCode) return;
         const s = document.createElement('script');
         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
@@ -255,43 +528,43 @@
         document.head.appendChild(s);
       })();
 
-      function formatName(name){
-        const raw = String(name||'').trim();
+      function formatName(name) {
+        const raw = String(name || '').trim();
         if (!raw) return '';
         let first = '', last = '';
-        if (raw.includes(',')){
+        if (raw.includes(',')) {
           // "Last, First [Middle]"
           const [l, r] = raw.split(',');
-          last = (l||'').trim();
-          first = (r||'').trim().split(/\s+/)[0] || '';
+          last = (l || '').trim();
+          first = (r || '').trim().split(/\s+/)[0] || '';
         } else {
           const parts = raw.split(/\s+/).filter(Boolean);
           if (parts.length === 1) { first = parts[0]; last = ''; }
-          else { first = parts[0]; last = parts[parts.length-1]; }
+          else { first = parts[0]; last = parts[parts.length - 1]; }
         }
         const li = last ? (last[0].toUpperCase() + '.') : '';
         return [first, li].filter(Boolean).join(' ');
       }
 
-      function drawQrInto(el, basePayload){
+      function drawQrInto(el, basePayload) {
         if (!el) return;
         // Rotate every 30s to vary the code visually while keeping scanners compatible
-        const rot = Math.floor(Date.now()/30000); // changes every 30s
+        const rot = Math.floor(Date.now() / 30000); // changes every 30s
         const payload = basePayload + '&r=' + rot;
         el.innerHTML = '';
         const host = document.createElement('div');
         host.style.width = '180px'; host.style.height = '180px';
         el.appendChild(host);
-        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M)||2 }); } catch {} };
+        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M) || 2 }); } catch { } };
         if (window.QRCode) draw(); else {
-          const t = setInterval(()=>{ if (window.QRCode){ clearInterval(t); draw(); } }, 60);
+          const t = setInterval(() => { if (window.QRCode) { clearInterval(t); draw(); } }, 60);
         }
       }
 
       let qrTimer = null;
-      function renderPasses(passes){
+      function renderPasses(passes) {
         wrap.innerHTML = '';
-        if (qrTimer) { try { clearInterval(qrTimer); } catch{} qrTimer = null; }
+        if (qrTimer) { try { clearInterval(qrTimer); } catch { } qrTimer = null; }
         if (!passes || !passes.length) {
           wrap.style.display = 'none';
           none.style.display = '';
@@ -299,7 +572,7 @@
         }
         none.style.display = 'none';
         wrap.style.display = 'flex';
-        for (const p of passes){
+        for (const p of passes) {
           const card = document.createElement('div');
           card.className = 'pass';
           card.innerHTML = `
@@ -308,7 +581,7 @@
               <span class="badge" title="Status">${p.status}</span>
             </div>
             <div class="win" aria-label="Pickup window">${p.window}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload||''}"></div></div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload || ''}"></div></div>
           `;
           wrap.appendChild(card);
         }
@@ -326,7 +599,7 @@
           });
         }, 30000);
       }
-      function renderGrants(grants){
+      function renderGrants(grants) {
         grantsList.innerHTML = '';
         if (!grants || !grants.length) {
           grantsList.style.display = 'none';
@@ -335,7 +608,7 @@
         }
         grantsEmpty.style.display = 'none';
         grantsList.style.display = 'grid';
-        for (const g of grants){
+        for (const g of grants) {
           const row = document.createElement('div');
           row.className = 'row';
           row.innerHTML = `
@@ -352,11 +625,11 @@
         }
       }
 
-  function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
-      function setSignedIn(){ out.style.display = 'none'; }
+      function setSignedOut() { out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display = 'none'; }
+      function setSignedIn() { out.style.display = 'none'; }
 
       // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
-      async function loadLinkedStudents(uid){
+      async function loadLinkedStudents(uid) {
         // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
         const results = [];
         try {
@@ -366,7 +639,7 @@
             const data = (resp && resp.data) || resp || {};
             if (data && data.ok && Array.isArray(data.students)) {
               for (const s of data.students) {
-                results.push({ id: s.studentId, name: s.name, tag: (s.tag||'') || '', orgId: s.orgId, schoolId: s.schoolId });
+                results.push({ id: s.studentId, name: s.name, tag: (s.tag || '') || '', orgId: s.orgId, schoolId: s.schoolId });
               }
               return results;
             }
@@ -379,7 +652,7 @@
             const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
             snap.docs.forEach(d => {
               const x = d.data() || {}; const id = String(x.studentId || d.id);
-              const name = x.name || id; const tag = String(x.tag||'');
+              const name = x.name || id; const tag = String(x.tag || '');
               const orgId = x.orgId || null; const schoolId = x.schoolId || null;
               results.push({ id, name, tag, orgId, schoolId });
             });
@@ -390,8 +663,8 @@
         try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (!db) return results;
-          const snap = await db.collectionGroup('guardians').where('uid','==', uid).get();
-          for (const d of snap.docs){
+          const snap = await db.collectionGroup('guardians').where('uid', '==', uid).get();
+          for (const d of snap.docs) {
             try {
               const studentRef = d.ref.parent.parent; // .../students/{studentId}
               if (!studentRef) continue;
@@ -404,7 +677,7 @@
               const seg = studentRef.path.split('/');
               const orgId = seg[1] || null; const schoolId = seg[3] || null;
               results.push({ id: studentRef.id, name, tag, orgId, schoolId });
-            } catch {}
+            } catch { }
           }
         } catch (e) {
           console.warn('[parents] fallback loadLinkedStudents failed', e);
@@ -412,7 +685,7 @@
         return results;
       }
 
-  async function applyFromClaims(claims){
+      async function applyFromClaims(claims) {
         if (!claims || !claims.uid) { setSignedOut(); return; }
         setSignedIn();
         const uid = claims.uid;
@@ -426,24 +699,24 @@
             const resp = await call({});
             if (resp?.data?.ok) name = resp.data.displayName || '';
           }
-          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch {} }
-          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch {} }
+          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch { } }
+          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch { } }
           if (name && greetEl) greetEl.textContent = 'Hi, ' + name;
           // We’ll enrich summary when we know linked students and school names
           if (sumEl) sumEl.dataset.base = sumEl.textContent;
-        } catch {}
+        } catch { }
         // Guardian callout: if signed-in but not guardian, prompt to claim
         if (!claims.guardian) {
           document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
           // Inject lightweight claim prompt card if not present
           let claimCard = document.getElementById('guardianClaimPrompt');
-          if (!claimCard){
+          if (!claimCard) {
             claimCard = document.createElement('div');
             claimCard.id = 'guardianClaimPrompt';
             claimCard.className = 'card animatable';
             claimCard.innerHTML = '<strong>No linked students yet</strong><p class="muted" style="margin:6px 0 10px;">Enter your invite code or open the invite link to link a student.</p><div><a class="btn" href="/claim.html">Go to claim page</a></div>';
             out.parentElement?.insertBefore(claimCard, out.nextSibling);
-            try { claimCard.classList.add('is-visible'); } catch {}
+            try { claimCard.classList.add('is-visible'); } catch { }
           }
         } else {
           // Remove claim prompt if guardian now
@@ -454,78 +727,78 @@
         // Compute school list for discovery selector
         const schoolList = [];
         const seenSchool = new Set();
-        for (const s of linked){ if (s.orgId && s.schoolId){ const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)){ seenSchool.add(key); schoolList.push({ orgId:s.orgId, schoolId:s.schoolId }); } } }
+        for (const s of linked) { if (s.orgId && s.schoolId) { const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)) { seenSchool.add(key); schoolList.push({ orgId: s.orgId, schoolId: s.schoolId }); } } }
         const discSelect = document.getElementById('discSchool');
-        if (discSelect){
+        if (discSelect) {
           discSelect.innerHTML = '';
-          for (const sc of schoolList){ const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
+          for (const sc of schoolList) { const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
         }
         // Best-effort: resolve school names for nicer summary and dropdown labels
-        try{
+        try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db){
+          if (db) {
             const nameByKey = new Map();
-            for (const sc of schoolList){
+            for (const sc of schoolList) {
               try {
                 const ref = db.doc(`orgs/${sc.orgId}/schools/${sc.schoolId}`);
                 const snap = await ref.get();
-                const data = snap.exists ? (snap.data()||{}) : {};
+                const data = snap.exists ? (snap.data() || {}) : {};
                 const nm = data.name || sc.schoolId;
                 const key = sc.orgId + '|' + sc.schoolId; nameByKey.set(key, nm);
-              } catch {}
+              } catch { }
             }
-            if (discSelect){ Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
+            if (discSelect) { Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
             const sumEl = document.getElementById('summary');
-            if (sumEl && linked.length){
+            if (sumEl && linked.length) {
               const bySchool = new Map();
-              linked.forEach(s => { const k = s.orgId+'|'+s.schoolId; const arr = bySchool.get(k)||[]; arr.push(s.name||s.id); bySchool.set(k, arr); });
+              linked.forEach(s => { const k = s.orgId + '|' + s.schoolId; const arr = bySchool.get(k) || []; arr.push(s.name || s.id); bySchool.set(k, arr); });
               const parts = [];
-              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length>1?'s':''} at ${sn}`); });
+              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length > 1 ? 's' : ''} at ${sn}`); });
               sumEl.textContent = parts.join(' · ');
             }
           }
-        } catch{}
+        } catch { }
         // Hydrate friendly names if they look like IDs and we have org/school
-        try{
+        try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db){
+          if (db) {
             const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId && s.schoolId);
-            for (const s of needs){
-              try{
+            for (const s of needs) {
+              try {
                 const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
                 const snap = await ref.get();
-                if (snap.exists){
+                if (snap.exists) {
                   const d = snap.data() || {};
                   const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
                   if (nm) s.name = nm;
-                  if (!s.tag){ const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
+                  if (!s.tag) { const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
                 }
-              } catch{}
+              } catch { }
             }
           }
-        } catch{}
-        if (!linked.length){
+        } catch { }
+        if (!linked.length) {
           renderPasses([]);
           // Even if we have no linked students yet, still try to refresh discovery/requests later
-          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
+          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch { }
           return;
         }
         // Build base payload for QR: prefer car tag else student id
         const passes = linked.map(s => {
-          const tag = (s.tag||'').toString().trim();
+          const tag = (s.tag || '').toString().trim();
           const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(s.id));
           return { student: s.name, status: 'Linked', window: '', basePayload: base };
         });
         renderPasses(passes);
         // Now that school context and dropdown are populated, load discovery, connections, and trusted pickups
-        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
+        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch { }
       }
 
       // Listen for claims from site-header.js
       document.addEventListener('sd:claims-ready', (e) => {
         const claims = (e && e.detail && e.detail.claims) || null;
         // Augment with uid if available
-        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch {}
+        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch { }
         applyFromClaims(claims);
       });
 
@@ -539,75 +812,161 @@
         }
       } catch { setSignedOut(); }
 
-      // Access Grants UI (simplified MVP)
+      // Access Grants UI (Trusted Pickups)
       const addBtn = document.getElementById('addTrusted');
-      function openGrantPrompt(students){
-        const emails = prompt('Trusted adult email (Google/Microsoft account):');
-        if (!emails) return;
-        const name = prompt('Name (optional for display):') || '';
-        const windowType = confirm('Limit to today only? OK = Today only, Cancel = Always') ? 'today' : 'always';
-        const studentIds = students.map(s => s.id);
-        createGrant(studentIds, emails.trim(), name.trim(), windowType);
-      }
-      async function createGrant(studentIds, grEmail, grName, windowType){
-        const statusEl = document.getElementById('passesSubtitle');
+      const addDialog = document.getElementById('addTrustedDialog');
+      const addForm = document.getElementById('addTrustedForm');
+      const inviteStudentSelect = document.getElementById('inviteStudentSelect');
+      const inviteEmail = document.getElementById('inviteEmail');
+
+      // Open modal
+      addBtn?.addEventListener('click', () => {
+        const linked = window.__linkedStudentsCache || [];
+        if (!linked.length) { alert('No linked students found.'); return; }
+
+        // Populate student select
+        inviteStudentSelect.innerHTML = '';
+        linked.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id; // studentId
+          opt.textContent = s.name || s.id;
+          inviteStudentSelect.appendChild(opt);
+        });
+
+        inviteEmail.value = '';
+        addDialog.showModal();
+      });
+
+      // Handle invite submit
+      addForm?.addEventListener('submit', async (e) => {
+        e.preventDefault(); // prevent dialog default close for a moment if we want async handling, though dialog closes on submit usually.
+        // But since we want to do async work, we might want to keep it open or show loading.
+        // Actually, form method="dialog" closes it. Let's handle it manually.
+      });
+
+      // Re-bind to catch the submit properly
+      addDialog.querySelector('button[type="submit"]').addEventListener('click', async (e) => {
+        e.preventDefault();
+        const studentId = inviteStudentSelect.value;
+        const email = inviteEmail.value.trim();
+        if (!studentId || !email) return;
+
+        const btn = e.target;
+        const prevText = btn.textContent;
+        btn.textContent = 'Sending...';
+        btn.disabled = true;
+
         try {
-          statusEl.textContent = 'Creating access grant…';
-          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
-          if (!orgId || !schoolId) throw new Error('No school context');
-          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
+          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('inviteTrustedAdult') : null;
           if (!call) throw new Error('Backend unavailable');
-          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType });
-          if (!resp?.data?.ok) throw new Error('Grant creation failed');
-          statusEl.textContent = 'Access grant created.';
-          await loadGrants();
-        } catch(e){
-          console.warn(e);
-          statusEl.textContent = 'Grant failed: ' + (e.message || 'Error');
-          setTimeout(()=>{ statusEl.textContent = 'Swipe between students. Each pass shows a scannable QR during your pickup window.'; }, 4000);
+
+          const resp = await call({ studentId, email });
+          if (resp.data?.ok) {
+            alert('Invite sent! They can now claim the invite.');
+            addDialog.close();
+            // Optionally refresh grants if we want to show pending invites, but listTrustedAdults shows active guardians.
+            // Pending invites might not show up there yet depending on implementation.
+          } else {
+            throw new Error(resp.data?.error || 'Unknown error');
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Failed to send invite: ' + err.message);
+        } finally {
+          btn.textContent = prevText;
+          btn.disabled = false;
+        }
+      });
+
+      async function loadGrants() {
+        const linked = window.__linkedStudentsCache || [];
+        if (!linked.length) return;
+
+        // We want to list trusted adults for EACH linked student.
+        // This might be multiple calls or we can iterate.
+        // For MVP, let's just fetch for all linked students.
+
+        const allTrusted = [];
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listTrustedAdults') : null;
+        if (!call) return;
+
+        try {
+          for (const s of linked) {
+            try {
+              const resp = await call({ studentId: s.id });
+              if (resp.data?.ok && resp.data.guardians) {
+                resp.data.guardians.forEach(g => {
+                  allTrusted.push({ ...g, studentName: s.name, studentId: s.id });
+                });
+              }
+            } catch (e) { console.warn('Failed to list for student', s.id, e); }
+          }
+          renderGrants(allTrusted);
+        } catch (e) { console.warn('loadGrants failed', e); }
+      }
+
+      async function revokeTrusted(studentId, targetUid) {
+        if (!confirm('Are you sure you want to revoke access for this person?')) return;
+
+        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeTrustedAdult') : null;
+        if (!call) return alert('Backend unavailable');
+
+        try {
+          const resp = await call({ studentId, targetUid });
+          if (resp.data?.ok) {
+            await loadGrants(); // Refresh list
+          } else {
+            alert('Failed to revoke.');
+          }
+        } catch (e) {
+          console.error(e);
+          alert('Error revoking: ' + e.message);
         }
       }
-      async function loadGrants(){
-        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
-        if (!orgId || !schoolId) return;
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyGrantedAccess') : null;
-        if (!call) return;
-        try {
-          const resp = await call({});
-          const grants = (resp?.data?.grants)||[];
-          renderGrants(grants.map(g => ({ id: g.id, name: g.name || g.email, students: g.students, window: g.window, path: g.path })));
-        } catch(e){ console.warn('loadGrants failed', e); }
-      }
-      async function revokeGrant(path){
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeAccessGrant') : null;
-        if (!call) return alert('Backend unavailable');
-        if (!confirm('Revoke this access grant?')) return;
-        try { const resp = await call({ path }); if (resp?.data?.ok) await loadGrants(); else alert('Could not revoke'); } catch(e){ alert('Error revoking: ' + (e.message||'')); }
-      }
-      addBtn?.addEventListener('click', async () => {
-        // Use current linked students for selection; in MVP we grant access to ALL linked students
-        const currentCards = wrap.querySelectorAll('.pass .std');
-        const passes = [];
-        currentCards.forEach(c => { const nm = c.textContent.trim(); const base = c.closest('.pass')?.querySelector('.qr-host')?.getAttribute('data-base')||''; passes.push(nm); });
-        const linked = (window.__linkedStudentsCache||[]);
-        if (!linked.length) { alert('No linked students to grant access for yet.'); return; }
-        openGrantPrompt(linked);
-      });
+
       // Override renderPasses to keep a cache for grant creation
       const _origRender = renderPasses;
-      renderPasses = function(passes){ window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
-      // Enhance renderGrants with revoke buttons
-      const _origRenderGrants = renderGrants;
-      renderGrants = function(grants){ _origRenderGrants(grants); try { grantsList.querySelectorAll('.row').forEach((row,i)=>{
-        const g = grants[i]; if (!g) return; const revokeBtn = row.querySelector('button[title="Revoke"]'); if (revokeBtn){ revokeBtn.onclick = () => revokeGrant(g.path); }
-      }); } catch{} };
+      renderPasses = function (passes) { window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
+
+      function renderGrants(grants) {
+        grantsList.innerHTML = '';
+        if (!grants || !grants.length) {
+          grantsList.style.display = 'none';
+          grantsEmpty.style.display = '';
+          return;
+        }
+        grantsEmpty.style.display = 'none';
+        grantsList.style.display = 'grid';
+
+        // Deduplicate if needed, or just show list
+        for (const g of grants) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          row.innerHTML = `
+            <div>
+              <div class="who">${g.name || g.email}</div>
+              <div class="meta">${g.email} · For ${g.studentName}</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button class="btn" type="button" title="Revoke">Revoke</button>
+            </div>
+          `;
+
+          // Wire up revoke
+          const revokeBtn = row.querySelector('button[title="Revoke"]');
+          revokeBtn.onclick = () => revokeTrusted(g.studentId, g.uid);
+
+          grantsList.appendChild(row);
+        }
+      }
+
       // Load grants after claims
       document.addEventListener('sd:claims-ready', () => { loadGrants(); });
 
       // Trusted pickups: render grants where I am the grantee
-      function renderTrusted(pickups){
+      function renderTrusted(pickups) {
         trustedWrap.innerHTML = '';
-        if (!Array.isArray(pickups) || !pickups.length){
+        if (!Array.isArray(pickups) || !pickups.length) {
           trustedWrap.style.display = 'none';
           trustedEmpty.style.display = '';
           return;
@@ -615,11 +974,11 @@
         trustedEmpty.style.display = 'none';
         trustedWrap.style.display = 'flex';
 
-        for (const p of pickups){
+        for (const p of pickups) {
           const card = document.createElement('div');
           card.className = 'pass';
           const who = p.studentName || p.studentId;
-          const by  = p.grantorName ? `Granted by ${p.grantorName}` : '';
+          const by = p.grantorName ? `Granted by ${p.grantorName}` : '';
           const note = p.note ? ` · ${p.note}` : '';
           card.innerHTML = `
             <div class="hdr">
@@ -627,7 +986,7 @@
               <span class="badge" title="Trusted pickup">Trusted</span>
             </div>
             <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload||'')}"></div></div>
+            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload || '')}"></div></div>
           `;
           trustedWrap.appendChild(card);
         }
@@ -638,7 +997,7 @@
         });
       }
 
-      async function loadTrustedPickups(){
+      async function loadTrustedPickups() {
         try {
           const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
           if (!call) return;
@@ -646,7 +1005,7 @@
           const data = (resp && resp.data) || resp || {};
           const pickups = Array.isArray(data.pickups) ? data.pickups : [];
           const mapped = pickups.map(p => {
-            const tag = (p.tag||'').toString().trim();
+            const tag = (p.tag || '').toString().trim();
             const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(p.studentId));
             return {
               studentId: p.studentId,
@@ -658,21 +1017,21 @@
             };
           });
           renderTrusted(mapped);
-        } catch (e){
+        } catch (e) {
           console.warn('[parents] loadTrustedPickups failed', e);
         }
       }
 
       // ───────── Profile & Connect wiring ─────────
-  const profName = document.getElementById('profName');
+      const profName = document.getElementById('profName');
       const profDisc = document.getElementById('profDisc');
       const profSave = document.getElementById('profSave');
       const profStatus = document.getElementById('profStatus');
       const discoverList = document.getElementById('discoverList');
       const discoverEmpty = document.getElementById('discoverEmpty');
-  const discSchool = document.getElementById('discSchool');
-  const discEmail = document.getElementById('discEmail');
-  const discEmailBtn = document.getElementById('discEmailBtn');
+      const discSchool = document.getElementById('discSchool');
+      const discEmail = document.getElementById('discEmail');
+      const discEmailBtn = document.getElementById('discEmailBtn');
       const reqIncoming = document.getElementById('reqIncoming');
       const reqOutgoing = document.getElementById('reqOutgoing');
       const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
@@ -680,18 +1039,18 @@
       const connList = document.getElementById('connList');
       const connEmpty = document.getElementById('connEmpty');
 
-      function callable(name){ return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
+      function callable(name) { return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
 
-      async function loadProfile(){
+      async function loadProfile() {
         try {
           const call = callable('getMyParentProfile');
           if (!call) throw new Error('no-callable');
-          const resp = await call({}); const d = (resp?.data)||{};
-          if (d?.ok){
+          const resp = await call({}); const d = (resp?.data) || {};
+          if (d?.ok) {
             if (profName) profName.value = d.displayName || '';
             if (profDisc) profDisc.checked = !!d.discoverable;
           }
-        } catch(e){
+        } catch (e) {
           console.warn('loadProfile failed', e);
           // HTTP fallback to avoid preview CORS on callables
           try {
@@ -699,65 +1058,65 @@
             const token = await user.getIdToken();
             const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', { headers: { 'Authorization': 'Bearer ' + token } });
             const d = await res.json();
-            if (d?.ok){
+            if (d?.ok) {
               if (profName) profName.value = d.displayName || '';
               if (profDisc) profDisc.checked = !!d.discoverable;
             }
-          } catch(err){ console.warn('HTTP getMyParentProfileHttp failed', err); }
+          } catch (err) { console.warn('HTTP getMyParentProfileHttp failed', err); }
         }
       }
-      async function saveProfile(){
+      async function saveProfile() {
         try {
           const call = callable('updateMyParentProfile');
           profStatus.textContent = 'Saving…';
           try {
             if (!call) throw new Error('no-callable');
             await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
-          } catch(e1){
+          } catch (e1) {
             // HTTP fallback
-            const user = window.firebase?.auth()?.currentUser; if (user){
+            const user = window.firebase?.auth()?.currentUser; if (user) {
               const token = await user.getIdToken();
               await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
-                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ displayName: profName?.value || '', discoverable: !!profDisc?.checked })
               });
             } else { throw e1; }
           }
-          profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
+          profStatus.textContent = 'Saved'; setTimeout(() => profStatus.textContent = '', 1200);
           // Refresh discovery list if we toggled discoverable
           await loadDiscoverable();
-        } catch(e){
+        } catch (e) {
           console.warn('updateMyParentProfile failed', e);
           const msg = (e && (e.message || e.code)) ? String(e.message || e.code) : 'Save failed';
           profStatus.textContent = msg;
-          setTimeout(()=>profStatus.textContent='', 3200);
+          setTimeout(() => profStatus.textContent = '', 3200);
         }
       }
       profSave?.addEventListener('click', saveProfile);
 
-      function renderDiscoverable(list, currentUid){
+      function renderDiscoverable(list, currentUid) {
         discoverList.innerHTML = '';
-        if (!Array.isArray(list) || list.length === 0){ discoverList.style.display='none'; discoverEmpty.style.display=''; return; }
-        discoverEmpty.style.display='none'; discoverList.style.display='grid';
+        if (!Array.isArray(list) || list.length === 0) { discoverList.style.display = 'none'; discoverEmpty.style.display = ''; return; }
+        discoverEmpty.style.display = 'none'; discoverList.style.display = 'grid';
         list.forEach(p => {
-          const row = document.createElement('div'); row.className='row';
+          const row = document.createElement('div'); row.className = 'row';
           row.innerHTML = `
-            <div><div class="who">${(p.displayName||'Parent')}${p.uid && currentUid && p.uid===currentUid ? ' · You' : ''}</div><div class="meta">${p.uid||''}</div></div>
+            <div><div class="who">${(p.displayName || 'Parent')}${p.uid && currentUid && p.uid === currentUid ? ' · You' : ''}</div><div class="meta">${p.uid || ''}</div></div>
             <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid===currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
+              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid === currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
             </div>
           `;
           discoverList.appendChild(row);
         });
-        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e) => {
           const el = e.currentTarget;
           const toUid = el.getAttribute('data-uid');
           // Prevent attempting to connect to self
-          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
+          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch { }
           // Resolve org/school (dropdown overrides SD)
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId){ try { el.title = 'Select a school first'; } catch {}; return; }
+          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
+          if (!orgId || !schoolId) { try { el.title = 'Select a school first'; } catch { }; return; }
 
           const prevText = el.textContent; el.textContent = 'Requesting…'; el.disabled = true;
           let success = false; let lastErr = null;
@@ -767,55 +1126,55 @@
             try {
               const resp = await call({ toUid, orgId, schoolId });
               success = resp?.data?.ok !== false; // treat absence of ok as success
-            } catch (e1){
+            } catch (e1) {
               // HTTP fallback
               try {
                 const user = window.firebase?.auth()?.currentUser; if (!user) throw e1;
                 const token = await user.getIdToken();
                 const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
-                  method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                  method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                   body: JSON.stringify({ toUid, orgId, schoolId })
                 });
-                if (res.ok){
-                  const j = await res.json().catch(()=>({}));
+                if (res.ok) {
+                  const j = await res.json().catch(() => ({}));
                   success = j?.ok !== false;
                 } else {
-                  lastErr = new Error('HTTP '+res.status);
+                  lastErr = new Error('HTTP ' + res.status);
                   throw lastErr;
                 }
-              } catch(e2){ lastErr = e2; throw e2; }
+              } catch (e2) { lastErr = e2; throw e2; }
             }
           } catch (err) {
             lastErr = err;
           } finally {
-            try { await loadConnections(); } catch {}
-            try { await loadDiscoverable(); } catch {}
+            try { await loadConnections(); } catch { }
+            try { await loadDiscoverable(); } catch { }
           }
-          if (success){
+          if (success) {
             el.textContent = 'Requested'; el.disabled = true; el.classList.add('is-requested');
-            try { el.title = 'Request sent'; } catch {}
+            try { el.title = 'Request sent'; } catch { }
           } else {
             // Revert and show subtle hint instead of blocking alert
             el.disabled = false; el.textContent = prevText;
-            try { el.title = String(lastErr?.message || 'Could not send request'); } catch {}
+            try { el.title = String(lastErr?.message || 'Could not send request'); } catch { }
             console.warn('sendParentConnectRequest failed', lastErr);
           }
         }));
       }
 
-      async function loadDiscoverable(){
+      async function loadDiscoverable() {
         try {
           const call = callable('listDiscoverableParents');
           let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
+          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
           if (!orgId || !schoolId) return;
           try {
             if (!call) throw new Error('no-callable');
             const resp = await call({ orgId, schoolId, limit: 50 });
-            const list = (resp?.data?.parents)||[];
+            const list = (resp?.data?.parents) || [];
             const cu = window.firebase?.auth()?.currentUser?.uid || null;
             renderDiscoverable(list, cu);
-          } catch(e1){
+          } catch (e1) {
             console.warn('listDiscoverableParents callable failed', e1);
             // HTTP shim fallback
             try {
@@ -823,60 +1182,60 @@
               const token = await user.getIdToken();
               const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
               const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-              const d = await res.json(); const list = (d?.parents)||[];
+              const d = await res.json(); const list = (d?.parents) || [];
               renderDiscoverable(list, user?.uid || null);
-            } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
+            } catch (e2) { console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
           }
-        } catch(e){ console.warn('loadDiscoverable failed', e); }
+        } catch (e) { console.warn('loadDiscoverable failed', e); }
       }
       discSchool?.addEventListener('change', loadDiscoverable);
 
-      async function addByEmail(){
-        const email = (discEmail?.value||'').trim(); if (!email) return;
+      async function addByEmail() {
+        const email = (discEmail?.value || '').trim(); if (!email) return;
         let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-        if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-        if (!orgId || !schoolId){ try { discEmailBtn.title = 'Select a school first'; } catch {}; return; }
+        if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
+        if (!orgId || !schoolId) { try { discEmailBtn.title = 'Select a school first'; } catch { }; return; }
         const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
         let ok = false; let lastErr = null;
-        try{
+        try {
           const call = callable('sendParentConnectRequestByEmail');
           if (!call) throw new Error('Backend unavailable');
           try {
             await call({ email, orgId, schoolId }); ok = true;
-          } catch(_){
+          } catch (_) {
             const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
             const token = await user.getIdToken();
             const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
-              method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+              method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
               body: JSON.stringify({ email, orgId, schoolId })
             });
-            if (res.ok) ok = true; else { lastErr = new Error('HTTP '+res.status); throw lastErr; }
+            if (res.ok) ok = true; else { lastErr = new Error('HTTP ' + res.status); throw lastErr; }
           }
-        } catch (e){ lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
-        try { await loadConnections(); } catch {}
-        if (ok){
-          if (discEmail) discEmail.value='';
-          if (discEmailBtn){ discEmailBtn.textContent = 'Sent'; setTimeout(()=>{ try{ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; } catch{} }, 1000); }
+        } catch (e) { lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
+        try { await loadConnections(); } catch { }
+        if (ok) {
+          if (discEmail) discEmail.value = '';
+          if (discEmailBtn) { discEmailBtn.textContent = 'Sent'; setTimeout(() => { try { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; } catch { } }, 1000); }
         } else {
-          if (discEmailBtn){ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch {} }
+          if (discEmailBtn) { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch { } }
         }
       }
       discEmailBtn?.addEventListener('click', addByEmail);
 
-      function renderReqRow(where, who, metaHtml, actionsHtml){
-        const row = document.createElement('div'); row.className='row';
-        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml||''}</div></div><div style="display:flex; gap:8px;">${actionsHtml||''}</div>`;
+      function renderReqRow(where, who, metaHtml, actionsHtml) {
+        const row = document.createElement('div'); row.className = 'row';
+        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml || ''}</div></div><div style="display:flex; gap:8px;">${actionsHtml || ''}</div>`;
         where.appendChild(row);
         return row;
       }
-      async function loadConnections(){
+      async function loadConnections() {
         try {
           const call = callable('listMyParentConnections');
           let d = {};
           try {
             if (!call) throw new Error('no-callable');
-            const resp = await call({}); d = (resp?.data)||{};
-          } catch(e1){
+            const resp = await call({}); d = (resp?.data) || {};
+          } catch (e1) {
             console.warn('listMyParentConnections callable failed', e1);
             // HTTP shim fallback
             try {
@@ -884,60 +1243,61 @@
               const token = await user.getIdToken();
               const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
               d = await res.json();
-            } catch(e2){ console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
+            } catch (e2) { console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
           }
           // Incoming
           reqIncoming.innerHTML = '';
           const inc = Array.isArray(d.incoming) ? d.incoming : [];
-          if (!inc.length){ reqIncoming.style.display='none'; reqIncomingEmpty.style.display=''; }
+          if (!inc.length) { reqIncoming.style.display = 'none'; reqIncomingEmpty.style.display = ''; }
           else {
-            reqIncoming.style.display='grid'; reqIncomingEmpty.style.display='none';
+            reqIncoming.style.display = 'grid'; reqIncomingEmpty.style.display = 'none';
             inc.forEach(item => {
               const who = item.displayName || item.fromUid || 'Parent';
               const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
-              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
+              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e) => {
                 const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
                 try {
                   const call = callable('respondParentConnectRequest'); if (!call) return;
                   try {
                     await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
-                  } catch(_){
+                  } catch (_) {
                     // HTTP fallback
-                    const user = window.firebase?.auth()?.currentUser; if (user){
+                    const user = window.firebase?.auth()?.currentUser; if (user) {
                       const token = await user.getIdToken();
                       await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
-                        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
+                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                         body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
                       });
                     } else { throw _; }
                   }
                   await loadConnections();
-                } catch {}
+                } catch { }
               }));
             });
           }
           // Outgoing
           reqOutgoing.innerHTML = '';
           const out = Array.isArray(d.outgoing) ? d.outgoing : [];
-          if (!out.length){ reqOutgoing.style.display='none'; reqOutgoingEmpty.style.display=''; }
+          if (!out.length) { reqOutgoing.style.display = 'none'; reqOutgoingEmpty.style.display = ''; }
           else {
-            reqOutgoing.style.display='grid'; reqOutgoingEmpty.style.display='none';
-            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status||'pending'}`); });
+            reqOutgoing.style.display = 'grid'; reqOutgoingEmpty.style.display = 'none';
+            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status || 'pending'}`); });
           }
           // Connections
           connList.innerHTML = '';
           const cons = Array.isArray(d.connections) ? d.connections : [];
-          if (!cons.length){ connList.style.display='none'; connEmpty.style.display=''; }
+          if (!cons.length) { connList.style.display = 'none'; connEmpty.style.display = ''; }
           else {
-            connList.style.display='grid'; connEmpty.style.display='none';
-            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId||''} · ${c.schoolId||''}`); });
+            connList.style.display = 'grid'; connEmpty.style.display = 'none';
+            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId || ''} · ${c.schoolId || ''}`); });
           }
-        } catch(e){ console.warn('loadConnections failed', e); }
+        } catch (e) { console.warn('loadConnections failed', e); }
       }
 
-  // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
-  document.addEventListener('sd:claims-ready', () => { loadProfile(); });
+      // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
+      document.addEventListener('sd:claims-ready', () => { loadProfile(); });
     });
   </script>
 </body>
+
 </html>
