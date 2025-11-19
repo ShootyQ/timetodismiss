@@ -955,213 +955,108 @@
           // Wire up revoke
           const revokeBtn = row.querySelector('button[title="Revoke"]');
           revokeBtn.onclick = () => revokeTrusted(g.studentId, g.uid);
-
-          grantsList.appendChild(row);
-        }
-      }
-
-      // Load grants after claims
-      document.addEventListener('sd:claims-ready', () => {
-        console.log('!!! SD:CLAIMS-READY FIRED. Loading grants and trusted pickups...');
-        list.forEach(p => {
-          const row = document.createElement('div'); row.className = 'row';
-          row.innerHTML = `
-            < div ><div class="who">${(p.displayName || 'Parent')}${p.uid && currentUid && p.uid === currentUid ? ' · You' : ''}</div><div class="meta">${p.uid || ''}</div></div >
-              <div style="display:flex; gap:8px;">
-                <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid === currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
-              </div>
-          `;
-          discoverList.appendChild(row);
-        });
-        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e) => {
-          const el = e.currentTarget;
-          const toUid = el.getAttribute('data-uid');
-          // Prevent attempting to connect to self
-          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch { }
-          // Resolve org/school (dropdown overrides SD)
-          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId) { try { el.title = 'Select a school first'; } catch { }; return; }
-
-          const prevText = el.textContent; el.textContent = 'Requesting…'; el.disabled = true;
-          let success = false; let lastErr = null;
+          const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
+          let ok = false; let lastErr = null;
           try {
-            const call = callable('sendParentConnectRequest');
+            const call = callable('sendParentConnectRequestByEmail');
             if (!call) throw new Error('Backend unavailable');
             try {
-              const resp = await call({ toUid, orgId, schoolId });
-              success = resp?.data?.ok !== false; // treat absence of ok as success
-            } catch (e1) {
-              // HTTP fallback
-              try {
-                const user = window.firebase?.auth()?.currentUser; if (!user) throw e1;
-                const token = await user.getIdToken();
-                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                  body: JSON.stringify({ toUid, orgId, schoolId })
-                });
-                if (res.ok) {
-                  const j = await res.json().catch(() => ({}));
-                  success = j?.ok !== false;
-                } else {
-                  lastErr = new Error('HTTP ' + res.status);
-                  throw lastErr;
-                }
-              } catch (e2) { lastErr = e2; throw e2; }
+              await call({ email, orgId, schoolId }); ok = true;
+            } catch (_) {
+              const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
+              const token = await user.getIdToken();
+              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ email, orgId, schoolId })
+              });
+              if (res.ok) ok = true; else { lastErr = new Error('HTTP ' + res.status); throw lastErr; }
             }
-          } catch (err) {
-            lastErr = err;
-          } finally {
-            try { await loadConnections(); } catch { }
-            try { await loadDiscoverable(); } catch { }
-          }
-          if (success) {
-            el.textContent = 'Requested'; el.disabled = true; el.classList.add('is-requested');
-            try { el.title = 'Request sent'; } catch { }
+          } catch (e) { lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
+          try { await loadConnections(); } catch { }
+          if (ok) {
+            if (discEmail) discEmail.value = '';
+            if (discEmailBtn) { discEmailBtn.textContent = 'Sent'; setTimeout(() => { try { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; } catch { } }, 1000); }
           } else {
-            // Revert and show subtle hint instead of blocking alert
-            el.disabled = false; el.textContent = prevText;
-            try { el.title = String(lastErr?.message || 'Could not send request'); } catch { }
-            console.warn('sendParentConnectRequest failed', lastErr);
+            if (discEmailBtn) { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch { } }
           }
-        }));
-      }
+        }
+        discEmailBtn?.addEventListener('click', addByEmail);
 
-          async function loadDiscoverable() {
+        function renderReqRow(where, who, metaHtml, actionsHtml) {
+          const row = document.createElement('div'); row.className = 'row';
+          row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml || ''}</div></div><div style="display:flex; gap:8px;">${actionsHtml || ''}</div>`;
+          where.appendChild(row);
+          return row;
+        }
+        async function loadConnections() {
           try {
-            const call = callable('listDiscoverableParents');
-            let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-            if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
-            if (!orgId || !schoolId) return;
+            const call = callable('listMyParentConnections');
+            let d = {};
             try {
               if (!call) throw new Error('no-callable');
-              const resp = await call({ orgId, schoolId, limit: 50 });
-              const list = (resp?.data?.parents) || [];
-              const cu = window.firebase?.auth()?.currentUser?.uid || null;
-              renderDiscoverable(list, cu);
+              const resp = await call({}); d = (resp?.data) || {};
             } catch (e1) {
-              console.warn('listDiscoverableParents callable failed', e1);
+              console.warn('listMyParentConnections callable failed', e1);
               // HTTP shim fallback
               try {
                 const user = window.firebase?.auth()?.currentUser; if (!user) return;
                 const token = await user.getIdToken();
-                const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
-                const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-                const d = await res.json(); const list = (d?.parents) || [];
-                renderDiscoverable(list, user?.uid || null);
-              } catch (e2) { console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
+                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
+                d = await res.json();
+              } catch (e2) { console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
             }
-          } catch (e) { console.warn('loadDiscoverable failed', e); }
-        }
-    discSchool?.addEventListener('change', loadDiscoverable);
-
-      async function addByEmail() {
-        const email = (discEmail?.value || '').trim(); if (!email) return;
-        let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-        if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
-        if (!orgId || !schoolId) { try { discEmailBtn.title = 'Select a school first'; } catch { }; return; }
-        const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
-        let ok = false; let lastErr = null;
-        try {
-          const call = callable('sendParentConnectRequestByEmail');
-          if (!call) throw new Error('Backend unavailable');
-          try {
-            await call({ email, orgId, schoolId }); ok = true;
-          } catch (_) {
-            const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
-            const token = await user.getIdToken();
-            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
-              method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-              body: JSON.stringify({ email, orgId, schoolId })
-            });
-            if (res.ok) ok = true; else { lastErr = new Error('HTTP ' + res.status); throw lastErr; }
-          }
-        } catch (e) { lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
-        try { await loadConnections(); } catch { }
-        if (ok) {
-          if (discEmail) discEmail.value = '';
-          if (discEmailBtn) { discEmailBtn.textContent = 'Sent'; setTimeout(() => { try { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; } catch { } }, 1000); }
-        } else {
-          if (discEmailBtn) { discEmailBtn.textContent = prev || 'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch { } }
-        }
-      }
-      discEmailBtn?.addEventListener('click', addByEmail);
-
-      function renderReqRow(where, who, metaHtml, actionsHtml) {
-        const row = document.createElement('div'); row.className = 'row';
-        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml || ''}</div></div><div style="display:flex; gap:8px;">${actionsHtml || ''}</div>`;
-        where.appendChild(row);
-        return row;
-      }
-      async function loadConnections() {
-        try {
-          const call = callable('listMyParentConnections');
-          let d = {};
-          try {
-            if (!call) throw new Error('no-callable');
-            const resp = await call({}); d = (resp?.data) || {};
-          } catch (e1) {
-            console.warn('listMyParentConnections callable failed', e1);
-            // HTTP shim fallback
-            try {
-              const user = window.firebase?.auth()?.currentUser; if (!user) return;
-              const token = await user.getIdToken();
-              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
-              d = await res.json();
-            } catch (e2) { console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
-          }
-          // Incoming
-          reqIncoming.innerHTML = '';
-          const inc = Array.isArray(d.incoming) ? d.incoming : [];
-          if (!inc.length) { reqIncoming.style.display = 'none'; reqIncomingEmpty.style.display = ''; }
-          else {
-            reqIncoming.style.display = 'grid'; reqIncomingEmpty.style.display = 'none';
-            inc.forEach(item => {
-              const who = item.displayName || item.fromUid || 'Parent';
-              const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
-              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e) => {
-                const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
-                try {
-                  const call = callable('respondParentConnectRequest'); if (!call) return;
+            // Incoming
+            reqIncoming.innerHTML = '';
+            const inc = Array.isArray(d.incoming) ? d.incoming : [];
+            if (!inc.length) { reqIncoming.style.display = 'none'; reqIncomingEmpty.style.display = ''; }
+            else {
+              reqIncoming.style.display = 'grid'; reqIncomingEmpty.style.display = 'none';
+              inc.forEach(item => {
+                const who = item.displayName || item.fromUid || 'Parent';
+                const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
+                row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e) => {
+                  const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
                   try {
-                    await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
-                  } catch (_) {
-                    // HTTP fallback
-                    const user = window.firebase?.auth()?.currentUser; if (user) {
-                      const token = await user.getIdToken();
-                      await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
-                      });
-                    } else { throw _; }
-                  }
-                  await loadConnections();
-                } catch { }
-              }));
-            });
-          }
-          // Outgoing
-          reqOutgoing.innerHTML = '';
-          const out = Array.isArray(d.outgoing) ? d.outgoing : [];
-          if (!out.length) { reqOutgoing.style.display = 'none'; reqOutgoingEmpty.style.display = ''; }
-          else {
-            reqOutgoing.style.display = 'grid'; reqOutgoingEmpty.style.display = 'none';
-            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status || 'pending'}`); });
-          }
-          // Connections
-          connList.innerHTML = '';
-          const cons = Array.isArray(d.connections) ? d.connections : [];
-          if (!cons.length) { connList.style.display = 'none'; connEmpty.style.display = ''; }
-          else {
-            connList.style.display = 'grid'; connEmpty.style.display = 'none';
-            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId || ''} · ${c.schoolId || ''}`); });
-          }
-        } catch (e) { console.warn('loadConnections failed', e); }
-      }
+                    const call = callable('respondParentConnectRequest'); if (!call) return;
+                    try {
+                      await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
+                    } catch (_) {
+                      // HTTP fallback
+                      const user = window.firebase?.auth()?.currentUser; if (user) {
+                        const token = await user.getIdToken();
+                        await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                          body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
+                        });
+                      } else { throw _; }
+                    }
+                    await loadConnections();
+                  } catch { }
+                }));
+              });
+            }
+            // Outgoing
+            reqOutgoing.innerHTML = '';
+            const out = Array.isArray(d.outgoing) ? d.outgoing : [];
+            if (!out.length) { reqOutgoing.style.display = 'none'; reqOutgoingEmpty.style.display = ''; }
+            else {
+              reqOutgoing.style.display = 'grid'; reqOutgoingEmpty.style.display = 'none';
+              out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status || 'pending'}`); });
+            }
+            // Connections
+            connList.innerHTML = '';
+            const cons = Array.isArray(d.connections) ? d.connections : [];
+            if (!cons.length) { connList.style.display = 'none'; connEmpty.style.display = ''; }
+            else {
+              connList.style.display = 'grid'; connEmpty.style.display = 'none';
+              cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId || ''} · ${c.schoolId || ''}`); });
+            }
+          } catch (e) { console.warn('loadConnections failed', e); }
+        }
 
-      // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
-      document.addEventListener('sd:claims-ready', () => { loadProfile(); });
-    });
+        // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
+        document.addEventListener('sd:claims-ready', () => { loadProfile(); });
+      });
   </script>
 </body>
 
