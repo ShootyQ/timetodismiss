@@ -947,10 +947,15 @@
 
       async function loadTrustedPickups(){
         try {
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
-          if (!call) return;
+          console.log('[parents] Loading trusted pickups...');
+          let call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
+          if (!call && window.firebase && firebase.functions) call = firebase.functions().httpsCallable('listMyPickupAccess');
+
+          if (!call) { console.warn('[parents] No callable found for listMyPickupAccess'); return; }
+
           const resp = await call({});
           const data = (resp && resp.data) || resp || {};
+          console.log('[parents] Trusted pickups data:', data);
           const pickups = Array.isArray(data.pickups) ? data.pickups : [];
           const mapped = pickups.map(p => {
             const tag = (p.tag||'').toString().trim();
