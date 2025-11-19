@@ -312,12 +312,12 @@
     <div class="hero-bg"></div>
     <div class="hero-inner animatable">
       <span class="eyebrow">Parent Portal</span>
-      <h1 id="greeting">Your passes and pickup permissions</h1>
-      <p class="lead" id="summary">View today's boarding passes and manage who can pick up your student. QR codes rotate
-        for security and scan fast at dismissal.</p>
+      <h1>Your passes and pickup permissions</h1>
+      <p class="lead">View today's boarding passes and manage who can pick up your student. QR codes rotate for security
+        and scan fast at dismissal.</p>
       <div class="cta">
         <a class="btn primary" href="#today">See today's passes</a>
-        <a class="btn ghost" href="/permissions.html">Manage permissions</a>
+        <a class="btn ghost" href="#permissions">Manage permissions</a>
       </div>
     </div>
   </header>
@@ -348,25 +348,6 @@
       </div>
     </section>
 
-    <!-- TRUSTED PICKUPS (grantee view) -->
-    <section id="trusted" class="section" aria-labelledby="trusted-h">
-      <div class="ux-wrap">
-        <h2 id="trusted-h" class="animatable">Trusted pickups</h2>
-        <p class="muted animatable" data-delay="1" id="trustedSubtitle">These are students you can pick up because
-          another parent granted you access.</p>
-
-        <div id="trustedEmpty" class="card animatable" style="display:none;">
-          <strong>No pickup permissions yet</strong>
-          <p class="muted" style="margin:6px 0 0;">When another parent grants you pickup access, you'll see their
-            students here.</p>
-        </div>
-
-        <div id="trustedWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
-          <!-- Trusted pickup cards injected by JS -->
-        </div>
-      </div>
-    </section>
-
     <!-- MANAGE PERMISSIONS -->
     <section id="permissions" class="section" aria-labelledby="perm-h">
       <div class="ux-wrap">
@@ -381,643 +362,497 @@
           <strong>No pickup permissions yet</strong>
           <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view
             their passes on pickup days.</p>
-        </div>
-        <div id="grantsList" class="list animatable" style="display:none; margin-top:12px;">
-          <!-- Grants injected by JS -->
-        </div>
-      </div>
-    </section>
+          })();
 
-    <!-- Add Trusted Adult Modal -->
-    <dialog id="addTrustedDialog"
-      style="border:none; border-radius:16px; padding:24px; max-width:400px; width:90%; box-shadow:0 20px 50px rgba(0,0,0,0.25);">
-      <h3 style="margin-top:0;">Add trusted adult</h3>
-      <p class="muted" style="margin-bottom:16px;">Invite someone to pick up your student(s). They will receive an
-        invite link.</p>
-      <form method="dialog" id="addTrustedForm">
-        <label style="display:block; margin-bottom:12px;">
-          <span class="muted" style="font-size:0.9rem; font-weight:600;">Student</span>
-          <select id="inviteStudentSelect"
-            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-top:4px;"></select>
-        </label>
-        <label style="display:block; margin-bottom:20px;">
-          <span class="muted" style="font-size:0.9rem; font-weight:600;">Their Email</span>
-          <input type="email" id="inviteEmail" required placeholder="name@example.com"
-            style="width:100%; padding:10px; border-radius:8px; border:1px solid #cbd5e1; margin-top:4px;" />
-        </label>
-        <div style="display:flex; gap:10px; justify-content:flex-end;">
-          <button type="button" class="btn ghost" onclick="this.closest('dialog').close()">Cancel</button>
-          <button type="submit" class="btn primary">Send Invite</button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- PROFILE & CONNECT -->
-    <section id="connect" class="section" aria-labelledby="connect-h">
-      <div class="ux-wrap">
-        <h2 id="connect-h" class="animatable">Parent profile & connect</h2>
-        <div class="cards cols-3" style="margin-top:12px;">
-          <!-- Profile card -->
-          <div class="card animatable" id="profileCard">
-            <h3 style="margin:0 0 8px;">Your profile</h3>
-            <p class="muted" style="margin:0 0 10px;">Set the name other parents see and whether you’re discoverable at
-              your school.</p>
-            <div class="grid" style="grid-template-columns: 1fr;">
-              <label>Display name
-                <input id="profName" placeholder="e.g., Alex Johnson" />
-              </label>
-              <label style="display:flex; align-items:center; gap:8px;">
-                <input id="profDisc" type="checkbox" />
-                <span>Let other parents find me</span>
-              </label>
-            </div>
-            <div style="display:flex; gap:8px; align-items:center; margin-top:10px;">
-              <button id="profSave" class="btn" type="button">Save</button>
-              <span id="profStatus" class="muted"></span>
-            </div>
-          </div>
-
-          <!-- Discover card -->
-          <div class="card animatable" id="discoverCard">
-            <h3 style="margin:0 0 8px;">Find parents</h3>
-            <p class="muted" style="margin:0 0 10px;">Browse parents connected to your school and send a connect
-              request.</p>
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-              <label style="display:flex; align-items:center; gap:8px;">
-                <span class="muted">School</span>
-                <select id="discSchool" style="min-width:220px;"></select>
-              </label>
-              <div style="flex:1"></div>
-              <label style="display:flex; align-items:center; gap:8px;">
-                <input id="discEmail" placeholder="Add by email" style="min-width:220px;" />
-                <button id="discEmailBtn" class="btn" type="button">Add</button>
-              </label>
-            </div>
-            <div id="discoverList" class="list" style="max-height:280px; overflow:auto;"></div>
-            <div id="discoverEmpty" class="muted" style="display:none;">No discoverable parents yet. You may already be
-              connected or have pending requests with everyone at this school.</div>
-          </div>
-
-          <!-- Requests card -->
-          <div class="card animatable" id="requestsCard">
-            <h3 style="margin:0 0 8px;">Requests & connections</h3>
-            <div class="grid" style="grid-template-columns: 1fr; gap:10px;">
-              <div>
-                <div class="muted" style="margin-bottom:6px;">Incoming</div>
-                <div id="reqIncoming" class="list"></div>
-                <div id="reqIncomingEmpty" class="muted" style="display:none;">No incoming requests.</div>
-              </div>
-              <div>
-                <div class="muted" style="margin-bottom:6px;">Outgoing</div>
-                <div id="reqOutgoing" class="list"></div>
-                <div id="reqOutgoingEmpty" class="muted" style="display:none;">No outgoing requests.</div>
-              </div>
-              <div>
-                <div class="muted" style="margin-bottom:6px;">Connections</div>
-                <div id="connList" class="list"></div>
-                <div id="connEmpty" class="muted" style="display:none;">No connections yet.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- CTA BAND -->
-    <section class="section" aria-label="Need help?">
-      <div class="ux-wrap">
-        <div class="cta-band animatable">
-          <h2 style="margin:0 0 6px;">Need help with pickup?</h2>
-          <p class="muted" style="color:#cbd5e1; margin:0 0 12px;">Questions about passes or permissions? Reach out and
-            we'll get you set up.</p>
-          <div class="cta" style="justify-content:center; margin:0;">
-            <a class="btn ghost" href="/contact.html">Contact support</a>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <script>
-    // Simple reveal-on-scroll
-    const animatables = document.querySelectorAll('.animatable');
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('is-visible'); } });
-    }, { threshold: 0.12 });
-    animatables.forEach(a => obs.observe(a));
-
-    // Minimal client logic:
-    // - Toggle signed-in/out prompts
-    // - Load linked students (callable -> reverse index -> collectionGroup)
-    // - Render passes with formatted names and rotating QR payloads
-    document.addEventListener('DOMContentLoaded', () => {
-      const out = document.getElementById('signedOutCallout');
-      const none = document.getElementById('noPasses');
-      const wrap = document.getElementById('passesWrap');
-      const trustedWrap = document.getElementById('trustedWrap');
-      const trustedEmpty = document.getElementById('trustedEmpty');
-      const grantsList = document.getElementById('grantsList');
-      const grantsEmpty = document.getElementById('grantsEmpty');
-
-      // Ensure QRCode library (qrcodejs) is available
-      (function ensureQRCode() {
-        if (window.QRCode) return;
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-        s.crossOrigin = 'anonymous';
-        document.head.appendChild(s);
-      })();
-
-      function formatName(name) {
-        const raw = String(name || '').trim();
-        if (!raw) return '';
-        let first = '', last = '';
-        if (raw.includes(',')) {
+          function formatName(name) {
+          const raw = String(name || '').trim();
+          if (!raw) return '';
+          let first = '', last = '';
+          if (raw.includes(',')) {
           // "Last, First [Middle]"
           const [l, r] = raw.split(',');
           last = (l || '').trim();
           first = (r || '').trim().split(/\s+/)[0] || '';
-        } else {
+          } else {
           const parts = raw.split(/\s+/).filter(Boolean);
           if (parts.length === 1) { first = parts[0]; last = ''; }
           else { first = parts[0]; last = parts[parts.length - 1]; }
-        }
-        const li = last ? (last[0].toUpperCase() + '.') : '';
-        return [first, li].filter(Boolean).join(' ');
-      }
+          }
+          const li = last ? (last[0].toUpperCase() + '.') : '';
+          return [first, li].filter(Boolean).join(' ');
+          }
 
-      function drawQrInto(el, basePayload) {
-        if (!el) return;
-        // Rotate every 30s to vary the code visually while keeping scanners compatible
-        const rot = Math.floor(Date.now() / 30000); // changes every 30s
-        const payload = basePayload + '&r=' + rot;
-        el.innerHTML = '';
-        const host = document.createElement('div');
-        host.style.width = '180px'; host.style.height = '180px';
-        el.appendChild(host);
-        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M) || 2 }); } catch { } };
-        if (window.QRCode) draw(); else {
+          function drawQrInto(el, basePayload) {
+          if (!el) return;
+          // Rotate every 30s to vary the code visually while keeping scanners compatible
+          const rot = Math.floor(Date.now() / 30000); // changes every 30s
+          const payload = basePayload + '&r=' + rot;
+          el.innerHTML = '';
+          const host = document.createElement('div');
+          host.style.width = '180px'; host.style.height = '180px';
+          el.appendChild(host);
+          const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel:
+          (window.QRCode?.CorrectLevel?.M) || 2 }); } catch { } };
+          if (window.QRCode) draw(); else {
           const t = setInterval(() => { if (window.QRCode) { clearInterval(t); draw(); } }, 60);
-        }
-      }
+          }
+          }
 
-      let qrTimer = null;
-      function renderPasses(passes) {
-        wrap.innerHTML = '';
-        if (qrTimer) { try { clearInterval(qrTimer); } catch { } qrTimer = null; }
-        if (!passes || !passes.length) {
+          let qrTimer = null;
+          function renderPasses(passes) {
+          wrap.innerHTML = '';
+          if (qrTimer) { try { clearInterval(qrTimer); } catch { } qrTimer = null; }
+          if (!passes || !passes.length) {
           wrap.style.display = 'none';
           none.style.display = '';
           return;
-        }
-        none.style.display = 'none';
-        wrap.style.display = 'flex';
-        for (const p of passes) {
+          }
+          none.style.display = 'none';
+          wrap.style.display = 'flex';
+          for (const p of passes) {
           const card = document.createElement('div');
           card.className = 'pass';
           card.innerHTML = `
-            <div class="hdr">
-              <div class="std">${formatName(p.student)}</div>
-              <span class="badge" title="Status">${p.status}</span>
-            </div>
-            <div class="win" aria-label="Pickup window">${p.window}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload || ''}"></div></div>
+          <div class="hdr">
+            <div class="std">${formatName(p.student)}</div>
+            <span class="badge" title="Status">${p.status}</span>
+          </div>
+          <div class="win" aria-label="Pickup window">${p.window}</div>
+          <div class="qr" aria-label="QR code">
+            <div class="qr-host" data-base="${p.basePayload || ''}"></div>
+          </div>
           `;
           wrap.appendChild(card);
-        }
+          }
 
-        // Initial draw
-        wrap.querySelectorAll('.qr-host').forEach(host => {
+          // Initial draw
+          wrap.querySelectorAll('.qr-host').forEach(host => {
           const base = host.getAttribute('data-base') || '';
           drawQrInto(host, base);
-        });
-        // Rotate every 30s
-        qrTimer = setInterval(() => {
-          wrap.querySelectorAll('.qr-host').forEach(host => {
-            const base = host.getAttribute('data-base') || '';
-            drawQrInto(host, base);
           });
-        }, 30000);
-      }
-      function renderGrants(grants) {
-        grantsList.innerHTML = '';
-        if (!grants || !grants.length) {
+          // Rotate every 30s
+          qrTimer = setInterval(() => {
+          wrap.querySelectorAll('.qr-host').forEach(host => {
+          const base = host.getAttribute('data-base') || '';
+          drawQrInto(host, base);
+          });
+          }, 30000);
+          }
+          function renderGrants(grants) {
+          grantsList.innerHTML = '';
+          if (!grants || !grants.length) {
           grantsList.style.display = 'none';
           grantsEmpty.style.display = '';
           return;
-        }
-        grantsEmpty.style.display = 'none';
-        grantsList.style.display = 'grid';
-        for (const g of grants) {
+          }
+          grantsEmpty.style.display = 'none';
+          grantsList.style.display = 'grid';
+          for (const g of grants) {
           const row = document.createElement('div');
           row.className = 'row';
           row.innerHTML = `
-            <div>
-              <div class="who">${g.name}</div>
-              <div class="meta">${g.students} · ${g.window}</div>
-            </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" title="Edit">Edit</button>
-              <button class="btn" type="button" title="Revoke">Revoke</button>
-            </div>
+          <div>
+            <div class="who">${g.name}</div>
+            <div class="meta">${g.students} · ${g.window}</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn" type="button" title="Edit">Edit</button>
+            <button class="btn" type="button" title="Revoke">Revoke</button>
+          </div>
           `;
           grantsList.appendChild(row);
-        }
-      }
+          }
+          }
 
-      function setSignedOut() { out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display = 'none'; }
-      function setSignedIn() { out.style.display = 'none'; }
+          function setSignedOut() { out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none';
+          grantsList.style.display = 'none'; grantsEmpty.style.display = 'none'; }
+          function setSignedIn() { out.style.display = 'none'; }
 
-      // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
-      async function loadLinkedStudents(uid) {
-        // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
-        const results = [];
-        try {
+          // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
+          async function loadLinkedStudents(uid) {
+          // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
+          const results = [];
+          try {
           const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyLinkedStudents') : null;
           if (call) {
-            const resp = await call({});
-            const data = (resp && resp.data) || resp || {};
-            if (data && data.ok && Array.isArray(data.students)) {
-              for (const s of data.students) {
-                results.push({ id: s.studentId, name: s.name, tag: (s.tag || '') || '', orgId: s.orgId, schoolId: s.schoolId });
-              }
-              return results;
-            }
+          const resp = await call({});
+          const data = (resp && resp.data) || resp || {};
+          if (data && data.ok && Array.isArray(data.students)) {
+          for (const s of data.students) {
+          results.push({ id: s.studentId, name: s.name, tag: (s.tag || '') || '', orgId: s.orgId, schoolId: s.schoolId
+          });
           }
-        } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
-        // Fallback A: direct read from reverse index users/{uid}/guardianLinks
-        try {
+          return results;
+          }
+          }
+          } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
+          // Fallback A: direct read from reverse index users/{uid}/guardianLinks
+          try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (db) {
-            const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
-            snap.docs.forEach(d => {
-              const x = d.data() || {}; const id = String(x.studentId || d.id);
-              const name = x.name || id; const tag = String(x.tag || '');
-              const orgId = x.orgId || null; const schoolId = x.schoolId || null;
-              results.push({ id, name, tag, orgId, schoolId });
-            });
-            if (results.length) return results;
+          const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
+          snap.docs.forEach(d => {
+          const x = d.data() || {}; const id = String(x.studentId || d.id);
+          const name = x.name || id; const tag = String(x.tag || '');
+          const orgId = x.orgId || null; const schoolId = x.schoolId || null;
+          results.push({ id, name, tag, orgId, schoolId });
+          });
+          if (results.length) return results;
           }
-        } catch (e) { console.warn('[parents] reverse index read failed', e); }
-        // Fallback B: collectionGroup read using compat Firestore
-        try {
+          } catch (e) { console.warn('[parents] reverse index read failed', e); }
+          // Fallback B: collectionGroup read using compat Firestore
+          try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (!db) return results;
           const snap = await db.collectionGroup('guardians').where('uid', '==', uid).get();
           for (const d of snap.docs) {
-            try {
-              const studentRef = d.ref.parent.parent; // .../students/{studentId}
-              if (!studentRef) continue;
-              const sSnap = await studentRef.get();
-              if (!sSnap.exists) continue;
-              const s = sSnap.data() || {};
-              const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
-              const tag = (s.carTag || s.tag || '').toString();
-              // Parse org/school from path if available
-              const seg = studentRef.path.split('/');
-              const orgId = seg[1] || null; const schoolId = seg[3] || null;
-              results.push({ id: studentRef.id, name, tag, orgId, schoolId });
-            } catch { }
+          try {
+          const studentRef = d.ref.parent.parent; // .../students/{studentId}
+          if (!studentRef) continue;
+          const sSnap = await studentRef.get();
+          if (!sSnap.exists) continue;
+          const s = sSnap.data() || {};
+          const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
+          const tag = (s.carTag || s.tag || '').toString();
+          // Parse org/school from path if available
+          const seg = studentRef.path.split('/');
+          const orgId = seg[1] || null; const schoolId = seg[3] || null;
+          results.push({ id: studentRef.id, name, tag, orgId, schoolId });
+          } catch { }
           }
-        } catch (e) {
+          } catch (e) {
           console.warn('[parents] fallback loadLinkedStudents failed', e);
-        }
-        return results;
-      }
+          }
+          return results;
+          }
 
-      async function applyFromClaims(claims) {
-        if (!claims || !claims.uid) { setSignedOut(); return; }
-        setSignedIn();
-        const uid = claims.uid;
-        // Personalize greeting
-        try {
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('getMyParentProfile') : null;
-          const greetEl = document.getElementById('greeting');
-          const sumEl = document.getElementById('summary');
-          let name = '';
-          if (call) {
-            const resp = await call({});
-            if (resp?.data?.ok) name = resp.data.displayName || '';
-          }
-          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch { } }
-          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch { } }
-          if (name && greetEl) greetEl.textContent = 'Hi, ' + name;
-          // We’ll enrich summary when we know linked students and school names
-          if (sumEl) sumEl.dataset.base = sumEl.textContent;
-        } catch { }
-        // Guardian callout: if signed-in but not guardian, prompt to claim
-        if (!claims.guardian) {
-          document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
-          // Inject lightweight claim prompt card if not present
-          let claimCard = document.getElementById('guardianClaimPrompt');
-          if (!claimCard) {
-            claimCard = document.createElement('div');
-            claimCard.id = 'guardianClaimPrompt';
-            claimCard.className = 'card animatable';
-            claimCard.innerHTML = '<strong>No linked students yet</strong><p class="muted" style="margin:6px 0 10px;">Enter your invite code or open the invite link to link a student.</p><div><a class="btn" href="/claim.html">Go to claim page</a></div>';
-            out.parentElement?.insertBefore(claimCard, out.nextSibling);
-            try { claimCard.classList.add('is-visible'); } catch { }
-          }
-        } else {
-          // Remove claim prompt if guardian now
-          const existing = document.getElementById('guardianClaimPrompt');
-          if (existing) existing.remove();
-        }
-        let linked = await loadLinkedStudents(uid);
-        // Compute school list for discovery selector
-        const schoolList = [];
-        const seenSchool = new Set();
-        for (const s of linked) { if (s.orgId && s.schoolId) { const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)) { seenSchool.add(key); schoolList.push({ orgId: s.orgId, schoolId: s.schoolId }); } } }
-        const discSelect = document.getElementById('discSchool');
-        if (discSelect) {
-          discSelect.innerHTML = '';
-          for (const sc of schoolList) { const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
-        }
-        // Best-effort: resolve school names for nicer summary and dropdown labels
-        try {
+          async function applyFromClaims(claims) {
+          if (!claims || !claims.uid) { setSignedOut(); return; }
+          setSignedIn();
+          const uid = claims.uid;
+          let linked = await loadLinkedStudents(uid);
+          // Hydrate friendly names if they look like IDs and we have org/school
+          try {
           const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
           if (db) {
-            const nameByKey = new Map();
-            for (const sc of schoolList) {
-              try {
-                const ref = db.doc(`orgs/${sc.orgId}/schools/${sc.schoolId}`);
-                const snap = await ref.get();
-                const data = snap.exists ? (snap.data() || {}) : {};
-                const nm = data.name || sc.schoolId;
-                const key = sc.orgId + '|' + sc.schoolId; nameByKey.set(key, nm);
-              } catch { }
-            }
-            if (discSelect) { Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
-            const sumEl = document.getElementById('summary');
-            if (sumEl && linked.length) {
-              const bySchool = new Map();
-              linked.forEach(s => { const k = s.orgId + '|' + s.schoolId; const arr = bySchool.get(k) || []; arr.push(s.name || s.id); bySchool.set(k, arr); });
-              const parts = [];
-              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length > 1 ? 's' : ''} at ${sn}`); });
-              sumEl.textContent = parts.join(' · ');
-            }
+          const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId &&
+          s.schoolId);
+          for (const s of needs) {
+          try {
+          const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
+          const snap = await ref.get();
+          if (snap.exists) {
+          const d = snap.data() || {};
+          const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
+          if (nm) s.name = nm;
+          if (!s.tag) { const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
           }
-        } catch { }
-        // Hydrate friendly names if they look like IDs and we have org/school
-        try {
-          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db) {
-            const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId && s.schoolId);
-            for (const s of needs) {
-              try {
-                const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
-                const snap = await ref.get();
-                if (snap.exists) {
-                  const d = snap.data() || {};
-                  const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
-                  if (nm) s.name = nm;
-                  if (!s.tag) { const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
-                }
-              } catch { }
-            }
+          } catch { }
           }
-        } catch { }
-        if (!linked.length) {
+          }
+          } catch { }
+          if (!linked.length) {
+          document.getElementById('passesSubtitle').textContent = 'No linked students yet. Once you claim an invite,
+          your passes will appear here on pickup days.';
           renderPasses([]);
-          // Even if we have no linked students yet, still try to refresh discovery/requests later
-          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch { }
           return;
-        }
-        // Build base payload for QR: prefer car tag else student id
-        const passes = linked.map(s => {
+          }
+          // Build base payload for QR: prefer car tag else student id
+          const passes = linked.map(s => {
           const tag = (s.tag || '').toString().trim();
           const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(s.id));
           return { student: s.name, status: 'Linked', window: '', basePayload: base };
-        });
-        renderPasses(passes);
-        // Now that school context and dropdown are populated, load discovery, connections, and trusted pickups
-        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch { }
-      }
+          });
+          renderPasses(passes);
+          }
 
-      // Listen for claims from site-header.js
-      document.addEventListener('sd:claims-ready', (e) => {
-        const claims = (e && e.detail && e.detail.claims) || null;
-        // Augment with uid if available
-        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch { }
-        applyFromClaims(claims);
-      });
+          // Listen for claims from site-header.js
+          document.addEventListener('sd:claims-ready', (e) => {
+          const claims = (e && e.detail && e.detail.claims) || null;
+          // Augment with uid if available
+          try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid =
+          window.firebase.auth().currentUser.uid; } } catch { }
+          applyFromClaims(claims);
+          });
 
-      // If already signed in before this page loads, try to apply immediately
-      try {
-        if (window.firebase?.auth()?.currentUser) {
+          // If already signed in before this page loads, try to apply immediately
+          try {
+          if (window.firebase?.auth()?.currentUser) {
           const u = window.firebase.auth().currentUser;
           applyFromClaims({ uid: u.uid, ...(window.SD?.claims || {}) });
-        } else {
+          } else {
           setSignedOut();
-        }
-      } catch { setSignedOut(); }
-
-      // Access Grants UI (Trusted Pickups)
-      const addBtn = document.getElementById('addTrusted');
-      const addDialog = document.getElementById('addTrustedDialog');
-      const addForm = document.getElementById('addTrustedForm');
-      const inviteStudentSelect = document.getElementById('inviteStudentSelect');
-      const inviteEmail = document.getElementById('inviteEmail');
-
-      // Open modal
-      addBtn?.addEventListener('click', () => {
-        const linked = window.__linkedStudentsCache || [];
-        if (!linked.length) { alert('No linked students found.'); return; }
-
-        // Populate student select
-        inviteStudentSelect.innerHTML = '';
-        linked.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s.id; // studentId
-          opt.textContent = s.name || s.id;
-          inviteStudentSelect.appendChild(opt);
-        });
-
-        inviteEmail.value = '';
-        addDialog.showModal();
-      });
-
-      // Handle invite submit
-      addForm?.addEventListener('submit', async (e) => {
-        e.preventDefault(); // prevent dialog default close for a moment if we want async handling, though dialog closes on submit usually.
-        // But since we want to do async work, we might want to keep it open or show loading.
-        // Actually, form method="dialog" closes it. Let's handle it manually.
-      });
-
-      // Re-bind to catch the submit properly
-      addDialog.querySelector('button[type="submit"]').addEventListener('click', async (e) => {
-        e.preventDefault();
-        const studentId = inviteStudentSelect.value;
-        const email = inviteEmail.value.trim();
-        if (!studentId || !email) return;
-
-        const btn = e.target;
-        const prevText = btn.textContent;
-        btn.textContent = 'Sending...';
-        btn.disabled = true;
-
-        try {
-          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('inviteTrustedAdult') : null;
-          if (!call) throw new Error('Backend unavailable');
-
-          const resp = await call({ studentId, email });
-          if (resp.data?.ok) {
-            alert('Invite sent! They can now claim the invite.');
-            addDialog.close();
-            // Optionally refresh grants if we want to show pending invites, but listTrustedAdults shows active guardians.
-            // Pending invites might not show up there yet depending on implementation.
-          } else {
-            throw new Error(resp.data?.error || 'Unknown error');
           }
-        } catch (err) {
-          console.error(err);
-          alert('Failed to send invite: ' + err.message);
-        } finally {
-          btn.textContent = prevText;
-          btn.disabled = false;
-        }
-      });
+          } catch { setSignedOut(); }
 
-      async function loadGrants() {
-        const linked = window.__linkedStudentsCache || [];
-        if (!linked.length) return;
+          document.getElementById('addTrusted')?.addEventListener('click', () => {
+          alert('Coming soon: Add trusted adult flow');
+          });
+          // ==========================================
+          // RESTORED MISSING FUNCTIONS & FIXES
+          // ==========================================
 
-        // We want to list trusted adults for EACH linked student.
-        // This might be multiple calls or we can iterate.
-        // For MVP, let's just fetch for all linked students.
-
-        const allTrusted = [];
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listTrustedAdults') : null;
-        if (!call) return;
-
-        try {
-          for (const s of linked) {
-            try {
-              const resp = await call({ studentId: s.id });
-              if (resp.data?.ok && resp.data.guardians) {
-                resp.data.guardians.forEach(g => {
-                  allTrusted.push({ ...g, studentName: s.name, studentId: s.id });
-                });
-              }
-            } catch (e) { console.warn('Failed to list for student', s.id, e); }
+          function callable(name) {
+          return (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable(name) : null;
           }
-          renderGrants(allTrusted);
-        } catch (e) { console.warn('loadGrants failed', e); }
-      }
 
-      async function revokeTrusted(studentId, targetUid) {
-        if (!confirm('Are you sure you want to revoke access for this person?')) return;
-
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeTrustedAdult') : null;
-        if (!call) return alert('Backend unavailable');
-
-        try {
-          const resp = await call({ studentId, targetUid });
-          if (resp.data?.ok) {
-            await loadGrants(); // Refresh list
-          } else {
-            alert('Failed to revoke.');
-          }
-        } catch (e) {
-          console.error(e);
-          alert('Error revoking: ' + e.message);
-        }
-      }
-
-      // Override renderPasses to keep a cache for grant creation
-      const _origRender = renderPasses;
-      renderPasses = function (passes) { window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
-
-      function renderGrants(grants) {
-        grantsList.innerHTML = '';
-        if (!grants || !grants.length) {
-          grantsList.style.display = 'none';
-          grantsEmpty.style.display = '';
-          return;
-        }
-        grantsEmpty.style.display = 'none';
-        grantsList.style.display = 'grid';
-
-        // Deduplicate if needed, or just show list
-        for (const g of grants) {
+          function renderReqRow(container, title, subtitle, actionsHtml) {
           const row = document.createElement('div');
           row.className = 'row';
           row.innerHTML = `
-            <div>
-              <div class="who">${g.name || g.email}</div>
-              <div class="meta">${g.email} · For ${g.studentName}</div>
-            </div>
-        }
-        async function loadConnections() {
-          try {
-            const call = callable('listMyParentConnections');
-            let d = {};
-            try {
-              if (!call) throw new Error('no-callable');
-              const resp = await call({}); d = (resp?.data) || {};
-            } catch (e1) {
-              console.warn('listMyParentConnections callable failed', e1);
-              // HTTP shim fallback
-              try {
-                const user = window.firebase?.auth()?.currentUser; if (!user) return;
-                const token = await user.getIdToken();
-                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
-                d = await res.json();
-              } catch (e2) { console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
-            }
-            // Incoming
-            reqIncoming.innerHTML = '';
-            const inc = Array.isArray(d.incoming) ? d.incoming : [];
-            if (!inc.length) { reqIncoming.style.display = 'none'; reqIncomingEmpty.style.display = ''; }
-            else {
-              reqIncoming.style.display = 'grid'; reqIncomingEmpty.style.display = 'none';
-              inc.forEach(item => {
-                const who = item.displayName || item.fromUid || 'Parent';
-                const row = renderReqRow(reqIncoming, who, `${ item.orgId || '' } · ${ item.schoolId || '' } `, ` < button class='btn' data - a='accept' data - uid='${item.fromUid}' > Accept</button > <button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
-                row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e) => {
-                  const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
-                  try {
-                    const call = callable('respondParentConnectRequest'); if (!call) return;
-                    try {
-                      await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
-                    } catch (_) {
-                      // HTTP fallback
-                      const user = window.firebase?.auth()?.currentUser; if (user) {
-                        const token = await user.getIdToken();
-                        await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
-                          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                          body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
-                        });
-                      } else { throw _; }
-                    }
-                    await loadConnections();
-                  } catch { }
-                }));
-              });
-            }
-            // Outgoing
-            reqOutgoing.innerHTML = '';
-            const out = Array.isArray(d.outgoing) ? d.outgoing : [];
-            if (!out.length) { reqOutgoing.style.display = 'none'; reqOutgoingEmpty.style.display = ''; }
-            else {
-              reqOutgoing.style.display = 'grid'; reqOutgoingEmpty.style.display = 'none';
-              out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${ item.status || 'pending' } `); });
-            }
-            // Connections
-            connList.innerHTML = '';
-            const cons = Array.isArray(d.connections) ? d.connections : [];
-            if (!cons.length) { connList.style.display = 'none'; connEmpty.style.display = ''; }
-            else {
-              connList.style.display = 'grid'; connEmpty.style.display = 'none';
-              cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${ c.orgId || '' } · ${ c.schoolId || '' }`); });
-            }
-          } catch (e) { console.warn('loadConnections failed', e); }
-        }
+          <div>
+            <div class="who">${title}</div>
+            <div class="meta">${subtitle}</div>
+          </div>
+          ${actionsHtml ? `<div style="display:flex; gap:8px;">${actionsHtml}</div>` : ''}
+          `;
+          container.appendChild(row);
+          return row;
+          }
 
-        // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
-        document.addEventListener('sd:claims-ready', () => { loadProfile(); });
-      });
-  </script>
+          async function loadProfile() {
+          const nameInput = document.getElementById('profName');
+          const discCheck = document.getElementById('profDisc');
+          const status = document.getElementById('profStatus');
+          if (!nameInput) return;
+
+          try {
+          const call = callable('getMyParentProfile');
+          if (call) {
+          const resp = await call({});
+          const data = resp.data || {};
+          if (data.ok) {
+          nameInput.value = data.displayName || '';
+          discCheck.checked = !!data.discoverable;
+          }
+          } else {
+          // HTTP fallback
+          const user = window.firebase?.auth()?.currentUser;
+          if (user) {
+          const token = await user.getIdToken();
+          const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', {
+          headers: { 'Authorization': 'Bearer ' + token } });
+          const data = await res.json();
+          if (data.ok) {
+          nameInput.value = data.displayName || '';
+          discCheck.checked = !!data.discoverable;
+          }
+          }
+          }
+          } catch (e) { console.warn('loadProfile failed', e); }
+
+          // Bind save button
+          const saveBtn = document.getElementById('profSave');
+          if (saveBtn) {
+          saveBtn.onclick = async () => {
+          const prev = saveBtn.textContent;
+          saveBtn.textContent = 'Saving...';
+          saveBtn.disabled = true;
+          try {
+          const call = callable('updateMyParentProfile');
+          const payload = { displayName: nameInput.value, discoverable: discCheck.checked };
+          if (call) {
+          await call(payload);
+          } else {
+          const user = window.firebase?.auth()?.currentUser;
+          if (user) {
+          const token = await user.getIdToken();
+          await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(payload)
+          });
+          }
+          }
+          status.textContent = 'Saved!';
+          setTimeout(() => { status.textContent = ''; }, 2000);
+          } catch (e) {
+          console.error(e);
+          status.textContent = 'Error';
+          } finally {
+          saveBtn.textContent = prev;
+          saveBtn.disabled = false;
+          }
+          };
+          }
+          }
+
+          function renderDiscoverable(parents, currentUid) {
+          const list = document.getElementById('discoverList');
+          const empty = document.getElementById('discoverEmpty');
+          if (!list) return;
+          list.innerHTML = '';
+
+          const filtered = parents.filter(p => p.uid !== currentUid);
+          if (!filtered.length) {
+          list.style.display = 'none';
+          if (empty) empty.style.display = 'block';
+          return;
+          }
+
+          list.style.display = 'grid';
+          if (empty) empty.style.display = 'none';
+
+          for (const p of filtered) {
+          const row = document.createElement('div');
+          row.className = 'row';
+          const name = p.displayName || 'Parent';
+
+          const actions = `<button class="btn" data-uid="${p.uid}">Connect</button>`;
+
+          row.innerHTML = `
+          <div>
+            <div class="who">${name}</div>
+          </div>
+          <div style="display:flex; gap:8px;">${actions}</div>
+          `;
+          list.appendChild(row);
+          }
+
+          list.querySelectorAll('button[data-uid]').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+          const toUid = btn.getAttribute('data-uid');
+          const orgId = window.SD?.orgId || (document.getElementById('discSchool')?.value?.split('|')[0]);
+          const schoolId = window.SD?.schoolId || (document.getElementById('discSchool')?.value?.split('|')[1]);
+
+          if (!orgId || !schoolId) { alert('Please select a school first.'); return; }
+
+          const prev = btn.textContent;
+          btn.textContent = '...';
+          btn.disabled = true;
+
+          try {
+          const call = callable('sendParentConnectRequest');
+          if (call) {
+          await call({ toUid, orgId, schoolId });
+          } else {
+          const user = window.firebase?.auth()?.currentUser;
+          if (user) {
+          const token = await user.getIdToken();
+          await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ toUid, orgId, schoolId })
+          });
+          }
+          }
+          btn.textContent = 'Sent';
+          btn.classList.add('ghost');
+          } catch (e) {
+          console.error(e);
+          btn.textContent = 'Error';
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = prev; }, 2000);
+          }
+          });
+          });
+          }
+
+          function renderTrusted(pickups) {
+          const trustedWrap = document.getElementById('trustedWrap');
+          const trustedEmpty = document.getElementById('trustedEmpty');
+          if (!trustedWrap) return;
+
+          trustedWrap.innerHTML = '';
+          if (!Array.isArray(pickups) || !pickups.length) {
+          trustedWrap.style.display = 'none';
+          if (trustedEmpty) trustedEmpty.style.display = '';
+          return;
+          }
+          if (trustedEmpty) trustedEmpty.style.display = 'none';
+          trustedWrap.style.display = 'flex';
+
+          for (const p of pickups) {
+          const card = document.createElement('div');
+          card.className = 'pass';
+          const who = p.studentName || p.studentId;
+          const by = p.grantorName ? `Granted by ${p.grantorName}` : '';
+          const note = p.note ? ` · ${p.note}` : '';
+          card.innerHTML = `
+          <div class="hdr">
+            <div class="std">${formatName(who)}</div>
+            <span class="badge" title="Trusted pickup">Trusted</span>
+          </div>
+          <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
+          <div class="qr" aria-label="QR code">
+            <div class="qr-host" data-base="${(p.basePayload || '')}"></div>
+          </div>
+          `;
+          trustedWrap.appendChild(card);
+          }
+
+          trustedWrap.querySelectorAll('.qr-host').forEach(host => {
+          const base = host.getAttribute('data-base') || '';
+          drawQrInto(host, base);
+          });
+          }
+
+          async function loadTrustedPickups() {
+          try {
+          const call = callable('listMyPickupAccess');
+          if (!call) return;
+
+          const resp = await call({});
+          const data = (resp && resp.data) || resp || {};
+          const pickups = Array.isArray(data.pickups) ? data.pickups : [];
+
+          const mapped = pickups.map(p => {
+          const tag = (p.tag || '').toString().trim();
+          const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' +
+          encodeURIComponent(p.studentId));
+          return {
+          studentId: p.studentId,
+          studentName: p.studentName,
+          window: p.window,
+          grantorName: p.grantorName,
+          note: p.note,
+          basePayload: base,
+          };
+          });
+          renderTrusted(mapped);
+          } catch (e) {
+          console.warn('[parents] loadTrustedPickups failed', e);
+          }
+          }
+
+          async function loadDiscoverable() {
+          const discSchool = document.getElementById('discSchool');
+          try {
+          const call = callable('listDiscoverableParents');
+          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o;
+          schoolId = s; } }
+          if (!orgId || !schoolId) return;
+
+          let list = [];
+          if (call) {
+          const resp = await call({ orgId, schoolId, limit: 50 });
+          list = (resp?.data?.parents) || [];
+          } else {
+          const user = window.firebase?.auth()?.currentUser;
+          if (user) {
+          const token = await user.getIdToken();
+          const url =
+          `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
+          const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+          const d = await res.json();
+          list = (d?.parents) || [];
+          }
+          }
+          const cu = window.firebase?.auth()?.currentUser?.uid || null;
+          renderDiscoverable(list, cu);
+          } catch (e) { console.warn('loadDiscoverable failed', e); }
+          }
+
+          const discSchool = document.getElementById('discSchool');
+          if (discSchool) discSchool.addEventListener('change', loadDiscoverable);
+
+          document.addEventListener('sd:claims-ready', () => {
+          loadTrustedPickups();
+          });
+
+          });
+          </script>
 </body>
 
 </html>
