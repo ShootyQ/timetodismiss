@@ -961,7 +961,11 @@
       }
 
       // Load grants after claims
-      document.addEventListener('sd:claims-ready', () => { loadGrants(); loadTrustedPickups(); });
+      document.addEventListener('sd:claims-ready', () => {
+        console.log('!!! SD:CLAIMS-READY FIRED. Loading grants and trusted pickups...');
+        loadGrants();
+        loadTrustedPickups();
+      });
 
       // Trusted pickups: render grants where I am the grantee
       function renderTrusted(pickups) {
