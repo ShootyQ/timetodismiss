@@ -963,152 +963,13 @@
       // Load grants after claims
       document.addEventListener('sd:claims-ready', () => {
         console.log('!!! SD:CLAIMS-READY FIRED. Loading grants and trusted pickups...');
-        loadGrants();
-        loadTrustedPickups();
-      });
-
-      // Trusted pickups: render grants where I am the grantee
-      function renderTrusted(pickups) {
-        trustedWrap.innerHTML = '';
-        if (!Array.isArray(pickups) || !pickups.length) {
-          trustedWrap.style.display = 'none';
-          trustedEmpty.style.display = '';
-          return;
-        }
-        trustedEmpty.style.display = 'none';
-        trustedWrap.style.display = 'flex';
-
-        for (const p of pickups) {
-          const card = document.createElement('div');
-          card.className = 'pass';
-          const who = p.studentName || p.studentId;
-          const by = p.grantorName ? `Granted by ${p.grantorName}` : '';
-          const note = p.note ? ` · ${p.note}` : '';
-          card.innerHTML = `
-            <div class="hdr">
-              <div class="std">${formatName(who)}</div>
-              <span class="badge" title="Trusted pickup">Trusted</span>
-            </div>
-            <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload || '')}"></div></div>
-          `;
-          trustedWrap.appendChild(card);
-        }
-
-        trustedWrap.querySelectorAll('.qr-host').forEach(host => {
-          const base = host.getAttribute('data-base') || '';
-          drawQrInto(host, base);
-        });
-      }
-
-      async function loadTrustedPickups() {
-        try {
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
-          if (!call) return;
-          const resp = await call({});
-          const data = (resp && resp.data) || resp || {};
-          const pickups = Array.isArray(data.pickups) ? data.pickups : [];
-          const mapped = pickups.map(p => {
-            const tag = (p.tag || '').toString().trim();
-            const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(p.studentId));
-            return {
-              studentId: p.studentId,
-              studentName: p.studentName,
-              window: p.window,
-              grantorName: p.grantorName,
-              note: p.note,
-              basePayload: base,
-            };
-          });
-          renderTrusted(mapped);
-        } catch (e) {
-          console.warn('[parents] loadTrustedPickups failed', e);
-        }
-      }
-
-      // ───────── Profile & Connect wiring ─────────
-      const profName = document.getElementById('profName');
-      const profDisc = document.getElementById('profDisc');
-      const profSave = document.getElementById('profSave');
-      const profStatus = document.getElementById('profStatus');
-      const discoverList = document.getElementById('discoverList');
-      const discoverEmpty = document.getElementById('discoverEmpty');
-      const discSchool = document.getElementById('discSchool');
-      const discEmail = document.getElementById('discEmail');
-      const discEmailBtn = document.getElementById('discEmailBtn');
-      const reqIncoming = document.getElementById('reqIncoming');
-      const reqOutgoing = document.getElementById('reqOutgoing');
-      const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
-      const reqOutgoingEmpty = document.getElementById('reqOutgoingEmpty');
-      const connList = document.getElementById('connList');
-      const connEmpty = document.getElementById('connEmpty');
-
-      function callable(name) { return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
-
-      async function loadProfile() {
-        try {
-          const call = callable('getMyParentProfile');
-          if (!call) throw new Error('no-callable');
-          const resp = await call({}); const d = (resp?.data) || {};
-          if (d?.ok) {
-            if (profName) profName.value = d.displayName || '';
-            if (profDisc) profDisc.checked = !!d.discoverable;
-          }
-        } catch (e) {
-          console.warn('loadProfile failed', e);
-          // HTTP fallback to avoid preview CORS on callables
-          try {
-            const user = window.firebase?.auth()?.currentUser; if (!user) return;
-            const token = await user.getIdToken();
-            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', { headers: { 'Authorization': 'Bearer ' + token } });
-            const d = await res.json();
-            if (d?.ok) {
-              if (profName) profName.value = d.displayName || '';
-              if (profDisc) profDisc.checked = !!d.discoverable;
-            }
-          } catch (err) { console.warn('HTTP getMyParentProfileHttp failed', err); }
-        }
-      }
-      async function saveProfile() {
-        try {
-          const call = callable('updateMyParentProfile');
-          profStatus.textContent = 'Saving…';
-          try {
-            if (!call) throw new Error('no-callable');
-            await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
-          } catch (e1) {
-            // HTTP fallback
-            const user = window.firebase?.auth()?.currentUser; if (user) {
-              const token = await user.getIdToken();
-              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({ displayName: profName?.value || '', discoverable: !!profDisc?.checked })
-              });
-            } else { throw e1; }
-          }
-          profStatus.textContent = 'Saved'; setTimeout(() => profStatus.textContent = '', 1200);
-          // Refresh discovery list if we toggled discoverable
-          await loadDiscoverable();
-        } catch (e) {
-          console.warn('updateMyParentProfile failed', e);
-          const msg = (e && (e.message || e.code)) ? String(e.message || e.code) : 'Save failed';
-          profStatus.textContent = msg;
-          setTimeout(() => profStatus.textContent = '', 3200);
-        }
-      }
-      profSave?.addEventListener('click', saveProfile);
-
-      function renderDiscoverable(list, currentUid) {
-        discoverList.innerHTML = '';
-        if (!Array.isArray(list) || list.length === 0) { discoverList.style.display = 'none'; discoverEmpty.style.display = ''; return; }
-        discoverEmpty.style.display = 'none'; discoverList.style.display = 'grid';
         list.forEach(p => {
           const row = document.createElement('div'); row.className = 'row';
           row.innerHTML = `
-            <div><div class="who">${(p.displayName || 'Parent')}${p.uid && currentUid && p.uid === currentUid ? ' · You' : ''}</div><div class="meta">${p.uid || ''}</div></div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid === currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
-            </div>
+            < div ><div class="who">${(p.displayName || 'Parent')}${p.uid && currentUid && p.uid === currentUid ? ' · You' : ''}</div><div class="meta">${p.uid || ''}</div></div >
+              <div style="display:flex; gap:8px;">
+                <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid === currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
+              </div>
           `;
           discoverList.appendChild(row);
         });
@@ -1166,33 +1027,33 @@
         }));
       }
 
-      async function loadDiscoverable() {
-        try {
-          const call = callable('listDiscoverableParents');
-          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId) return;
+          async function loadDiscoverable() {
           try {
-            if (!call) throw new Error('no-callable');
-            const resp = await call({ orgId, schoolId, limit: 50 });
-            const list = (resp?.data?.parents) || [];
-            const cu = window.firebase?.auth()?.currentUser?.uid || null;
-            renderDiscoverable(list, cu);
-          } catch (e1) {
-            console.warn('listDiscoverableParents callable failed', e1);
-            // HTTP shim fallback
+            const call = callable('listDiscoverableParents');
+            let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
+            if (discSchool && discSchool.value) { const [o, s] = discSchool.value.split('|'); if (o && s) { orgId = o; schoolId = s; } }
+            if (!orgId || !schoolId) return;
             try {
-              const user = window.firebase?.auth()?.currentUser; if (!user) return;
-              const token = await user.getIdToken();
-              const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
-              const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-              const d = await res.json(); const list = (d?.parents) || [];
-              renderDiscoverable(list, user?.uid || null);
-            } catch (e2) { console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
-          }
-        } catch (e) { console.warn('loadDiscoverable failed', e); }
-      }
-      discSchool?.addEventListener('change', loadDiscoverable);
+              if (!call) throw new Error('no-callable');
+              const resp = await call({ orgId, schoolId, limit: 50 });
+              const list = (resp?.data?.parents) || [];
+              const cu = window.firebase?.auth()?.currentUser?.uid || null;
+              renderDiscoverable(list, cu);
+            } catch (e1) {
+              console.warn('listDiscoverableParents callable failed', e1);
+              // HTTP shim fallback
+              try {
+                const user = window.firebase?.auth()?.currentUser; if (!user) return;
+                const token = await user.getIdToken();
+                const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
+                const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+                const d = await res.json(); const list = (d?.parents) || [];
+                renderDiscoverable(list, user?.uid || null);
+              } catch (e2) { console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
+            }
+          } catch (e) { console.warn('loadDiscoverable failed', e); }
+        }
+    discSchool?.addEventListener('change', loadDiscoverable);
 
       async function addByEmail() {
         const email = (discEmail?.value || '').trim(); if (!email) return;
