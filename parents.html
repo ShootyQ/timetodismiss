@@ -1,1249 +1,759 @@
 <!doctype html>
 <html lang="en">
-
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
   <title>Parent Portal — Time To Dismiss</title>
-
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
+  <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="/styles.css?v=2025-09-07-MC7" />
-  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="/site-header.js?v=2025-10-13-HDR6" defer></script>
 
-  <!-- Scoped page styles to match index/how-it-works look -->
   <style>
     :root {
-      --ux-max: 1180px;
-      --ux-gap: 18px;
-      --ux-radius: 14px;
-      --ux-border: #e5e7eb;
-      --ux-dark: #0f172a;
-      --ux-accent: var(--primary, #4f46e5);
-      --ux-accent-2: #4338ca;
-      --ux-muted: #475569;
-      --ux-card: #fff;
-      --ux-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+      --primary: #4f46e5;
+      --primary-dark: #4338ca;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --radius: 16px;
+      --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+      --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+      --safe-bottom: env(safe-area-inset-bottom, 20px);
     }
 
-    .ux-wrap {
-      max-width: var(--ux-max);
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text-main);
+      margin: 0;
+      padding-bottom: calc(80px + var(--safe-bottom)); /* Space for bottom nav */
+    }
+
+    /* Utility */
+    .hidden { display: none !important; }
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-2 { gap: 0.5rem; }
+    .gap-4 { gap: 1rem; }
+    .text-sm { font-size: 0.875rem; }
+    .text-xs { font-size: 0.75rem; }
+    .font-bold { font-weight: 700; }
+    .font-medium { font-weight: 500; }
+    .text-muted { color: var(--text-muted); }
+    .text-center { text-align: center; }
+    .w-full { width: 100%; }
+    .p-4 { padding: 1rem; }
+    .rounded-xl { border-radius: 0.75rem; }
+    
+    /* Layout */
+    .app-container {
+      max-width: 600px;
       margin: 0 auto;
-      padding: 0 18px;
+      min-height: 100vh;
+      background: var(--bg);
     }
 
-    .section {
-      padding: 64px 0;
+    /* Header */
+    .app-header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(255,255,255,0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .app-title { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.025em; }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%; background: var(--primary); color: white;
+      display: grid; place-items: center; font-weight: 600; font-size: 0.9rem;
+      cursor: pointer;
     }
 
-    @media (min-width: 860px) {
-      .section {
-        padding: 84px 0;
-      }
+    /* Tabs Content */
+    .tab-view {
+      padding: 20px;
+      animation: fadeIn 0.3s ease;
     }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-    .center {
-      text-align: center;
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 20px;
+      box-shadow: var(--shadow-sm);
+      border: 1px solid var(--border);
+      margin-bottom: 16px;
+      transition: transform 0.2s, box-shadow 0.2s;
     }
-
-    /* Hero styling with subtle glass background */
-    .hero {
+    .card:active { transform: scale(0.995); }
+    
+    /* QR Pass Card */
+    .pass-card {
+      background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+      border: 1px solid var(--border);
       position: relative;
-      min-height: 40vh;
-      display: grid;
-      place-items: center;
-      color: #fff;
       overflow: hidden;
     }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(180deg, rgba(2, 6, 23, .34) 0%, rgba(2, 6, 23, .42) 35%, rgba(2, 6, 23, .62) 100%);
-      z-index: 1;
+    .pass-card::before {
+      content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 6px;
+      background: linear-gradient(90deg, var(--primary), #818cf8);
     }
-
-    .hero::after {
-      content: '';
-      position: absolute;
-      inset: -20% -20% -10% -20%;
-      background: conic-gradient(from 180deg at 50% 35%, rgba(79, 70, 229, .28), rgba(99, 102, 241, .18), rgba(56, 189, 248, .22), rgba(16, 185, 129, .16), rgba(79, 70, 229, .28));
-      filter: blur(70px) saturate(140%);
-      opacity: .7;
-      z-index: 1;
-    }
-
-    .hero-bg {
-      position: absolute;
-      inset: 0;
-      background-image: url('https://images.unsplash.com/photo-1541224213968-149b5c23e809?q=80&w=2670');
-      background-size: cover;
-      background-position: center;
-      transform: scale(1.08);
-      z-index: 0;
-    }
-
-    .hero-inner {
-      position: relative;
-      z-index: 2;
-      max-width: 960px;
-      padding: 22px;
-      text-align: center;
-      background: rgba(255, 255, 255, .06);
-      border: 1px solid rgba(255, 255, 255, .18);
-      backdrop-filter: blur(10px) saturate(120%);
-      -webkit-backdrop-filter: blur(10px) saturate(120%);
-      border-radius: 18px;
-      box-shadow: 0 20px 50px rgba(2, 6, 23, .25);
-    }
-
-    .eyebrow {
+    .qr-box {
+      background: white;
+      border-radius: 12px;
+      padding: 12px;
+      border: 2px dashed var(--border);
       display: inline-block;
-      background: rgba(255, 255, 255, .14);
-      padding: 6px 12px;
-      border-radius: 999px;
-      font-weight: 700;
-      letter-spacing: .02em;
+      margin: 16px 0;
     }
 
-    .hero h1 {
-      font-size: clamp(1.8rem, 2.2vw + 1rem, 2.8rem);
-      line-height: 1.08;
-      margin: 10px 0 8px;
-      text-shadow: 0 2px 12px rgba(0, 0, 0, .25);
-    }
-
-    .lead {
-      color: rgba(255, 255, 255, .92);
-      font-weight: 600;
-      max-width: 68ch;
-      margin: 0 auto;
-      text-shadow: 0 1px 6px rgba(0, 0, 0, .18);
-    }
-
-    .cta {
+    /* List Items */
+    .list-item {
       display: flex;
+      align-items: center;
       gap: 12px;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 16px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
     }
+    .list-item:last-child { border-bottom: none; }
+    .avatar {
+      width: 40px; height: 40px; border-radius: 10px; background: #e0e7ff; color: var(--primary);
+      display: grid; place-items: center; font-weight: 600; font-size: 1rem; flex-shrink: 0;
+    }
+    .list-content { flex: 1; min-width: 0; }
+    .list-title { font-weight: 600; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-sub { font-size: 0.85rem; color: var(--text-muted); }
 
+    /* Buttons */
     .btn {
-      appearance: none;
-      border: 1px solid transparent;
-      border-radius: 12px;
-      padding: 12px 18px;
-      font-weight: 800;
-      cursor: pointer;
-      text-decoration: none;
-      display: inline-flex;
-      align-items: center;
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 10px 20px; border-radius: 12px; font-weight: 600; font-size: 0.95rem;
+      transition: all 0.2s; cursor: pointer; border: none; outline: none;
       gap: 8px;
     }
+    .btn-primary { background: var(--primary); color: white; box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3); }
+    .btn-primary:active { transform: scale(0.96); }
+    .btn-secondary { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-ghost { background: transparent; color: var(--text-muted); padding: 8px; }
+    .btn-sm { padding: 6px 12px; font-size: 0.85rem; border-radius: 8px; }
+    .btn-icon { width: 36px; height: 36px; padding: 0; border-radius: 50%; }
 
-    .btn.primary {
-      background: var(--ux-accent);
-      color: #fff;
-    }
-
-    .btn.primary:hover {
-      background: var(--ux-accent-2);
-    }
-
-    .btn.ghost {
-      background: #fff;
-      color: var(--ux-accent);
-      border-color: var(--ux-border);
-    }
-
-    /* Cards, grid, and carousel */
-    .grid {
-      display: grid;
-      gap: 18px;
-    }
-
-    .cards {
-      display: grid;
-      gap: 18px;
-    }
-
-    @media (min-width: 860px) {
-      .cards.cols-3 {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-
-    .card {
-      background: #fff;
-      border: 1px solid var(--ux-border);
-      border-radius: var(--ux-radius);
-      padding: 16px;
-      box-shadow: var(--ux-shadow);
-    }
-
-    .muted {
-      color: var(--ux-muted);
-    }
-
-    .passes-carousel {
+    /* Bottom Nav */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: rgba(255,255,255,0.95);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
       display: flex;
-      gap: 14px;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      padding-bottom: 6px;
+      justify-content: space-around;
+      padding: 12px 0 calc(12px + var(--safe-bottom));
+      z-index: 50;
+      max-width: 600px;
+      margin: 0 auto;
     }
-
-    .pass {
-      min-width: 290px;
-      max-width: 320px;
-      background: #fff;
-      border: 1px solid var(--ux-border);
-      border-radius: 16px;
-      box-shadow: var(--ux-shadow);
-      padding: 14px;
+    .nav-item {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      color: var(--text-muted); font-size: 0.7rem; font-weight: 600;
+      background: none; border: none; cursor: pointer; width: 64px;
     }
+    .nav-item svg { width: 24px; height: 24px; stroke-width: 2px; transition: stroke 0.2s; }
+    .nav-item.active { color: var(--primary); }
+    .nav-item.active svg { stroke: var(--primary); fill: rgba(79, 70, 229, 0.1); }
 
-    .pass .hdr {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+    /* Modal/Sheet */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s;
+      display: grid; place-items: center; padding: 20px;
     }
-
-    .pass .std {
-      font-weight: 800;
-      font-size: 1.05rem;
-      color: #0f172a;
+    .modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .modal-card {
+      background: white; width: 100%; max-width: 400px; border-radius: 24px;
+      padding: 24px; box-shadow: var(--shadow-lg);
+      transform: translateY(20px); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     }
-
-    .pass .win {
-      font-weight: 700;
-      font-size: .85rem;
-      color: #334155;
-    }
-
-    .qr {
-      margin-top: 10px;
-      border: 1px dashed #e2e8f0;
-      border-radius: 12px;
-      height: 180px;
-      display: grid;
-      place-items: center;
-      color: #64748b;
-    }
-
-    .badge {
-      display: inline-block;
-      font-weight: 800;
-      font-size: .72rem;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid #e2e8f0;
-      color: #0f172a;
+    .modal-overlay.open .modal-card { transform: translateY(0); }
+    
+    /* Form Elements */
+    .input-group { margin-bottom: 16px; }
+    .input-label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; color: var(--text-muted); }
+    .input-field {
+      width: 100%; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--border);
+      font-size: 1rem; font-family: inherit; transition: border-color 0.2s;
       background: #f8fafc;
     }
-
-    .list {
-      display: grid;
-      gap: 12px;
+    .input-field:focus { outline: none; border-color: var(--primary); background: white; }
+    
+    /* Empty States */
+    .empty-state { text-align: center; padding: 40px 20px; }
+    .empty-icon { 
+      width: 64px; height: 64px; background: #f1f5f9; border-radius: 50%; 
+      display: inline-grid; place-items: center; margin-bottom: 16px; color: #94a3b8;
     }
 
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      justify-content: space-between;
-      border: 1px solid var(--ux-border);
-      border-radius: 12px;
-      background: #fff;
-      padding: 12px;
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: #1e293b; color: white; padding: 12px 24px; border-radius: 99px;
+      font-weight: 500; opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 200;
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3);
     }
-
-    .row .who {
-      font-weight: 700;
-      color: #0f172a;
-    }
-
-    .row .meta {
-      color: #64748b;
-      font-size: .9rem;
-    }
-
-    .cta-band {
-      background: #0b1220;
-      color: #fff;
-      border-radius: 16px;
-      padding: 24px;
-      text-align: center;
-    }
-
-    .animatable {
-      opacity: 0;
-      transform: translateY(18px);
-      transition: opacity .8s ease, transform .8s ease;
-    }
-
-    .animatable.is-visible {
-      opacity: 1;
-      transform: none;
-    }
-
-    @media (max-width:760px) {
-      .passes-carousel {
-        scroll-snap-type: x mandatory;
-      }
-
-      .pass {
-        scroll-snap-align: start;
-      }
-    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   </style>
 </head>
+<body>
 
-<body class="sd-body">
-  <!-- Header injected by site-header.js -->
-
-  <!-- HERO -->
-  <header class="hero">
-    <div class="hero-bg"></div>
-    <div class="hero-inner animatable">
-      <span class="eyebrow">Parent Portal</span>
-      <h1>Your passes and pickup permissions</h1>
-      <p class="lead">View today's boarding passes and manage who can pick up your student. QR codes rotate for security
-        and scan fast at dismissal.</p>
-      <div class="cta">
-        <a class="btn primary" href="#today">See today's passes</a>
-        <a class="btn ghost" href="#permissions">Manage permissions</a>
-      </div>
-    </div>
+<div class="app-container">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="app-title">Parent Portal</div>
+    <div class="user-avatar" id="userAvatar">?</div>
   </header>
 
-  <main>
-    <!-- TODAY'S PASSES -->
-    <section id="today" class="section" aria-labelledby="today-h">
-      <div class="ux-wrap">
-        <h2 id="today-h" class="animatable">Today's passes</h2>
-        <p class="muted animatable" data-delay="1" id="passesSubtitle">Swipe between students. Each pass shows a
-          scannable QR during your pickup window.</p>
+  <!-- VIEW: PASSES (Home) -->
+  <main id="view-passes" class="tab-view">
+    <div class="flex justify-between items-center" style="margin-bottom: 16px;">
+      <h2 class="text-lg font-bold" style="margin:0;">Today's Passes</h2>
+      <span class="text-xs text-muted" id="dateDisplay"></span>
+    </div>
 
-        <div id="signedOutCallout" class="card animatable" style="display:none;">
-          <strong>Sign in to view your passes</strong>
-          <p class="muted" style="margin:6px 0 0;">Use the Sign in button in the header. If you're new, you'll receive
-            an invite to claim your student.</p>
-        </div>
+    <div id="passes-container">
+      <!-- Injected via JS -->
+    </div>
 
-        <div id="noPasses" class="card animatable" style="display:none;">
-          <strong>No passes yet</strong>
-          <p class="muted" style="margin:6px 0 0;">You don't have any passes for today. If you expect one, check your
-            pickup permissions below.</p>
-        </div>
-
-        <div id="passesWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
-          <!-- Cards injected by JS -->
-        </div>
+    <div id="passes-empty" class="empty-state hidden">
+      <div class="empty-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M7 7h3v3H7z"></path><path d="M14 7h3v3h-3z"></path><path d="M7 14h3v3H7z"></path><path d="M14 14h3v3h-3z"></path></svg>
       </div>
-    </section>
+      <h3 class="font-bold">No passes for today</h3>
+      <p class="text-muted text-sm">Passes appear here on pickup days.</p>
+    </div>
 
-    <!-- TRUSTED PICKUPS -->
-    <section id="trusted" class="section" aria-labelledby="trusted-h">
-      <div class="ux-wrap">
-        <h2 id="trusted-h" class="animatable">Trusted pickups</h2>
-        <p class="muted animatable" data-delay="1">Students you have been granted permission to pick up.</p>
-
-        <div id="trustedEmpty" class="card animatable" style="display:none;">
-          <strong>No trusted pickups</strong>
-          <p class="muted" style="margin:6px 0 0;">When other parents grant you pickup access, their students will appear here.</p>
-        </div>
-
-        <div id="trustedWrap" class="passes-carousel animatable" style="margin-top:12px; display:none;">
-          <!-- Cards injected by JS -->
-        </div>
+    <div style="margin-top: 32px;">
+      <h2 class="text-lg font-bold" style="margin-bottom: 12px;">Trusted Pickups</h2>
+      <p class="text-sm text-muted" style="margin-bottom: 16px;">Students you are authorized to pick up.</p>
+      <div id="trusted-container"></div>
+      <div id="trusted-empty" class="card text-center text-muted text-sm" style="padding: 30px;">
+        You haven't been granted access to pick up any other students yet.
       </div>
-    </section>
-
-    <!-- MANAGE PERMISSIONS -->
-    <section id="permissions" class="section" aria-labelledby="perm-h">
-      <div class="ux-wrap">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-          <h2 id="perm-h" class="animatable">Manage pickup permissions</h2>
-          <button id="addTrusted" class="btn" type="button" title="Add trusted adult">Add trusted adult</button>
-        </div>
-        <p class="muted animatable" data-delay="1">Grant one-time or recurring pickup access to trusted adults. You can
-          revoke anytime.</p>
-
-        <div id="grantsEmpty" class="card animatable" style="display:none;">
-          <strong>No pickup permissions yet</strong>
-          <p class="muted" style="margin:6px 0 0;">Add a trusted adult to get started. They'll receive a link to view
-            their passes on pickup days.</p>
-        </div>
-
-        <div id="grantsList" class="list animatable" style="margin-top:12px; display:none;">
-          <!-- Rows injected by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- DISCOVERABLE PARENTS (new) -->
-    <section id="discoverable" class="section" aria-labelledby="discoverable-h">
-      <div class="ux-wrap">
-        <h2 id="discoverable-h" class="animatable">Discoverable parents</h2>
-        <p class="muted animatable" data-delay="1">Connect with other parents at your school.</p>
-
-        <div id="discoverEmpty" class="card animatable" style="display:none;">
-          <strong>No discoverable parents yet</strong>
-          <p class="muted" style="margin:6px 0 0;">Once you have connections, they will appear here. You can also add
-            parents by email.</p>
-        </div>
-
-        <div id="discoverList" class="list animatable" style="margin-top:12px; display:none;">
-          <!-- Rows injected by JS -->
-        </div>
-
-        <div style="margin-top:24px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center;">
-          <select id="discSchool" class="card" style="flex:1 1 280px; min-width:200px; display:none;" aria-label="School filter">
-            <option value="">Select your school</option>
-            <!-- Options injected by JS -->
-          </select>
-          <button id="discEmailBtn" class="btn" style="flex:none;">Add by email</button>
-        </div>
-        <input id="discEmail" class="card" placeholder="Enter parent email" style="margin-top:12px; display:none;" />
-      </div>
-    </section>
-
-    <!-- CONNECTION REQUESTS (new) -->
-    <section id="connections" class="section" aria-labelledby="connections-h">
-      <div class="ux-wrap">
-        <h2 id="connections-h" class="animatable">Connection requests</h2>
-        <p class="muted animatable" data-delay="1">Manage your connection requests.</p>
-
-        <div id="reqIncomingEmpty" class="card animatable" style="display:none;">
-          <strong>No new requests</strong>
-          <p class="muted" style="margin:6px 0 0;">When other parents send you requests, they will appear here.</p>
-        </div>
-
-        <div id="reqIncoming" class="list animatable" style="margin-top:12px; display:none;">
-          <!-- Rows injected by JS -->
-        </div>
-
-        <div id="reqOutgoingEmpty" class="card animatable" style="display:none; margin-top:24px;">
-          <strong>No sent requests</strong>
-          <p class="muted" style="margin:6px 0 0;">Your sent requests will appear here. You can cancel them anytime.</p>
-        </div>
-
-        <div id="reqOutgoing" class="list animatable" style="margin-top:12px; display:none;">
-          <!-- Rows injected by JS -->
-        </div>
-      </div>
-    </section>
-
-    <!-- MY CONNECTIONS (new) -->
-    <section id="myConnections" class="section" aria-labelledby="myConnections-h">
-      <div class="ux-wrap">
-        <h2 id="myConnections-h" class="animatable">My connections</h2>
-        <p class="muted animatable" data-delay="1">Parents you are connected with.</p>
-
-        <div id="connEmpty" class="card animatable" style="display:none;">
-          <strong>No connections yet</strong>
-          <p class="muted" style="margin:6px 0 0;">Connect with parents to see them here. Use the Discoverable parents
-            section above to find parents at your school.</p>
-        </div>
-
-        <div id="connList" class="list animatable" style="margin-top:12px; display:none;">
-          <!-- Rows injected by JS -->
-        </div>
-      </div>
-    </section>
+    </div>
   </main>
 
-  <!-- ========================================== -->
-  <!-- ========== PROFILE & CONNECT ============ -->
-  <!-- ========================================== -->
-  <div style="display:none;">
-    <div id="profileSheet" class="sd-sheet">
-      <div class="sd-sheet-content">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <h2 style="margin:0;">My profile</h2>
-          <button id="profClose" class="sd-sheet-close" title="Close sheet">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
-              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <path d="M18 6l-12 12" />
-              <path d="M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+  <!-- VIEW: TEAM (Permissions) -->
+  <main id="view-team" class="tab-view hidden">
+    <div class="flex justify-between items-center" style="margin-bottom: 20px;">
+      <div>
+        <h2 class="text-lg font-bold" style="margin:0;">My Team</h2>
+        <p class="text-sm text-muted">Who can pick up my kids</p>
+      </div>
+      <button class="btn btn-primary btn-sm" id="btnAddTrusted">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 5v14M5 12h14"/></svg>
+        Add
+      </button>
+    </div>
 
-        <div style="margin-top:12px;">
-          <label for="profName" class="sd-sheet-label">Name</label>
-          <input id="profName" class="sd-sheet-input" placeholder="Enter your name" />
-        </div>
+    <div id="grants-container"></div>
+    
+    <div id="grants-empty" class="empty-state hidden">
+      <div class="empty-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <h3 class="font-bold">Build your team</h3>
+      <p class="text-muted text-sm">Add trusted adults like grandparents or neighbors to help with pickup.</p>
+      <button class="btn btn-secondary" style="margin-top:16px;" onclick="document.getElementById('btnAddTrusted').click()">Add Trusted Adult</button>
+    </div>
+  </main>
 
-        <div style="margin-top:12px;">
-          <label for="profDisc" class="sd-sheet-label">
-            <input id="profDisc" type="checkbox" class="sd-sheet-checkbox" />
-            <span style="margin-left:8px;">Allow parents to discover me</span>
-          </label>
-        </div>
+  <!-- VIEW: CONNECT (Community) -->
+  <main id="view-connect" class="tab-view hidden">
+    <h2 class="text-lg font-bold" style="margin-bottom: 16px;">Community</h2>
+    
+    <!-- Requests -->
+    <div id="requests-section" class="hidden">
+      <h3 class="text-sm font-bold text-muted" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:12px;">Requests</h3>
+      <div id="requests-container" class="card" style="padding: 0 16px;"></div>
+    </div>
 
-        <div style="margin-top:24px; display:flex; gap:12px; justify-content:flex-end;">
-          <button id="profSave" class="btn" type="button">Save changes</button>
-          <span id="profStatus" class="muted" style="white-space:nowrap; display:none;">Saved!</span>
+    <!-- Connections -->
+    <h3 class="text-sm font-bold text-muted" style="text-transform:uppercase; letter-spacing:0.05em; margin-bottom:12px; margin-top: 24px;">My Connections</h3>
+    <div id="connections-container" class="card" style="padding: 0 16px;"></div>
+    <div id="connections-empty" class="text-center text-muted text-sm" style="padding: 20px;">
+      No connections yet.
+    </div>
+
+    <!-- Discover -->
+    <div class="card" style="margin-top: 24px; background: #f1f5f9; border: none;">
+      <h3 class="font-bold" style="margin-top:0;">Find Parents</h3>
+      <p class="text-sm text-muted" style="margin-bottom: 16px;">Connect with other parents at your school.</p>
+      
+      <div class="input-group">
+        <select id="schoolSelect" class="input-field">
+          <option value="">Select School...</option>
+        </select>
+      </div>
+      
+      <div id="discover-container"></div>
+      
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #cbd5e1;">
+        <p class="text-xs font-bold text-muted" style="margin-bottom:8px;">INVITE BY EMAIL</p>
+        <div class="flex gap-2">
+          <input id="inviteEmail" type="email" class="input-field" placeholder="parent@example.com" style="background:white;">
+          <button id="btnInvite" class="btn btn-primary">Invite</button>
         </div>
       </div>
     </div>
+  </main>
 
-    <!-- CONNECTION REQUEST SHEET (new) -->
-    <div id="requestSheet" class="sd-sheet">
-      <div class="sd-sheet-content">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <h2 style="margin:0;">Connection request</h2>
-          <button id="reqClose" class="sd-sheet-close" title="Close sheet">
-            <svg xmlns="http://www.w3.org/2000/svg" class="icon icon-tabler icon-tabler-x" width="24" height="24"
-              viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round"
-              stroke-linejoin="round">
-              <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-              <path d="M18 6l-12 12" />
-              <path d="M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+  <!-- Bottom Nav -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-target="view-passes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg>
+      Passes
+    </button>
+    <button class="nav-item" data-target="view-team">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Team
+    </button>
+    <button class="nav-item" data-target="view-connect">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      Connect
+    </button>
+  </nav>
+</div>
 
-        <div id="reqDetails" class="muted" style="margin-top:12px; line-height:1.4;">
-          <!-- Injected by JS -->
-        </div>
+<!-- ADD TRUSTED ADULT MODAL -->
+<div id="modal-add-trusted" class="modal-overlay">
+  <div class="modal-card">
+    <div class="flex justify-between items-center" style="margin-bottom: 20px;">
+      <h3 class="font-bold text-lg" style="margin:0;">Add Trusted Adult</h3>
+      <button class="btn btn-ghost btn-icon" onclick="closeModal('modal-add-trusted')">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    
+    <div class="input-group">
+      <label class="input-label">Who are you adding?</label>
+      <input id="grantEmail" type="email" class="input-field" placeholder="Enter their email address">
+      <p class="text-xs text-muted" style="margin-top:6px;">Must be a Google or Microsoft account email.</p>
+    </div>
 
-        <div style="margin-top:24px; display:flex; gap:12px; justify-content:flex-end;">
-          <button id="reqAccept" class="btn" type="button" data-action="accept">Accept request</button>
-          <button id="reqDecline" class="btn" type="button" data-action="decline">Decline request</button>
-        </div>
+    <div class="input-group">
+      <label class="input-label">Name (Optional)</label>
+      <input id="grantName" type="text" class="input-field" placeholder="e.g. Grandma, Uncle Joe">
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Note for them (Optional)</label>
+      <input id="grantNote" type="text" class="input-field" placeholder="e.g. Thanks for picking up!">
+    </div>
+
+    <div class="input-group">
+      <label class="input-label">Which students?</label>
+      <div id="student-selector" class="flex flex-col gap-2">
+        <!-- Checkboxes injected here -->
       </div>
     </div>
+
+    <div class="input-group">
+      <label class="input-label">When?</label>
+      <div class="flex gap-2">
+        <button type="button" class="btn btn-secondary w-full active-toggle" data-val="always" onclick="selectWindow(this)">Always</button>
+        <button type="button" class="btn btn-secondary w-full" data-val="today" onclick="selectWindow(this)">Today Only</button>
+      </div>
+      <input type="hidden" id="grantWindow" value="always">
+    </div>
+
+    <button id="btnConfirmGrant" class="btn btn-primary w-full" style="margin-top: 12px;">Grant Access</button>
   </div>
+</div>
 
-  <script>
-    // Simple reveal-on-scroll
-    const animatables = document.querySelectorAll('.animatable');
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('is-visible'); } });
-    }, { threshold: 0.12 });
-    animatables.forEach(a => obs.observe(a));
+<div id="toast" class="toast">Action Successful</div>
 
-    // Minimal client logic:
-    // - Toggle signed-in/out prompts
-    // - Load linked students (callable -> reverse index -> collectionGroup)
-    // - Render passes with formatted names and rotating QR payloads
-    document.addEventListener('DOMContentLoaded', () => {
-      const out   = document.getElementById('signedOutCallout');
-      const none  = document.getElementById('noPasses');
-      const wrap  = document.getElementById('passesWrap');
-      const trustedWrap = document.getElementById('trustedWrap');
-      const trustedEmpty = document.getElementById('trustedEmpty');
-      const grantsList = document.getElementById('grantsList');
-      const grantsEmpty= document.getElementById('grantsEmpty');
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+  // --- STATE ---
+  const state = {
+    students: [],
+    grants: [],
+    connections: [],
+    pickups: [],
+    user: null
+  };
 
-      // Profile & Connect elements
-      const profName = document.getElementById('profName');
-      const profDisc = document.getElementById('profDisc');
-      const profSave = document.getElementById('profSave');
-      const profStatus = document.getElementById('profStatus');
-      const discoverList = document.getElementById('discoverList');
-      const discoverEmpty = document.getElementById('discoverEmpty');
-      const discSchool = document.getElementById('discSchool');
-      const discEmail = document.getElementById('discEmail');
-      const discEmailBtn = document.getElementById('discEmailBtn');
-      const reqIncoming = document.getElementById('reqIncoming');
-      const reqOutgoing = document.getElementById('reqOutgoing');
-      const reqIncomingEmpty = document.getElementById('reqIncomingEmpty');
-      const reqOutgoingEmpty = document.getElementById('reqOutgoingEmpty');
-      const connList = document.getElementById('connList');
-      const connEmpty = document.getElementById('connEmpty');
+  // --- UI HELPERS ---
+  const $ = id => document.getElementById(id);
+  const showToast = (msg) => {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  };
+  const closeModal = (id) => $(id).classList.remove('open');
+  const openModal = (id) => $(id).classList.add('open');
 
-      // Ensure QRCode library (qrcodejs) is available
-      (function ensureQRCode(){
-        if (window.QRCode) return;
-        const s = document.createElement('script');
-        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-        s.crossOrigin = 'anonymous';
-        document.head.appendChild(s);
-      })();
-
-      function formatName(name){
-        const raw = String(name||'').trim();
-        if (!raw) return '';
-        let first = '', last = '';
-        if (raw.includes(',')){
-          // "Last, First [Middle]"
-          const [l, r] = raw.split(',');
-          last = (l||'').trim();
-          first = (r||'').trim().split(/\s+/)[0] || '';
-        } else {
-          const parts = raw.split(/\s+/).filter(Boolean);
-          if (parts.length === 1) { first = parts[0]; last = ''; }
-          else { first = parts[0]; last = parts[parts.length-1]; }
-        }
-        const li = last ? (last[0].toUpperCase() + '.') : '';
-        return [first, li].filter(Boolean).join(' ');
-      }
-
-      function drawQrInto(el, basePayload){
-        if (!el) return;
-        // Rotate every 30s to vary the code visually while keeping scanners compatible
-        const rot = Math.floor(Date.now()/30000); // changes every 30s
-        const payload = basePayload + '&r=' + rot;
-        el.innerHTML = '';
-        const host = document.createElement('div');
-        host.style.width = '180px'; host.style.height = '180px';
-        el.appendChild(host);
-        const draw = () => { try { new QRCode(host, { text: payload, width: 180, height: 180, correctLevel: (window.QRCode?.CorrectLevel?.M)||2 }); } catch {} };
-        if (window.QRCode) draw(); else {
-          const t = setInterval(()=>{ if (window.QRCode){ clearInterval(t); draw(); } }, 60);
-        }
-      }
-
-      let qrTimer = null;
-      function renderPasses(passes){
-        wrap.innerHTML = '';
-        if (qrTimer) { try { clearInterval(qrTimer); } catch{} qrTimer = null; }
-        if (!passes || !passes.length) {
-          wrap.style.display = 'none';
-          none.style.display = '';
-          return;
-        }
-        none.style.display = 'none';
-        wrap.style.display = 'flex';
-        for (const p of passes){
-          const card = document.createElement('div');
-          card.className = 'pass';
-          card.innerHTML = `
-            <div class="hdr">
-              <div class="std">${formatName(p.student)}</div>
-              <span class="badge" title="Status">${p.status}</span>
-            </div>
-            <div class="win" aria-label="Pickup window">${p.window}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${p.basePayload||''}"></div></div>
-          `;
-          wrap.appendChild(card);
-        }
-
-        // Initial draw
-        wrap.querySelectorAll('.qr-host').forEach(host => {
-          const base = host.getAttribute('data-base') || '';
-          drawQrInto(host, base);
-        });
-        // Rotate every 30s
-        qrTimer = setInterval(() => {
-          wrap.querySelectorAll('.qr-host').forEach(host => {
-            const base = host.getAttribute('data-base') || '';
-            drawQrInto(host, base);
-          });
-        }, 30000);
-      }
-      function renderGrants(grants){
-        grantsList.innerHTML = '';
-        if (!grants || !grants.length) {
-          grantsList.style.display = 'none';
-          grantsEmpty.style.display = '';
-          return;
-        }
-        grantsEmpty.style.display = 'none';
-        grantsList.style.display = 'grid';
-        for (const g of grants){
-          const row = document.createElement('div');
-          row.className = 'row';
-          row.innerHTML = `
-            <div>
-              <div class="who">${g.name}</div>
-              <div class="meta">${g.students} · ${g.window}</div>
-            </div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" title="Edit">Edit</button>
-              <button class="btn" type="button" title="Revoke">Revoke</button>
-            </div>
-          `;
-          grantsList.appendChild(row);
-        }
-      }
-
-      function setSignedOut(){ out.style.display = ''; none.style.display = 'none'; wrap.style.display = 'none'; grantsList.style.display = 'none'; grantsEmpty.style.display='none'; }
-      function setSignedIn(){ out.style.display = 'none'; }
-
-      // Wire to claims-ready if header/auth is loaded; otherwise fallback to signed-out state
-      async function loadLinkedStudents(uid){
-        // Prefer backend callable to avoid rules/index friction; fall back to user reverse index, then group query
-        const results = [];
-        try {
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyLinkedStudents') : null;
-          if (call) {
-            const resp = await call({});
-            const data = (resp && resp.data) || resp || {};
-            if (data && data.ok && Array.isArray(data.students)) {
-              for (const s of data.students) {
-                results.push({ id: s.studentId, name: s.name, tag: (s.tag||'') || '', orgId: s.orgId, schoolId: s.schoolId });
-              }
-              return results;
-            }
-          }
-        } catch (e) { console.warn('[parents] callable listMyLinkedStudents failed', e); }
-        // Fallback A: direct read from reverse index users/{uid}/guardianLinks
-        try {
-          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db) {
-            const snap = await db.collection('users').doc(uid).collection('guardianLinks').get();
-            snap.docs.forEach(d => {
-              const x = d.data() || {}; const id = String(x.studentId || d.id);
-              const name = x.name || id; const tag = String(x.tag||'');
-              const orgId = x.orgId || null; const schoolId = x.schoolId || null;
-              results.push({ id, name, tag, orgId, schoolId });
-            });
-            if (results.length) return results;
-          }
-        } catch (e) { console.warn('[parents] reverse index read failed', e); }
-        // Fallback B: collectionGroup read using compat Firestore
-        try {
-          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (!db) return results;
-          const snap = await db.collectionGroup('guardians').where('uid','==', uid).get();
-          for (const d of snap.docs){
-            try {
-              const studentRef = d.ref.parent.parent; // .../students/{studentId}
-              if (!studentRef) continue;
-              const sSnap = await studentRef.get();
-              if (!sSnap.exists) continue;
-              const s = sSnap.data() || {};
-              const name = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentRef.id;
-              const tag = (s.carTag || s.tag || '').toString();
-              // Parse org/school from path if available
-              const seg = studentRef.path.split('/');
-              const orgId = seg[1] || null; const schoolId = seg[3] || null;
-              results.push({ id: studentRef.id, name, tag, orgId, schoolId });
-            } catch {}
-          }
-        } catch (e) {
-          console.warn('[parents] fallback loadLinkedStudents failed', e);
-        }
-        return results;
-      }
-
-      async function applyFromClaims(claims){
-        if (!claims || !claims.uid) { setSignedOut(); return; }
-        setSignedIn();
-        const uid = claims.uid;
-        // Personalize greeting
-        try {
-          const call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('getMyParentProfile') : null;
-          const greetEl = document.getElementById('greeting');
-          const sumEl = document.getElementById('summary');
-          let name = '';
-          if (call) {
-            const resp = await call({});
-            if (resp?.data?.ok) name = resp.data.displayName || '';
-          }
-          if (!name) { try { name = window.firebase?.auth()?.currentUser?.displayName || ''; } catch {} }
-          if (!name) { try { const email = window.firebase?.auth()?.currentUser?.email || ''; name = (email && email.split('@')[0]) || ''; } catch {} }
-          if (name && greetEl) greetEl.textContent = 'Hi, ' + name;
-          // We’ll enrich summary when we know linked students and school names
-          if (sumEl) sumEl.dataset.base = sumEl.textContent;
-        } catch {}
-        // Guardian callout: if signed-in but not guardian, prompt to claim
-        if (!claims.guardian) {
-          document.getElementById('passesSubtitle').textContent = 'Claim your student to view real-time passes.';
-          // Inject lightweight claim prompt card if not present
-          let claimCard = document.getElementById('guardianClaimPrompt');
-          if (!claimCard){
-            claimCard = document.createElement('div');
-            claimCard.id = 'guardianClaimPrompt';
-            claimCard.className = 'card animatable';
-            claimCard.innerHTML = '<strong>No linked students yet</strong><p class="muted" style="margin:6px 0 10px;">Enter your invite code or open the invite link to link a student.</p><div><a class="btn" href="/claim.html">Go to claim page</a></div>';
-            out.parentElement?.insertBefore(claimCard, out.nextSibling);
-            try { claimCard.classList.add('is-visible'); } catch {}
-          }
-        } else {
-          // Remove claim prompt if guardian now
-          const existing = document.getElementById('guardianClaimPrompt');
-          if (existing) existing.remove();
-        }
-        let linked = await loadLinkedStudents(uid);
-        // Compute school list for discovery selector
-        const schoolList = [];
-        const seenSchool = new Set();
-        for (const s of linked){ if (s.orgId && s.schoolId){ const key = s.orgId + '|' + s.schoolId; if (!seenSchool.has(key)){ seenSchool.add(key); schoolList.push({ orgId:s.orgId, schoolId:s.schoolId }); } } }
-        const discSelect = document.getElementById('discSchool');
-        if (discSelect){
-          discSelect.innerHTML = '';
-          for (const sc of schoolList){ const opt = document.createElement('option'); opt.value = sc.orgId + '|' + sc.schoolId; opt.textContent = sc.schoolId; discSelect.appendChild(opt); }
-        }
-        // Best-effort: resolve school names for nicer summary and dropdown labels
-        try{
-          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db){
-            const nameByKey = new Map();
-            for (const sc of schoolList){
-              try {
-                const ref = db.doc(`orgs/${sc.orgId}/schools/${sc.schoolId}`);
-                const snap = await ref.get();
-                const data = snap.exists ? (snap.data()||{}) : {};
-                const nm = data.name || sc.schoolId;
-                const key = sc.orgId + '|' + sc.schoolId; nameByKey.set(key, nm);
-              } catch {}
-            }
-            if (discSelect){ Array.from(discSelect.options).forEach(o => { const nm = nameByKey.get(o.value); if (nm) o.textContent = nm; }); }
-            const sumEl = document.getElementById('summary');
-            if (sumEl && linked.length){
-              const bySchool = new Map();
-              linked.forEach(s => { const k = s.orgId+'|'+s.schoolId; const arr = bySchool.get(k)||[]; arr.push(s.name||s.id); bySchool.set(k, arr); });
-              const parts = [];
-              bySchool.forEach((names, key) => { const sn = nameByKey.get(key) || key.split('|')[1]; parts.push(`${names.length} student${names.length>1?'s':''} at ${sn}`); });
-              sumEl.textContent = parts.join(' · ');
-            }
-          }
-        } catch{}
-        // Hydrate friendly names if they look like IDs and we have org/school
-        try{
-          const db = window.firebase && firebase.firestore ? firebase.firestore() : null;
-          if (db){
-            const needs = linked.filter(s => (!s.name || s.name === s.id || !/\s/.test(String(s.name))) && s.orgId && s.schoolId);
-            for (const s of needs){
-              try{
-                const ref = db.doc(`orgs/${s.orgId}/schools/${s.schoolId}/students/${s.id}`);
-                const snap = await ref.get();
-                if (snap.exists){
-                  const d = snap.data() || {};
-                  const nm = d.name || [d.firstName, d.lastName].filter(Boolean).join(' ');
-                  if (nm) s.name = nm;
-                  if (!s.tag){ const tg = (d.carTag || d.tag || '').toString().toUpperCase().trim(); if (tg) s.tag = tg; }
-                }
-              } catch{}
-            }
-          }
-        } catch{}
-        if (!linked.length){
-          renderPasses([]);
-          // Even if we have no linked students yet, still try to refresh discovery/requests later
-          try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
-          return;
-        }
-        // Build base payload for QR: prefer car tag else student id
-        const passes = linked.map(s => {
-          const tag = (s.tag||'').toString().trim();
-          const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(s.id));
-          return { student: s.name, status: 'Linked', window: '', basePayload: base };
-        });
-        renderPasses(passes);
-        // Now that school context and dropdown are populated, load discovery, connections, and trusted pickups
-        try { await Promise.resolve(); loadDiscoverable(); loadConnections(); loadTrustedPickups(); } catch {}
-      }
-
-      // Listen for claims from site-header.js
-      document.addEventListener('sd:claims-ready', (e) => {
-        const claims = (e && e.detail && e.detail.claims) || null;
-        // Augment with uid if available
-        try { if (!claims?.uid && window.firebase?.auth()?.currentUser) { claims.uid = window.firebase.auth().currentUser.uid; } } catch {}
-        applyFromClaims(claims);
-      });
-
-      // Access Grants UI (simplified MVP)
-      const addBtn = document.getElementById('addTrusted');
-      function openGrantPrompt(students){
-        const emails = prompt('Trusted adult email (Google/Microsoft account):');
-        if (!emails) return;
-        const name = prompt('Name (optional for display):') || '';
-        const note = prompt('Note for them (optional):') || '';
-        const windowType = confirm('Limit to today only? OK = Today only, Cancel = Always') ? 'today' : 'always';
-        const studentIds = students.map(s => s.id);
-        createGrant(studentIds, emails.trim(), name.trim(), windowType, note.trim());
-      }
-      async function createGrant(studentIds, grEmail, grName, windowType, note){
-        const statusEl = document.getElementById('passesSubtitle');
-        try {
-          statusEl.textContent = 'Creating access grant…';
-          const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
-          if (!orgId || !schoolId) throw new Error('No school context');
-          const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
-          if (!call) throw new Error('Backend unavailable');
-          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType, note });
-          if (!resp?.data?.ok) throw new Error('Grant creation failed');
-          statusEl.textContent = 'Access grant created.';
-          await loadGrants();
-        } catch(e){
-          console.warn(e);
-          statusEl.textContent = 'Grant failed: ' + (e.message || 'Error');
-          setTimeout(()=>{ statusEl.textContent = 'Swipe between students. Each pass shows a scannable QR during your pickup window.'; }, 4000);
-        }
-      }
-      async function loadGrants(){
-        const orgId = window.SD?.orgId; const schoolId = window.SD?.schoolId;
-        if (!orgId || !schoolId) return;
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('listMyGrantedAccess') : null;
-        if (!call) return;
-        try {
-          const resp = await call({});
-          const grants = (resp?.data?.grants)||[];
-          renderGrants(grants.map(g => ({ id: g.id, name: g.name || g.email, students: g.students, window: g.window, path: g.path })));
-        } catch(e){ console.warn('loadGrants failed', e); }
-      }
-      async function revokeGrant(path){
-        const call = window.SD?.httpsCallable ? window.SD.httpsCallable('revokeAccessGrant') : null;
-        if (!call) return alert('Backend unavailable');
-        if (!confirm('Revoke this access grant?')) return;
-        try { const resp = await call({ path }); if (resp?.data?.ok) await loadGrants(); else alert('Could not revoke'); } catch(e){ alert('Error revoking: ' + (e.message||'')); }
-      }
-      addBtn?.addEventListener('click', async () => {
-        // Use current linked students for selection; in MVP we grant access to ALL linked students
-        const currentCards = wrap.querySelectorAll('.pass .std');
-        const passes = [];
-        currentCards.forEach(c => { const nm = c.textContent.trim(); const base = c.closest('.pass')?.querySelector('.qr-host')?.getAttribute('data-base')||''; passes.push(nm); });
-        const linked = (window.__linkedStudentsCache||[]);
-        if (!linked.length) { alert('No linked students to grant access for yet.'); return; }
-        openGrantPrompt(linked);
-      });
-      // Override renderPasses to keep a cache for grant creation
-      const _origRender = renderPasses;
-      renderPasses = function(passes){ window.__linkedStudentsCache = passes.map(p => ({ id: p.id || p.studentId || p.student, name: p.student })); _origRender(passes); };
-      // Enhance renderGrants with revoke buttons
-      const _origRenderGrants = renderGrants;
-      renderGrants = function(grants){ _origRenderGrants(grants); try { grantsList.querySelectorAll('.row').forEach((row,i)=>{
-        const g = grants[i]; if (!g) return; const revokeBtn = row.querySelector('button[title="Revoke"]'); if (revokeBtn){ revokeBtn.onclick = () => revokeGrant(g.path); }
-      }); } catch{} };
-      // Load grants after claims
-      document.addEventListener('sd:claims-ready', () => { loadGrants(); });
-
-      // Trusted pickups: render grants where I am the grantee
-      function renderTrusted(pickups){
-        trustedWrap.innerHTML = '';
-        if (!Array.isArray(pickups) || !pickups.length){
-          trustedWrap.style.display = 'none';
-          trustedEmpty.style.display = '';
-          return;
-        }
-        trustedEmpty.style.display = 'none';
-        trustedWrap.style.display = 'flex';
-
-        for (const p of pickups){
-          const card = document.createElement('div');
-          card.className = 'pass';
-          const who = p.studentName || p.studentId;
-          const by  = p.grantorName ? `Granted by ${p.grantorName}` : '';
-          const note = p.note ? ` · ${p.note}` : '';
-          card.innerHTML = `
-            <div class="hdr">
-              <div class="std">${formatName(who)}</div>
-              <span class="badge" title="Trusted pickup">Trusted</span>
-            </div>
-            <div class="win" aria-label="Pickup window">${p.window || 'Always'}${by ? ' · ' + by : ''}${note}</div>
-            <div class="qr" aria-label="QR code"><div class="qr-host" data-base="${(p.basePayload||'')}"></div></div>
-          `;
-          trustedWrap.appendChild(card);
-        }
-
-        trustedWrap.querySelectorAll('.qr-host').forEach(host => {
-          const base = host.getAttribute('data-base') || '';
-          drawQrInto(host, base);
-        });
-      }
-
-      async function loadTrustedPickups(){
-        try {
-          console.log('[parents] Loading trusted pickups...');
-          let call = (window.SD && window.SD.httpsCallable) ? window.SD.httpsCallable('listMyPickupAccess') : null;
-          if (!call && window.firebase && firebase.functions) call = firebase.functions().httpsCallable('listMyPickupAccess');
-
-          if (!call) { console.warn('[parents] No callable found for listMyPickupAccess'); return; }
-
-          const resp = await call({});
-          const data = (resp && resp.data) || resp || {};
-          console.log('[parents] Trusted pickups data:', data);
-          const pickups = Array.isArray(data.pickups) ? data.pickups : [];
-          const mapped = pickups.map(p => {
-            const tag = (p.tag||'').toString().trim();
-            const base = tag ? ('car=' + encodeURIComponent(tag.toUpperCase())) : ('student=' + encodeURIComponent(p.studentId));
-            return {
-              studentId: p.studentId,
-              studentName: p.studentName,
-              window: p.window,
-              grantorName: p.grantorName,
-              note: p.note,
-              basePayload: base,
-            };
-          });
-          renderTrusted(mapped);
-        } catch (e){
-          console.warn('[parents] loadTrustedPickups failed', e);
-        }
-      }
-
-      // ───────── Profile & Connect wiring ─────────
-      function callable(name){ return window.SD?.httpsCallable ? window.SD.httpsCallable(name) : null; }
-
-      async function loadProfile(){
-        try {
-          const call = callable('getMyParentProfile');
-          if (!call) throw new Error('no-callable');
-          const resp = await call({}); const d = (resp?.data)||{};
-          if (d?.ok){
-            if (profName) profName.value = d.displayName || '';
-            if (profDisc) profDisc.checked = !!d.discoverable;
-          }
-        } catch(e){
-          console.warn('loadProfile failed', e);
-          // HTTP fallback to avoid preview CORS on callables
-          try {
-            const user = window.firebase?.auth()?.currentUser; if (!user) return;
-            const token = await user.getIdToken();
-            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/getMyParentProfileHttp', { headers: { 'Authorization': 'Bearer ' + token } });
-            const d = await res.json();
-            if (d?.ok){
-              if (profName) profName.value = d.displayName || '';
-              if (profDisc) profDisc.checked = !!d.discoverable;
-            }
-          } catch(err){ console.warn('HTTP getMyParentProfileHttp failed', err); }
-        }
-      }
-      async function saveProfile(){
-        try {
-          const call = callable('updateMyParentProfile');
-          profStatus.textContent = 'Saving…';
-          try {
-            if (!call) throw new Error('no-callable');
-            await call({ displayName: profName?.value || '', discoverable: !!profDisc?.checked });
-          } catch(e1){
-            // HTTP fallback
-            const user = window.firebase?.auth()?.currentUser; if (user){
-              const token = await user.getIdToken();
-              await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/updateMyParentProfileHttp', {
-                method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-                body: JSON.stringify({ displayName: profName?.value || '', discoverable: !!profDisc?.checked })
-              });
-            } else { throw e1; }
-          }
-          profStatus.textContent = 'Saved'; setTimeout(()=>profStatus.textContent='', 1200);
-          // Refresh discovery list if we toggled discoverable
-          await loadDiscoverable();
-        } catch(e){
-          console.warn('updateMyParentProfile failed', e);
-          const msg = (e && (e.message || e.code)) ? String(e.message || e.code) : 'Save failed';
-          profStatus.textContent = msg;
-          setTimeout(()=>profStatus.textContent='', 3200);
-        }
-      }
-      profSave?.addEventListener('click', saveProfile);
-
-      function renderDiscoverable(list, currentUid){
-        discoverList.innerHTML = '';
-        if (!Array.isArray(list) || list.length === 0){ discoverList.style.display='none'; discoverEmpty.style.display=''; return; }
-        discoverEmpty.style.display='none'; discoverList.style.display='grid';
-        list.forEach(p => {
-          const row = document.createElement('div'); row.className='row';
-          row.innerHTML = `
-            <div><div class="who">${(p.displayName||'Parent')}${p.uid && currentUid && p.uid===currentUid ? ' · You' : ''}</div><div class="meta">${p.uid||''}</div></div>
-            <div style="display:flex; gap:8px;">
-              <button class="btn" type="button" data-uid="${p.uid}" ${currentUid && p.uid===currentUid ? 'disabled title="This is you"' : ''}>Connect</button>
-            </div>
-          `;
-          discoverList.appendChild(row);
-        });
-        discoverList.querySelectorAll('button[data-uid]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
-          const el = e.currentTarget;
-          const toUid = el.getAttribute('data-uid');
-          // Prevent attempting to connect to self
-          try { if (toUid && window.firebase?.auth()?.currentUser?.uid === toUid) { return; } } catch {}
-          // Resolve org/school (dropdown overrides SD)
-          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId){ try { el.title = 'Select a school first'; } catch {}; return; }
-
-          const prevText = el.textContent; el.textContent = 'Requesting…'; el.disabled = true;
-          let success = false; let lastErr = null;
-          try {
-            const call = callable('sendParentConnectRequest');
-            if (!call) throw new Error('Backend unavailable');
-            try {
-              const resp = await call({ toUid, orgId, schoolId });
-              success = resp?.data?.ok !== false; // treat absence of ok as success
-            } catch (e1){
-              // HTTP fallback
-              try {
-                const user = window.firebase?.auth()?.currentUser; if (!user) throw e1;
-                const token = await user.getIdToken();
-                const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestHttp', {
-                  method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-                  body: JSON.stringify({ toUid, orgId, schoolId })
-                });
-                if (res.ok){
-                  const j = await res.json().catch(()=>({}));
-                  success = j?.ok !== false;
-                } else {
-                  lastErr = new Error('HTTP '+res.status);
-                  throw lastErr;
-                }
-              } catch(e2){ lastErr = e2; throw e2; }
-            }
-          } catch (err) {
-            lastErr = err;
-          } finally {
-            try { await loadConnections(); } catch {}
-            try { await loadDiscoverable(); } catch {}
-          }
-          if (success){
-            el.textContent = 'Requested'; el.disabled = true; el.classList.add('is-requested');
-            try { el.title = 'Request sent'; } catch {}
-          } else {
-            // Revert and show subtle hint instead of blocking alert
-            el.disabled = false; el.textContent = prevText;
-            try { el.title = String(lastErr?.message || 'Could not send request'); } catch {}
-            console.warn('sendParentConnectRequest failed', lastErr);
-          }
-        }));
-      }
-
-      async function loadDiscoverable(){
-        try {
-          const call = callable('listDiscoverableParents');
-          let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-          if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-          if (!orgId || !schoolId) return;
-          try {
-            if (!call) throw new Error('no-callable');
-            const resp = await call({ orgId, schoolId, limit: 50 });
-            const list = (resp?.data?.parents)||[];
-            const cu = window.firebase?.auth()?.currentUser?.uid || null;
-            renderDiscoverable(list, cu);
-          } catch(e1){
-            console.warn('listDiscoverableParents callable failed', e1);
-            // HTTP shim fallback
-            try {
-              const user = window.firebase?.auth()?.currentUser; if (!user) return;
-              const token = await user.getIdToken();
-              const url = `https://us-central1-dismissalcallerdev.cloudfunctions.net/listDiscoverableParentsHttp?orgId=${encodeURIComponent(orgId)}&schoolId=${encodeURIComponent(schoolId)}&limit=50`;
-              const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-              const d = await res.json(); const list = (d?.parents)||[];
-              renderDiscoverable(list, user?.uid || null);
-            } catch(e2){ console.warn('HTTP listDiscoverableParentsHttp failed', e2); }
-          }
-        } catch(e){ console.warn('loadDiscoverable failed', e); }
-      }
-      discSchool?.addEventListener('change', loadDiscoverable);
-
-      async function addByEmail(){
-        const email = (discEmail?.value||'').trim(); if (!email) return;
-        let orgId = window.SD?.orgId; let schoolId = window.SD?.schoolId;
-        if (discSchool && discSchool.value){ const [o,s] = discSchool.value.split('|'); if (o && s){ orgId = o; schoolId = s; } }
-        if (!orgId || !schoolId){ try { discEmailBtn.title = 'Select a school first'; } catch {}; return; }
-        const prev = discEmailBtn?.textContent; if (discEmailBtn) { discEmailBtn.textContent = 'Sending…'; discEmailBtn.disabled = true; }
-        let ok = false; let lastErr = null;
-        try{
-          const call = callable('sendParentConnectRequestByEmail');
-          if (!call) throw new Error('Backend unavailable');
-          try {
-            await call({ email, orgId, schoolId }); ok = true;
-          } catch(_){
-            const user = window.firebase?.auth()?.currentUser; if (!user) throw _;
-            const token = await user.getIdToken();
-            const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/sendParentConnectRequestByEmailHttp', {
-              method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-              body: JSON.stringify({ email, orgId, schoolId })
-            });
-            if (res.ok) ok = true; else { lastErr = new Error('HTTP '+res.status); throw lastErr; }
-          }
-        } catch (e){ lastErr = e; console.warn('sendParentConnectRequestByEmail failed', e); }
-        try { await loadConnections(); } catch {}
-        if (ok){
-          if (discEmail) discEmail.value='';
-          if (discEmailBtn){ discEmailBtn.textContent = 'Sent'; setTimeout(()=>{ try{ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; } catch{} }, 1000); }
-        } else {
-          if (discEmailBtn){ discEmailBtn.textContent = prev||'Add'; discEmailBtn.disabled = false; try { discEmailBtn.title = String(lastErr?.message || 'Could not send request'); } catch {} }
-        }
-      }
-      discEmailBtn?.addEventListener('click', addByEmail);
-
-      function renderReqRow(where, who, metaHtml, actionsHtml){
-        const row = document.createElement('div'); row.className='row';
-        row.innerHTML = `<div><div class="who">${who}</div><div class="meta">${metaHtml||''}</div></div><div style="display:flex; gap:8px;">${actionsHtml||''}</div>`;
-        where.appendChild(row);
-        return row;
-      }
-      async function loadConnections(){
-        try {
-          const call = callable('listMyParentConnections');
-          let d = {};
-          try {
-            if (!call) throw new Error('no-callable');
-            const resp = await call({}); d = (resp?.data)||{};
-          } catch(e1){
-            console.warn('listMyParentConnections callable failed', e1);
-            // HTTP shim fallback
-            try {
-              const user = window.firebase?.auth()?.currentUser; if (!user) return;
-              const token = await user.getIdToken();
-              const res = await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/listMyParentConnectionsHttp', { headers: { 'Authorization': 'Bearer ' + token } });
-              d = await res.json();
-            } catch(e2){ console.warn('HTTP listMyParentConnectionsHttp failed', e2); return; }
-          }
-          // Incoming
-          reqIncoming.innerHTML = '';
-          const inc = Array.isArray(d.incoming) ? d.incoming : [];
-          if (!inc.length){ reqIncoming.style.display='none'; reqIncomingEmpty.style.display=''; }
-          else {
-            reqIncoming.style.display='grid'; reqIncomingEmpty.style.display='none';
-            inc.forEach(item => {
-              const who = item.displayName || item.fromUid || 'Parent';
-              const row = renderReqRow(reqIncoming, who, `${item.orgId || ''} · ${item.schoolId || ''}`, `<button class='btn' data-a='accept' data-uid='${item.fromUid}'>Accept</button><button class='btn' data-a='decline' data-uid='${item.fromUid}'>Decline</button>`);
-              row.querySelectorAll('button[data-a]')?.forEach(btn => btn.addEventListener('click', async (e)=>{
-                const act = e.currentTarget.getAttribute('data-a'); const fromUid = e.currentTarget.getAttribute('data-uid');
-                try {
-                  const call = callable('respondParentConnectRequest'); if (!call) return;
-                  try {
-                    await call({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act });
-                  } catch(_){
-                    // HTTP fallback
-                    const user = window.firebase?.auth()?.currentUser; if (user){
-                      const token = await user.getIdToken();
-                      await fetch('https://us-central1-dismissalcallerdev.cloudfunctions.net/respondParentConnectRequestHttp', {
-                        method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer '+token },
-                        body: JSON.stringify({ fromUid, orgId: item.orgId, schoolId: item.schoolId, action: act })
-                      });
-                    } else { throw _; }
-                  }
-                  await loadConnections();
-                } catch {}
-              }));
-            });
-          }
-          // Outgoing
-          reqOutgoing.innerHTML = '';
-          const out = Array.isArray(d.outgoing) ? d.outgoing : [];
-          if (!out.length){ reqOutgoing.style.display='none'; reqOutgoingEmpty.style.display=''; }
-          else {
-            reqOutgoing.style.display='grid'; reqOutgoingEmpty.style.display='none';
-            out.forEach(item => { const who = item.displayName || item.toUid || 'Parent'; renderReqRow(reqOutgoing, who, `${item.status||'pending'}`); });
-          }
-          // Connections
-          connList.innerHTML = '';
-          const cons = Array.isArray(d.connections) ? d.connections : [];
-          if (!cons.length){ connList.style.display='none'; connEmpty.style.display=''; }
-          else {
-            connList.style.display='grid'; connEmpty.style.display='none';
-            cons.forEach(c => { const who = c.displayName || c.id || c.uid || 'Parent'; renderReqRow(connList, who, `${c.orgId||''} · ${c.schoolId||''}`); });
-          }
-        } catch(e){ console.warn('loadConnections failed', e); }
-      }
-
-      // After claims are ready, load profile; discovery/requests are triggered from applyFromClaims when school context is ready
-      document.addEventListener('sd:claims-ready', () => { loadProfile(); });
-
-      // If already signed in before this page loads, try to apply immediately
-      // MOVED TO END to ensure all vars and functions are defined
-      try {
-        if (window.firebase?.auth()?.currentUser) {
-          const u = window.firebase.auth().currentUser;
-          applyFromClaims({ uid: u.uid, ...(window.SD?.claims || {}) });
-        } else {
-          setSignedOut();
-        }
-      } catch { setSignedOut(); }
+  // --- TABS ---
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-view').forEach(v => v.classList.add('hidden'));
+      btn.classList.add('active');
+      $(btn.dataset.target).classList.remove('hidden');
     });
-  </script>
+  });
+
+  // --- DATE ---
+  $('dateDisplay').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+  // --- DATA LOADING ---
+  async function init() {
+    // Wait for auth/claims
+    document.addEventListener('sd:claims-ready', async (e) => {
+      const claims = e.detail.claims || {};
+      state.user = window.firebase?.auth()?.currentUser;
+      if (state.user) {
+        $('userAvatar').textContent = (state.user.displayName || state.user.email || '?')[0].toUpperCase();
+      }
+      
+      await Promise.all([
+        loadStudents(),
+        loadGrants(),
+        loadPickups(),
+        loadConnections()
+      ]);
+    });
+  }
+
+  async function callFn(name, data = {}) {
+    if (window.SD?.httpsCallable) return (await window.SD.httpsCallable(name)(data)).data;
+    // Fallback for dev/testing if SD not ready
+    if (window.firebase?.functions) return (await window.firebase.functions().httpsCallable(name)(data)).data;
+    throw new Error('Backend unavailable');
+  }
+
+  // --- STUDENTS & PASSES ---
+  async function loadStudents() {
+    try {
+      const res = await callFn('listMyLinkedStudents');
+      state.students = res.students || [];
+      renderPasses();
+      renderStudentSelector();
+      populateSchoolSelect();
+    } catch (e) { console.error(e); }
+  }
+
+  function renderPasses() {
+    const c = $('passes-container');
+    c.innerHTML = '';
+    if (!state.students.length) { $('passes-empty').classList.remove('hidden'); return; }
+    $('passes-empty').classList.add('hidden');
+
+    state.students.forEach(s => {
+      const tag = (s.tag || '').toString().trim();
+      const payload = tag ? `car=${encodeURIComponent(tag.toUpperCase())}` : `student=${encodeURIComponent(s.studentId)}`;
+      
+      const el = document.createElement('div');
+      el.className = 'card pass-card';
+      el.innerHTML = `
+        <div class="text-center">
+          <h3 class="font-bold" style="font-size:1.2rem; margin:0;">${s.name}</h3>
+          <div class="text-xs text-muted" style="margin-top:4px;">${s.schoolId}</div>
+          <div class="qr-box" id="qr-${s.studentId}"></div>
+          <div class="text-xs font-bold text-muted" style="letter-spacing:1px;">SCAN TO PICKUP</div>
+        </div>
+      `;
+      c.appendChild(el);
+      new QRCode($(`qr-${s.studentId}`), { text: payload, width: 160, height: 160 });
+    });
+  }
+
+  // --- TRUSTED PICKUPS (Who I can pick up) ---
+  async function loadPickups() {
+    try {
+      const res = await callFn('listMyPickupAccess');
+      state.pickups = res.pickups || [];
+      const c = $('trusted-container');
+      c.innerHTML = '';
+      if (!state.pickups.length) { $('trusted-empty').classList.remove('hidden'); return; }
+      $('trusted-empty').classList.add('hidden');
+
+      state.pickups.forEach(p => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.gap = '16px';
+        
+        // Generate QR payload
+        const tag = (p.tag || '').toString().trim();
+        const payload = tag ? `car=${encodeURIComponent(tag.toUpperCase())}` : `student=${encodeURIComponent(p.studentId)}`;
+        const qrId = `qr-trusted-${p.studentId}`;
+
+        el.innerHTML = `
+          <div id="${qrId}" style="background:white; padding:4px; border:1px solid #eee; border-radius:8px;"></div>
+          <div>
+            <div class="font-bold">${p.studentName}</div>
+            <div class="text-sm text-muted">Granted by ${p.grantorName}</div>
+            ${p.note ? `<div class="text-xs" style="margin-top:4px; background:#f1f5f9; padding:4px 8px; border-radius:6px; display:inline-block;">"${p.note}"</div>` : ''}
+          </div>
+        `;
+        c.appendChild(el);
+        new QRCode($(qrId), { text: payload, width: 64, height: 64 });
+      });
+    } catch (e) { console.error(e); }
+  }
+
+  // --- GRANTS (My Team) ---
+  async function loadGrants() {
+    try {
+      const res = await callFn('listMyGrantedAccess');
+      state.grants = res.grants || [];
+      renderGrants();
+    } catch (e) { console.error(e); }
+  }
+
+  function renderGrants() {
+    const c = $('grants-container');
+    c.innerHTML = '';
+    if (!state.grants.length) { $('grants-empty').classList.remove('hidden'); return; }
+    $('grants-empty').classList.add('hidden');
+
+    state.grants.forEach(g => {
+      const el = document.createElement('div');
+      el.className = 'card list-item';
+      el.style.padding = '16px';
+      el.innerHTML = `
+        <div class="avatar">${(g.name||g.email)[0].toUpperCase()}</div>
+        <div class="list-content">
+          <div class="list-title">${g.name || g.email}</div>
+          <div class="list-sub">${g.students} · ${g.window === 'today' ? 'Today Only' : 'Always'}</div>
+          ${g.note ? `<div class="text-xs text-muted" style="margin-top:2px;">Note: ${g.note}</div>` : ''}
+        </div>
+        <button class="btn btn-ghost btn-sm" style="color:#ef4444;" onclick="revokeGrant('${g.path}')">Revoke</button>
+      `;
+      c.appendChild(el);
+    });
+  }
+
+  async function revokeGrant(path) {
+    if (!confirm('Remove this person from your team?')) return;
+    try {
+      await callFn('revokeAccessGrant', { path });
+      showToast('Access revoked');
+      loadGrants();
+    } catch (e) { alert(e.message); }
+  }
+
+  // --- ADD TRUSTED ADULT LOGIC ---
+  $('btnAddTrusted').onclick = () => {
+    $('grantEmail').value = '';
+    $('grantName').value = '';
+    $('grantNote').value = '';
+    openModal('modal-add-trusted');
+  };
+
+  function renderStudentSelector() {
+    const c = $('student-selector');
+    c.innerHTML = '';
+    state.students.forEach(s => {
+      const label = document.createElement('label');
+      label.className = 'flex items-center gap-2 p-2 rounded-xl';
+      label.style.border = '1px solid var(--border)';
+      label.innerHTML = `
+        <input type="checkbox" value="${s.studentId}" checked style="width:20px; height:20px;">
+        <span class="font-medium">${s.name}</span>
+      `;
+      c.appendChild(label);
+    });
+  }
+
+  window.selectWindow = (btn) => {
+    document.querySelectorAll('.active-toggle').forEach(b => {
+      b.classList.remove('active-toggle');
+      b.style.background = 'white'; b.style.color = 'var(--text-main)';
+    });
+    btn.classList.add('active-toggle');
+    btn.style.background = 'var(--text-main)'; btn.style.color = 'white';
+    $('grantWindow').value = btn.dataset.val;
+  };
+
+  $('btnConfirmGrant').onclick = async () => {
+    const btn = $('btnConfirmGrant');
+    const email = $('grantEmail').value.trim();
+    const name = $('grantName').value.trim();
+    const note = $('grantNote').value.trim();
+    const windowType = $('grantWindow').value;
+    
+    // Get selected students
+    const studentIds = Array.from($('student-selector').querySelectorAll('input:checked')).map(i => i.value);
+
+    if (!email) return alert('Please enter an email address');
+    if (!studentIds.length) return alert('Please select at least one student');
+
+    try {
+      btn.disabled = true; btn.textContent = 'Granting...';
+      
+      // Resolve context from first student (assuming same school for MVP)
+      const s1 = state.students.find(s => s.studentId === studentIds[0]);
+      if (!s1) throw new Error('Student context lost');
+
+      await callFn('createAccessGrant', {
+        orgId: s1.orgId,
+        schoolId: s1.schoolId,
+        studentIds,
+        granteeEmail: email,
+        granteeName: name,
+        windowType,
+        note
+      });
+
+      showToast('Access granted!');
+      closeModal('modal-add-trusted');
+      loadGrants();
+    } catch (e) {
+      alert('Error: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = 'Grant Access';
+    }
+  };
+
+  // --- CONNECTIONS ---
+  async function loadConnections() {
+    try {
+      const res = await callFn('listMyParentConnections');
+      state.connections = res.connections || [];
+      const incoming = res.incoming || [];
+      
+      // Render Requests
+      const reqC = $('requests-container');
+      if (incoming.length) {
+        $('requests-section').classList.remove('hidden');
+        reqC.innerHTML = '';
+        incoming.forEach(r => {
+          const el = document.createElement('div');
+          el.className = 'list-item';
+          el.innerHTML = `
+            <div class="avatar" style="background:#fef3c7; color:#d97706;">?</div>
+            <div class="list-content">
+              <div class="list-title">${r.displayName || 'Parent'}</div>
+              <div class="list-sub">Wants to connect</div>
+            </div>
+            <div class="flex gap-2">
+              <button class="btn btn-primary btn-sm" onclick="respondConnect('${r.fromUid}', '${r.orgId}', '${r.schoolId}', 'accept')">Accept</button>
+              <button class="btn btn-secondary btn-sm" onclick="respondConnect('${r.fromUid}', '${r.orgId}', '${r.schoolId}', 'decline')">Ignore</button>
+            </div>
+          `;
+          reqC.appendChild(el);
+        });
+      } else {
+        $('requests-section').classList.add('hidden');
+      }
+
+      // Render Connections
+      const conC = $('connections-container');
+      conC.innerHTML = '';
+      if (!state.connections.length) { $('connections-empty').classList.remove('hidden'); }
+      else {
+        $('connections-empty').classList.add('hidden');
+        state.connections.forEach(c => {
+          const el = document.createElement('div');
+          el.className = 'list-item';
+          el.innerHTML = `
+            <div class="avatar">${(c.displayName||'P')[0]}</div>
+            <div class="list-content">
+              <div class="list-title">${c.displayName || 'Parent'}</div>
+              <div class="list-sub">Connected</div>
+            </div>
+          `;
+          conC.appendChild(el);
+        });
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  window.respondConnect = async (fromUid, orgId, schoolId, action) => {
+    try {
+      await callFn('respondParentConnectRequest', { fromUid, orgId, schoolId, action });
+      showToast(action === 'accept' ? 'Connected!' : 'Request ignored');
+      loadConnections();
+    } catch (e) { alert(e.message); }
+  };
+
+  // --- DISCOVERY ---
+  function populateSchoolSelect() {
+    const sel = $('schoolSelect');
+    const seen = new Set();
+    state.students.forEach(s => {
+      const key = `${s.orgId}|${s.schoolId}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        const opt = document.createElement('option');
+        opt.value = key;
+        opt.textContent = s.schoolId; // Ideally fetch school name
+        sel.appendChild(opt);
+      }
+    });
+    
+    sel.onchange = async () => {
+      if (!sel.value) return;
+      const [orgId, schoolId] = sel.value.split('|');
+      const res = await callFn('listDiscoverableParents', { orgId, schoolId, limit: 20 });
+      renderDiscovery(res.parents || []);
+    };
+  }
+
+  function renderDiscovery(parents) {
+    const c = $('discover-container');
+    c.innerHTML = '';
+    parents.forEach(p => {
+      if (p.uid === state.user?.uid) return;
+      const el = document.createElement('div');
+      el.className = 'list-item';
+      el.innerHTML = `
+        <div class="avatar" style="background:white; border:1px solid #e2e8f0;">${(p.displayName||'P')[0]}</div>
+        <div class="list-content">
+          <div class="list-title">${p.displayName || 'Parent'}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="sendConnect('${p.uid}')">Connect</button>
+      `;
+      c.appendChild(el);
+    });
+  }
+
+  window.sendConnect = async (toUid) => {
+    const [orgId, schoolId] = $('schoolSelect').value.split('|');
+    if (!orgId) return alert('Select a school first');
+    try {
+      await callFn('sendParentConnectRequest', { toUid, orgId, schoolId });
+      showToast('Request sent');
+    } catch (e) { alert(e.message); }
+  };
+
+  $('btnInvite').onclick = async () => {
+    const email = $('inviteEmail').value.trim();
+    const [orgId, schoolId] = $('schoolSelect').value.split('|');
+    if (!email || !orgId) return alert('Enter email and select school');
+    try {
+      await callFn('sendParentConnectRequestByEmail', { email, orgId, schoolId });
+      showToast('Invite sent');
+      $('inviteEmail').value = '';
+    } catch (e) { alert(e.message); }
+  };
+
+  // Start
+  init();
+</script>
+</body>
+</html>
