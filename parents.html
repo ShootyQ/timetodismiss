@@ -471,7 +471,7 @@
       el.innerHTML = `
         <div class="text-center">
           <h3 class="font-bold" style="font-size:1.2rem; margin:0;">${s.name}</h3>
-          <div class="text-xs text-muted" style="margin-top:4px;">${s.schoolId}</div>
+          <div class="text-xs text-muted" style="margin-top:4px;">${s.schoolName || s.schoolId}</div>
           <div class="qr-box" id="qr-${s.studentId}"></div>
           <div class="text-xs font-bold text-muted" style="letter-spacing:1px;">SCAN TO PICKUP</div>
         </div>
@@ -701,7 +701,7 @@
         seen.add(key);
         const opt = document.createElement('option');
         opt.value = key;
-        opt.textContent = s.schoolId; // Ideally fetch school name
+        opt.textContent = s.schoolName || s.schoolId;
         sel.appendChild(opt);
       }
     });

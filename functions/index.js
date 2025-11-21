@@ -1035,6 +1035,20 @@ exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 0, 
           }
         } catch (e) { /* ignore */ }
       }
+
+      // Enrich school names
+      const schoolMap = new Map();
+      for (const s of out) {
+        const key = `${s.orgId}|${s.schoolId}`;
+        if (!schoolMap.has(key)) {
+          try {
+            const snap = await db.doc(`orgs/${s.orgId}/schools/${s.schoolId}`).get();
+            schoolMap.set(key, snap.exists ? (snap.data().name || s.schoolId) : s.schoolId);
+          } catch { schoolMap.set(key, s.schoolId); }
+        }
+        s.schoolName = schoolMap.get(key);
+      }
+
       return { ok: true, students: out };
     }
   } catch (e) {
@@ -1066,6 +1080,20 @@ exports.listMyLinkedStudents = onCall({ region: 'us-central1', minInstances: 0, 
     // Don't surface 500s to the client; return empty list so UI can degrade gracefully
     return { ok: true, students: out };
   }
+
+  // Enrich school names (fallback path)
+  const schoolMap = new Map();
+  for (const s of out) {
+    const key = `${s.orgId}|${s.schoolId}`;
+    if (!schoolMap.has(key)) {
+      try {
+        const snap = await db.doc(`orgs/${s.orgId}/schools/${s.schoolId}`).get();
+        schoolMap.set(key, snap.exists ? (snap.data().name || s.schoolId) : s.schoolId);
+      } catch { schoolMap.set(key, s.schoolId); }
+    }
+    s.schoolName = schoolMap.get(key);
+  }
+
   return { ok: true, students: out };
 });
 
