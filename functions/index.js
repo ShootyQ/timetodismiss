@@ -1,5 +1,6 @@
 // functions/index.js
 // Node 18  •  Firebase Functions v2  •  CommonJS
+// Force deploy timestamp: 2025-11-21
 
 // ───────────────── Imports ─────────────────
 const { onCall, HttpsError, onRequest } = require('firebase-functions/v2/https');
@@ -1493,7 +1494,7 @@ exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 
       db.collection(`users/${req.auth.uid}/parentConnectIncoming`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(200).get().catch(() => ({ docs: [] })),
       db.collection(`users/${req.auth.uid}/parentConnectOutgoing`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(200).get().catch(() => ({ docs: [] })),
       db.collection(`users/${req.auth.uid}/parentConnections`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(400).get().catch(() => ({ docs: [] })),
-    );
+    ]);
     const exclude = new Set();
     for (const d of incomingSnap.docs) { exclude.add(d.id); }
     for (const d of outgoingSnap.docs) { exclude.add(d.id); }
@@ -1575,6 +1576,7 @@ exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 
         if (parents.length >= max) break;
       } catch { }
     }
+
     return { ok: true, parents };
   } catch (e) {
     console.warn('[listDiscoverableParents] degraded due to error', e?.message || e);
@@ -1633,8 +1635,7 @@ exports.sendParentConnectRequestByEmail = onCall({ region: 'us-central1', minIns
   if (toUid === fromUid) throw new HttpsError('invalid-argument', 'Cannot connect to yourself.');
 
   // Ensure target is part of this school
-  const targetLinks = await db.collection(`users/${toUid}/guardianLinks`)
-    .where('orgId', '==', orgId).where('schoolId', '==', schoolId).limit(1).get();
+  const targetLinks = await db.collection(`users/${toUid}/guardianLinks`).where('orgId', '==', orgId).where('schoolId', '==', schoolId).limit(1).get();
   if (targetLinks.empty) throw new HttpsError('failed-precondition', 'Target is not part of this school.');
 
   const now = ts();

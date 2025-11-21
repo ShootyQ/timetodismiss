@@ -348,9 +348,17 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
       </button>
     </div>
+
+    <div class="input-group" id="connection-select-group">
+      <label class="input-label">Select from Connections</label>
+      <select id="connectionSelect" class="input-field">
+        <option value="">-- Choose a connection --</option>
+      </select>
+      <div class="text-center text-xs text-muted" style="margin: 12px 0; font-weight:600;">OR INVITE NEW</div>
+    </div>
     
     <div class="input-group">
-      <label class="input-label">Who are you adding?</label>
+      <label class="input-label">Email Address</label>
       <input id="grantEmail" type="email" class="input-field" placeholder="Enter their email address">
       <p class="text-xs text-muted" style="margin-top:6px;">Must be a Google or Microsoft account email.</p>
     </div>
@@ -575,9 +583,24 @@
   // --- ADD TRUSTED ADULT LOGIC ---
   $('btnAddTrusted').onclick = () => {
     $('grantEmail').value = '';
+    $('grantEmail').disabled = false;
     $('grantName').value = '';
     $('grantNote').value = '';
+    $('connectionSelect').value = '';
     openModal('modal-add-trusted');
+  };
+
+  $('connectionSelect').onchange = () => {
+    const val = $('connectionSelect').value;
+    if (val) {
+      $('grantEmail').value = '';
+      $('grantEmail').disabled = true;
+      const opt = $('connectionSelect').options[$('connectionSelect').selectedIndex];
+      if (opt && opt.text) $('grantName').value = opt.text;
+    } else {
+      $('grantEmail').disabled = false;
+      $('grantName').value = '';
+    }
   };
 
   function renderStudentSelector() {
@@ -665,6 +688,7 @@
   $('btnConfirmGrant').onclick = async () => {
     const btn = $('btnConfirmGrant');
     const email = $('grantEmail').value.trim();
+    const connUid = $('connectionSelect').value;
     const name = $('grantName').value.trim();
     const note = $('grantNote').value.trim();
     const windowType = $('grantWindow').value;
@@ -672,7 +696,7 @@
     // Get selected students
     const studentIds = Array.from($('student-selector').querySelectorAll('input:checked')).map(i => i.value);
 
-    if (!email) return alert('Please enter an email address');
+    if (!email && !connUid) return alert('Please enter an email address or select a connection');
     if (!studentIds.length) return alert('Please select at least one student');
     
     let dates = [];
@@ -692,7 +716,8 @@
         orgId: s1.orgId,
         schoolId: s1.schoolId,
         studentIds,
-        granteeEmail: email,
+        granteeEmail: email || null,
+        granteeUid: connUid || null,
         granteeName: name,
         windowType,
         dates,
@@ -765,6 +790,17 @@
           conC.appendChild(el);
         });
       }
+      
+      // Populate connection select for Trusted Adult modal
+      const connSel = $('connectionSelect');
+      while (connSel.options.length > 1) connSel.remove(1);
+      state.connections.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id; // UID
+        opt.textContent = c.displayName || 'Parent';
+        connSel.appendChild(opt);
+      });
+
     } catch (e) { console.error(e); }
   }
 
@@ -798,7 +834,7 @@
         seen.add(key);
         const opt = document.createElement('option');
         opt.value = key;
-        opt.textContent = s.schoolName || s.schoolId;
+        opt.textContent = s.schoolName || s.schoolId || 'Unknown School';
         sel.appendChild(opt);
       }
     });
