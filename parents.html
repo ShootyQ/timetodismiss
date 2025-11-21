@@ -852,11 +852,12 @@
         const emails = prompt('Trusted adult email (Google/Microsoft account):');
         if (!emails) return;
         const name = prompt('Name (optional for display):') || '';
+        const note = prompt('Note for them (optional):') || '';
         const windowType = confirm('Limit to today only? OK = Today only, Cancel = Always') ? 'today' : 'always';
         const studentIds = students.map(s => s.id);
-        createGrant(studentIds, emails.trim(), name.trim(), windowType);
+        createGrant(studentIds, emails.trim(), name.trim(), windowType, note.trim());
       }
-      async function createGrant(studentIds, grEmail, grName, windowType){
+      async function createGrant(studentIds, grEmail, grName, windowType, note){
         const statusEl = document.getElementById('passesSubtitle');
         try {
           statusEl.textContent = 'Creating access grant…';
@@ -864,7 +865,7 @@
           if (!orgId || !schoolId) throw new Error('No school context');
           const call = window.SD?.httpsCallable ? window.SD.httpsCallable('createAccessGrant') : null;
           if (!call) throw new Error('Backend unavailable');
-          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType });
+          const resp = await call({ orgId, schoolId, studentIds, granteeEmail: grEmail, granteeName: grName, windowType, note });
           if (!resp?.data?.ok) throw new Error('Grant creation failed');
           statusEl.textContent = 'Access grant created.';
           await loadGrants();
