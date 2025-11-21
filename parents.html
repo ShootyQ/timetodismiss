@@ -188,6 +188,7 @@
       background: white; width: 100%; max-width: 400px; border-radius: 24px;
       padding: 24px; box-shadow: var(--shadow-lg);
       transform: translateY(20px); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      max-height: 85vh; overflow-y: auto;
     }
     .modal-overlay.open .modal-card { transform: translateY(0); }
     
@@ -787,6 +788,9 @@
   // --- DISCOVERY ---
   function populateSchoolSelect() {
     const sel = $('schoolSelect');
+    // Keep only the first option (placeholder)
+    while (sel.options.length > 1) sel.remove(1);
+    
     const seen = new Set();
     state.students.forEach(s => {
       const key = `${s.orgId}|${s.schoolId}`;

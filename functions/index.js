@@ -974,7 +974,7 @@ exports.claimGuardianInvite = onCall({ region: 'us-central1', minInstances: 0, i
       const sSnap = await tx.get(studentRef);
       if (sSnap.exists) {
         const s = sSnap.data() || {};
-        studentName = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ') || studentId;
+        studentName = s.name || [s.firstName, s.lastName].filter(Boolean).join(' ');
         const rawTag = s.carTag || s.tag || '';
         studentTag = String(rawTag || '').toUpperCase().trim();
       }
@@ -1416,7 +1416,7 @@ exports.listMyPickupAccess = onCall({ region: 'us-central1', minInstances: 0, in
   }
 
   console.log(`[listMyPickupAccess] Returning ${pickups.length} pickups`);
-  return { ok: true, pickups };
+   return { ok: true, pickups };
 });
 
 // ───────────────── Parent Profile & Connect ─────────────────
@@ -1493,7 +1493,7 @@ exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 
       db.collection(`users/${req.auth.uid}/parentConnectIncoming`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(200).get().catch(() => ({ docs: [] })),
       db.collection(`users/${req.auth.uid}/parentConnectOutgoing`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(200).get().catch(() => ({ docs: [] })),
       db.collection(`users/${req.auth.uid}/parentConnections`).where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(400).get().catch(() => ({ docs: [] })),
-    ]);
+    );
     const exclude = new Set();
     for (const d of incomingSnap.docs) { exclude.add(d.id); }
     for (const d of outgoingSnap.docs) { exclude.add(d.id); }
@@ -1530,7 +1530,7 @@ exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 
             if (!pUid || pUid === req.auth.uid) continue;
             candidateUids.add(pUid);
             // Reverse index backfill (best-effort)
-            const seg = d.ref.parent.parent.path.split('/'); // .../students/{studentId}
+            const seg = d.ref.parent.parent.path.split('/');
             const studentId = seg[5];
             if (studentId) {
               const revKey = `${orgId}__${schoolId}__${studentId}`;
@@ -1547,7 +1547,7 @@ exports.listDiscoverableParents = onCall({ region: 'us-central1', minInstances: 
       if (agSnap) {
         for (const d of agSnap.docs) {
           try {
-            const seg = d.ref.path.split('/'); // orgs/{orgId}/schools/{schoolId}/accessGrants/{id}
+            const seg = d.ref.path.split('/');
             if (seg.length < 6) continue;
             const oId = seg[1]; const sId = seg[3];
             if (oId !== orgId || sId !== schoolId) continue;
@@ -1634,7 +1634,7 @@ exports.sendParentConnectRequestByEmail = onCall({ region: 'us-central1', minIns
 
   // Ensure target is part of this school
   const targetLinks = await db.collection(`users/${toUid}/guardianLinks`)
-    .where('orgId', '==', String(orgId)).where('schoolId', '==', String(schoolId)).limit(1).get();
+    .where('orgId', '==', orgId).where('schoolId', '==', schoolId).limit(1).get();
   if (targetLinks.empty) throw new HttpsError('failed-precondition', 'Target is not part of this school.');
 
   const now = ts();
@@ -1811,6 +1811,7 @@ exports.listDiscoverableParentsHttp = onRequest({ region: 'us-central1', invoker
             const pUid = String(g.uid || '');
             if (!pUid || pUid === selfUid) continue;
             candidateUids.add(pUid);
+            // Reverse index backfill (best-effort)
             const seg = d.ref.parent.parent.path.split('/');
             const studentId = seg[5];
             if (studentId) {
@@ -1995,3 +1996,5 @@ exports.backfillGuardianIndexes = onCall({ region: 'us-central1', minInstances: 
   }
   return { ok: true, dryRun: !!dryRun, ...results };
 });
+
+// Sync check
