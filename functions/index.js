@@ -1239,7 +1239,7 @@ exports.listMyGrantedAccess = onCall({ region: 'us-central1', minInstances: 0, i
         name: g.granteeName || g.granteeEmailLower,
         email: g.granteeEmailLower || '',
         students: names.join(', '),
-        window: (g.window && g.window.type === 'today') ? 'Today only' : 'Always',
+        window: (g.window && g.window.type === 'today') ? 'Today only' : (g.window && g.window.type === 'dates') ? ((g.window.dates||[]).join(', ') || 'Specific dates') : 'Always',
       });
     }
   } catch (e) { console.warn('[listMyGrantedAccess] failed', e); }
@@ -1406,7 +1406,7 @@ exports.listMyPickupAccess = onCall({ region: 'us-central1', minInstances: 0, in
         studentId: sid,
         studentName,
         tag,
-        window: (g.window && g.window.type === 'today') ? 'Today only' : 'Always',
+        window: (g.window && g.window.type === 'today') ? 'Today only' : (g.window && g.window.type === 'dates') ? ((g.window.dates||[]).join(', ') || 'Specific dates') : 'Always',
         grantorName,
         note: '', // Not currently stored on grants
         orgId,

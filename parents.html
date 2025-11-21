@@ -373,11 +373,26 @@
 
     <div class="input-group">
       <label class="input-label">When?</label>
-      <div class="flex gap-2">
-        <button type="button" class="btn btn-secondary w-full active-toggle" data-val="always" onclick="selectWindow(this)">Always</button>
-        <button type="button" class="btn btn-secondary w-full" data-val="today" onclick="selectWindow(this)">Today Only</button>
+      <div class="flex gap-2" style="flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary flex-1 active-toggle" data-val="always" onclick="selectWindow(this)">Always</button>
+        <button type="button" class="btn btn-secondary flex-1" data-val="today" onclick="selectWindow(this)">Today Only</button>
+        <button type="button" class="btn btn-secondary flex-1" data-val="dates" onclick="selectWindow(this)">Specific Dates</button>
       </div>
       <input type="hidden" id="grantWindow" value="always">
+
+      <!-- Calendar Container -->
+      <div id="calendar-container" class="hidden" style="margin-top:12px; border:1px solid var(--border); border-radius:12px; padding:12px;">
+        <div class="flex justify-between items-center" style="margin-bottom:12px;">
+            <button class="btn btn-ghost btn-sm" onclick="changeMonth(-1)">&lt;</button>
+            <span id="calMonthYear" class="font-bold text-sm"></span>
+            <button class="btn btn-ghost btn-sm" onclick="changeMonth(1)">&gt;</button>
+        </div>
+        <div class="grid-days" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; text-align:center; margin-bottom:4px;">
+            <div class="text-xs text-muted">S</div><div class="text-xs text-muted">M</div><div class="text-xs text-muted">T</div><div class="text-xs text-muted">W</div><div class="text-xs text-muted">T</div><div class="text-xs text-muted">F</div><div class="text-xs text-muted">S</div>
+        </div>
+        <div id="cal-days" style="display:grid; grid-template-columns:repeat(7, 1fr); gap:4px;"></div>
+        <div class="text-xs text-muted" style="margin-top:8px; text-align:center;">Select dates to add</div>
+      </div>
     </div>
 
     <button id="btnConfirmGrant" class="btn btn-primary w-full" style="margin-top: 12px;">Grant Access</button>
@@ -505,7 +520,7 @@
           <div id="${qrId}" style="background:white; padding:4px; border:1px solid #eee; border-radius:8px;"></div>
           <div>
             <div class="font-bold">${p.studentName}</div>
-            <div class="text-sm text-muted">Granted by ${p.grantorName}</div>
+            <div class="text-sm text-muted">Granted by ${p.grantorName} · ${p.window}</div>
             ${p.note ? `<div class="text-xs" style="margin-top:4px; background:#f1f5f9; padding:4px 8px; border-radius:6px; display:inline-block;">"${p.note}"</div>` : ''}
           </div>
         `;
@@ -538,7 +553,7 @@
         <div class="avatar">${(g.name||g.email)[0].toUpperCase()}</div>
         <div class="list-content">
           <div class="list-title">${g.name || g.email}</div>
-          <div class="list-sub">${g.students} · ${g.window === 'today' ? 'Today Only' : 'Always'}</div>
+          <div class="list-sub">${g.students} · ${g.window}</div>
           ${g.note ? `<div class="text-xs text-muted" style="margin-top:2px;">Note: ${g.note}</div>` : ''}
         </div>
         <button class="btn btn-ghost btn-sm" style="color:#ef4444;" onclick="revokeGrant('${g.path}')">Revoke</button>
@@ -579,6 +594,10 @@
     });
   }
 
+  // --- CALENDAR STATE ---
+  let calDate = new Date();
+  const selectedDates = new Set();
+
   window.selectWindow = (btn) => {
     document.querySelectorAll('.active-toggle').forEach(b => {
       b.classList.remove('active-toggle');
@@ -587,7 +606,60 @@
     btn.classList.add('active-toggle');
     btn.style.background = 'var(--text-main)'; btn.style.color = 'white';
     $('grantWindow').value = btn.dataset.val;
+
+    if (btn.dataset.val === 'dates') {
+        $('calendar-container').classList.remove('hidden');
+        renderCalendar();
+    } else {
+        $('calendar-container').classList.add('hidden');
+    }
   };
+
+  window.changeMonth = (delta) => {
+      calDate.setMonth(calDate.getMonth() + delta);
+      renderCalendar();
+  };
+
+  function renderCalendar() {
+      const year = calDate.getFullYear();
+      const month = calDate.getMonth();
+      $('calMonthYear').textContent = new Date(year, month).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      
+      const firstDay = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+      
+      const c = $('cal-days');
+      c.innerHTML = '';
+      
+      // Empty slots
+      for(let i=0; i<firstDay; i++) {
+          c.appendChild(document.createElement('div'));
+      }
+      
+      // Days
+      for(let d=1; d<=daysInMonth; d++) {
+          const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const el = document.createElement('div');
+          el.textContent = d;
+          el.className = 'cal-day';
+          el.style.cssText = 'height:32px; display:grid; place-items:center; border-radius:50%; cursor:pointer; font-size:0.9rem; transition:background 0.2s;';
+          
+          if (selectedDates.has(dateStr)) {
+              el.style.background = 'var(--primary)';
+              el.style.color = 'white';
+          } else {
+              el.onmouseover = () => el.style.background = '#f1f5f9';
+              el.onmouseout = () => el.style.background = 'transparent';
+          }
+          
+          el.onclick = () => {
+              if (selectedDates.has(dateStr)) selectedDates.delete(dateStr);
+              else selectedDates.add(dateStr);
+              renderCalendar();
+          };
+          c.appendChild(el);
+      }
+  }
 
   $('btnConfirmGrant').onclick = async () => {
     const btn = $('btnConfirmGrant');
@@ -601,6 +673,12 @@
 
     if (!email) return alert('Please enter an email address');
     if (!studentIds.length) return alert('Please select at least one student');
+    
+    let dates = [];
+    if (windowType === 'dates') {
+        dates = Array.from(selectedDates).sort();
+        if (!dates.length) return alert('Please select at least one date');
+    }
 
     try {
       btn.disabled = true; btn.textContent = 'Granting...';
@@ -616,12 +694,17 @@
         granteeEmail: email,
         granteeName: name,
         windowType,
+        dates,
         note
       });
 
       showToast('Access granted!');
       closeModal('modal-add-trusted');
       loadGrants();
+      
+      // Reset
+      selectedDates.clear();
+      renderCalendar();
     } catch (e) {
       alert('Error: ' + e.message);
     } finally {
@@ -676,12 +759,22 @@
               <div class="list-title">${c.displayName || 'Parent'}</div>
               <div class="list-sub">Connected</div>
             </div>
+            <button class="btn btn-ghost btn-sm" style="color:#ef4444;" onclick="removeConnection('${c.uid}')">Remove</button>
           `;
           conC.appendChild(el);
         });
       }
     } catch (e) { console.error(e); }
   }
+
+  window.removeConnection = async (targetUid) => {
+    if (!confirm('Remove this connection?')) return;
+    try {
+      await callFn('removeParentConnection', { targetUid });
+      showToast('Connection removed');
+      loadConnections();
+    } catch (e) { alert(e.message); }
+  };
 
   window.respondConnect = async (fromUid, orgId, schoolId, action) => {
     try {
