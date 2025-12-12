@@ -131,6 +131,20 @@
             <span id="dismissalCfgStatus" class="small muted"></span>
           </div>
         </article>
+
+        <article class="card pad">
+          <h3 class="card-title">Viewer Buttons</h3>
+          <p class="small muted">Add custom buttons for teachers (e.g. "Club"). These move students to the bottom.</p>
+          <div id="viewerButtonsList" class="mt-8" style="display:flex; flex-direction:column; gap:8px;"></div>
+          <div class="row mt-8">
+            <input id="newBtnLabel" type="text" placeholder="Label (e.g. Club)" style="width:140px; padding:.5rem;" />
+            <button id="addViewerBtn" class="btn btn-secondary btn-sm" type="button">Add</button>
+          </div>
+          <div class="row mt-8">
+            <button id="saveViewerBtns" class="btn btn-primary" type="button">Save Buttons</button>
+            <span id="viewerBtnsStatus" class="small muted"></span>
+          </div>
+        </article>
       </section>
 
       
@@ -197,9 +211,53 @@
         if(!realOid || !realSid) return;
         const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissal');
         const snap = await ref.get();
-        if(snap.exists){ const data = snap.data() || {}; if(typeof data.autoEndMinutes === 'number') document.getElementById('autoEndMinutes').value = data.autoEndMinutes; }
+        if(snap.exists){ 
+          const data = snap.data() || {}; 
+          if(typeof data.autoEndMinutes === 'number') document.getElementById('autoEndMinutes').value = data.autoEndMinutes;
+          if(Array.isArray(data.viewerButtons)) renderViewerButtons(data.viewerButtons);
+        }
       } catch(e){ console.warn('[admin] load dismissal settings failed', e); }
     }
+
+    let currentViewerButtons = [];
+    function renderViewerButtons(list){
+      currentViewerButtons = list || [];
+      const host = document.getElementById('viewerButtonsList');
+      if(!host) return;
+      host.innerHTML = currentViewerButtons.map((b,i) => `
+        <div class="row" style="background:#f8fafc; padding:6px 10px; border-radius:8px; justify-content:space-between;">
+          <span style="font-weight:600;">${b.label}</span>
+          <button class="btn btn-outline btn-xs" onclick="removeViewerBtn(${i})">Remove</button>
+        </div>
+      `).join('');
+    }
+    window.removeViewerBtn = (idx) => {
+      currentViewerButtons.splice(idx, 1);
+      renderViewerButtons(currentViewerButtons);
+    };
+    document.getElementById('addViewerBtn')?.addEventListener('click', () => {
+      const input = document.getElementById('newBtnLabel');
+      const val = input.value.trim();
+      if(!val) return;
+      // Simple code generation: lowercase, remove spaces
+      const code = val.toLowerCase().replace(/[^a-z0-9]/g, '');
+      currentViewerButtons.push({ label: val, code });
+      input.value = '';
+      renderViewerButtons(currentViewerButtons);
+    });
+    document.getElementById('saveViewerBtns')?.addEventListener('click', async () => {
+      const statusEl = document.getElementById('viewerBtnsStatus');
+      try {
+        if(!window.firebase?.firestore){ statusEl.textContent='Firestore not ready'; return; }
+        const db = firebase.firestore();
+        const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
+        if(!realOid || !realSid){ statusEl.textContent='Context missing'; return; }
+        const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissal');
+        await ref.set({ viewerButtons: currentViewerButtons, updatedAt: new Date() }, { merge:true });
+        statusEl.textContent = 'Saved';
+        setTimeout(()=>{ statusEl.textContent=''; }, 2000);
+      } catch(err){ console.error(err); statusEl.textContent='Save failed'; }
+    });
 
     document.addEventListener('click', async (e) => {
       const btn = e.target.closest('#saveDismissalCfg'); if(!btn) return;

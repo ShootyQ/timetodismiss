@@ -126,6 +126,21 @@
   // Private per-student override precedence: nickname.sound > student.callSound > user global.
   let CALL_SOUND_FILE = null;
     let CALL_SOUND_LOADED = false;
+    let VIEWER_BUTTONS = []; // { label, code }
+
+    async function loadViewerButtons(){
+      try {
+        const db = firebase.firestore();
+        const oid = window.SD?.orgId; const sid = window.SD?.schoolId;
+        if(!oid || !sid) return;
+        const snap = await db.collection('orgs').doc(oid).collection('schools').doc(sid).collection('settings').doc('dismissal').get();
+        if(snap.exists){
+          const d = snap.data() || {};
+          if(Array.isArray(d.viewerButtons)) VIEWER_BUTTONS = d.viewerButtons;
+        }
+      } catch(e){ console.warn('[class] load buttons failed', e); }
+    }
+
     async function loadCallSoundPref(force=false){
       if (CALL_SOUND_LOADED && !force) return;
       try {
@@ -159,7 +174,7 @@
     }
     // Kick off loading immediately and also refresh once claims (and thus prefs path) are ready
     loadCallSoundPref();
-    document.addEventListener('sd:claims-ready', () => { loadCallSoundPref(true); }, { once:true });
+    document.addEventListener('sd:claims-ready', () => { loadCallSoundPref(true); loadViewerButtons(); }, { once:true });
 
     // --- params ---
     const params = new URLSearchParams(location.search);
@@ -822,10 +837,13 @@
           const called = [];
           const rest = [];
           const absents = [];
+          // Helper to check if a status is a custom viewer button code
+          const isCustom = (st) => VIEWER_BUTTONS.some(b => b.code === st);
+
           for (const s of list) {
             const masked = enrouteMask.has(s.id);
             const effStatus = masked ? 'en_route' : s.status;
-            if (effStatus === 'absent') { absents.push({ ...s, status: effStatus }); continue; }
+            if (effStatus === 'absent' || isCustom(effStatus)) { absents.push({ ...s, status: effStatus }); continue; }
             if (effStatus === 'called') called.push({ ...s, status: effStatus });
             else rest.push({ ...s, status: effStatus });
           }
@@ -869,6 +887,11 @@
             const enter = before && before !== 'called' ? ' enter' : '';
             const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
             const isPending = enrouteTimers.has(s.id);
+            // Generate custom buttons for called state too? User asked for "view pages or class.html".
+            // For now, keep called actions simple (En Route / Absent) as they are the primary dismissal actions.
+            // But maybe add custom buttons to the dropdown or just inline if space?
+            // Let's stick to the request: "always available absent button... add buttons for viewers"
+            // The called list already has Absent.
             const actionHtml = isPending
               ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`
               : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`;
@@ -898,24 +921,41 @@
                 s.status === 'picked_up' ? 'picked picked_up' : (s.status === 'en_route' ? 'waiting en_route' : (s.status === 'absent' ? 'waiting absent' : 'waiting'));
               const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
               const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
+              
+              // Build actions for waiting students
+              let actions = '';
+              if(s.status === 'waiting'){
+                 actions += `<button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}" title="Mark Absent">Absent</button>`;
+                 VIEWER_BUTTONS.forEach(b => {
+                   actions += ` <button class="btn btn-outline btn-xs" data-act="custom" data-code="${b.code}" data-id="${s.id}" title="${b.label}">${b.label}</button>`;
+                 });
+              }
+
               return `
                 <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
                   <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}">${s.displayName || s.name}</span>
                   ${tag}
                   <span class="status">${statusLabel}</span>
+                  ${actions ? `<span class="inline-actions">${actions}</span>` : ''}
                 </li>`;
             }).join('');
 
-            // Append absents at bottom with distinct color and label
+            // Append absents (and custom statuses) at bottom with distinct color and label
             if (absents.length) {
               absents.sort(byName);
               const html = absents.map(s => {
                 const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+                // Find label for custom status
+                const btn = VIEWER_BUTTONS.find(b => b.code === s.status);
+                const label = btn ? btn.label : 'Absent';
+                // Allow resetting to waiting?
+                const resetBtn = `<button class="btn btn-outline btn-xs" data-act="reset" data-id="${s.id}">Reset</button>`;
                 return `
-                  <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
+                  <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"${s.status}\"> 
                     <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}\">${s.displayName || s.name}</span>
                     ${tag}
-                    <span class=\"status\">Absent</span>
+                    <span class=\"status\">${label}</span>
+                    <span class="inline-actions">${resetBtn}</span>
                   </li>`;
               }).join('');
               waitUl.insertAdjacentHTML('beforeend', html);
@@ -1006,6 +1046,12 @@
           startEnrouteCountdown(id);
         } else if (act === 'cancel-enroute') {
           cancelEnrouteCountdown(id);
+        } else if (act === 'reset') {
+           // Reset to waiting
+           setStudentStatus(id, 'waiting').catch(()=>{});
+        } else if (act === 'custom') {
+           const code = btn.getAttribute('data-code');
+           if(code) setStudentStatus(id, code).catch(()=>{});
         } else if (act === 'absent') {
           (async () => {
             try { cancelEnrouteCountdown(id, false); } catch{}
