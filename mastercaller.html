@@ -265,19 +265,22 @@
   async function loadSettings(){
     try {
       await waitForContext();
-      const { doc, getDoc, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const { doc, onSnapshot, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
       const oid=globalThis.SD?.orgId; const sid=globalThis.SD?.schoolId; if(!oid||!sid) return;
       const fs = getFirestore();
       const setRef = doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
-      const snap = await getDoc(setRef);
-      if(snap.exists()){
-        const d = snap.data();
-        if(d.autoEndMinutes) autoEndMinutes = d.autoEndMinutes;
-        if(Array.isArray(d.viewerButtons)) {
-          viewerButtons = d.viewerButtons;
-          if(allStudents.length) applyFilters();
+      
+      // Use onSnapshot for live updates
+      onSnapshot(setRef, (snap) => {
+        if(snap.exists()){
+          const d = snap.data();
+          if(d.autoEndMinutes) autoEndMinutes = d.autoEndMinutes;
+          if(Array.isArray(d.viewerButtons)) {
+            viewerButtons = d.viewerButtons;
+            if(allStudents.length) applyFilters();
+          }
         }
-      }
+      });
     } catch(e){ console.warn('[tiles] settings load failed', e); }
   }
   loadSettings();
@@ -729,6 +732,7 @@
         ? `
             <button id="aPicked" class="btn btn-primary">Picked Up</button>
             <button id="aClear" class="btn btn-danger">Clear</button>
+            ${isCustom ? '' : customBtnsHtml}
           `
         : `
             <button id="aCall" class="btn btn-primary">Call</button>
