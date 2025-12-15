@@ -138,6 +138,7 @@
           <div id="viewerButtonsList" class="mt-8" style="display:flex; flex-direction:column; gap:8px;"></div>
           <div class="row mt-8">
             <input id="newBtnLabel" type="text" placeholder="Label (e.g. Club)" style="width:140px; padding:.5rem;" />
+            <input id="newBtnColor" type="color" value="#e0e7ff" style="width:40px; height:38px; padding:0; border:none; background:none;" title="Button Color" />
             <button id="addViewerBtn" class="btn btn-secondary btn-sm" type="button">Add</button>
           </div>
           <div class="row mt-8">
@@ -225,8 +226,11 @@
       const host = document.getElementById('viewerButtonsList');
       if(!host) return;
       host.innerHTML = currentViewerButtons.map((b,i) => `
-        <div class="row" style="background:#f8fafc; padding:6px 10px; border-radius:8px; justify-content:space-between;">
-          <span style="font-weight:600;">${b.label}</span>
+        <div class="row" style="background:#f8fafc; padding:6px 10px; border-radius:8px; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="display:inline-block; width:16px; height:16px; border-radius:4px; background:${b.color||'#e0e7ff'}; border:1px solid rgba(0,0,0,.1);"></span>
+            <span style="font-weight:600;">${b.label}</span>
+          </div>
           <button class="btn btn-outline btn-xs" onclick="removeViewerBtn(${i})">Remove</button>
         </div>
       `).join('');
@@ -237,11 +241,13 @@
     };
     document.getElementById('addViewerBtn')?.addEventListener('click', () => {
       const input = document.getElementById('newBtnLabel');
+      const colorInput = document.getElementById('newBtnColor');
       const val = input.value.trim();
       if(!val) return;
       // Simple code generation: lowercase, remove spaces
       const code = val.toLowerCase().replace(/[^a-z0-9]/g, '');
-      currentViewerButtons.push({ label: val, code });
+      const color = colorInput.value;
+      currentViewerButtons.push({ label: val, code, color });
       input.value = '';
       renderViewerButtons(currentViewerButtons);
     });

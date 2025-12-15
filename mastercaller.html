@@ -260,6 +260,28 @@
   const tilesSessionAutoEnd = document.getElementById('tilesSessionAutoEnd');
   let tilesStartedAt = null; // Date object from Firestore startedAt
   let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
+  let viewerButtons = []; // Custom status buttons {label, code, color}
+
+  async function loadSettings(){
+    try {
+      await waitForContext();
+      const { doc, getDoc, getFirestore } = await import('https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js');
+      const oid=globalThis.SD?.orgId; const sid=globalThis.SD?.schoolId; if(!oid||!sid) return;
+      const fs = getFirestore();
+      const setRef = doc(fs,'orgs',oid,'schools',sid,'settings','dismissal');
+      const snap = await getDoc(setRef);
+      if(snap.exists()){
+        const d = snap.data();
+        if(d.autoEndMinutes) autoEndMinutes = d.autoEndMinutes;
+        if(Array.isArray(d.viewerButtons)) {
+          viewerButtons = d.viewerButtons;
+          if(allStudents.length) applyFilters();
+        }
+      }
+    } catch(e){ console.warn('[tiles] settings load failed', e); }
+  }
+  loadSettings();
+
   function stopTilesTimer(){ try{ if(tilesTimer){ clearInterval(tilesTimer); tilesTimer=null; } } catch{} }
   let current = null;
 
@@ -443,6 +465,13 @@
         const fam = grp?.name || s.groupName || s.carName || '';
         const statusCls = s.status ? String(s.status) : '';
         
+        // Custom status styling
+        let style = '';
+        const customBtn = viewerButtons.find(b => b.code === s.status);
+        if (customBtn && customBtn.color) {
+          style = `background:${customBtn.color}; border-color:rgba(0,0,0,0.1);`;
+        }
+        
         // Determine the letter grouping based on sort method (suppress groups for callAvg)
         if (sortBy !== 'callAvg'){
           let sortName, initial;
@@ -463,7 +492,7 @@
         }
         const hasRS = !!grp?.rideShare || (grp && (grp.tags||[]).length>0);
         rows.push(`<li role="listitem">
-          <div class="tile-btn ${statusCls}" data-id="${s.id}">
+          <div class="tile-btn ${statusCls}" data-id="${s.id}" style="${style}">
             <div class="tile-name">${escapeHtml(s.name||'')}</div>
             <div class="tile-tag">
               ${tag ? `<span class=\"pill\">${escapeHtml(tag)}</span>` : ''}
@@ -546,8 +575,17 @@
   // Status ordering: Absent should always be at the bottom
   const order = { waiting: 0, null: 0, undefined: 0, called: 1, en_route: 2, picked_up: 3, absent: 4 };
       const list = base.slice().sort((a,b) => {
-        const as = order[a.status] ?? 0;
-        const bs = order[b.status] ?? 0;
+        let as = order[a.status];
+        if (as === undefined) {
+          // Check if it's a custom viewer button status
+          if (viewerButtons.some(vb => vb.code === a.status)) as = 5;
+          else as = 0; // unknown -> waiting
+        }
+        let bs = order[b.status];
+        if (bs === undefined) {
+          if (viewerButtons.some(vb => vb.code === b.status)) bs = 5;
+          else bs = 0;
+        }
         if (as !== bs) return as - bs;
         if (sortBy === 'callAvg'){
           const ai = studentAvgOffset.has(a.id) ? studentAvgOffset.get(a.id) : Number.POSITIVE_INFINITY;
@@ -627,8 +665,13 @@
       const tag = (e && e.detail && e.detail.tag) ? String(e.detail.tag).toUpperCase().trim() : '';
       if (!tag) return;
       try{
-        // Scanner should mirror the "Call Family" action: target the exact tag only
-        await setStatusForExactTag(tag, 'called');
+        // Scanner should mirror the "Call Family" action: call group (siblings) but NOT ride share
+        const grp = tagToGroup[tag];
+        if (grp && grp.id) {
+          await setStatusForGroup(grp.id, 'called');
+        } else {
+          await setStatusForExactTag(tag, 'called');
+        }
         const norm = normScanKey(tag);
         (carTagIndex.get(norm)||[]).forEach(st => highlightStudentTile(st.id));
         showToast('Family called');
@@ -676,7 +719,13 @@
       const isCalled = current.status === 'called';
       const isEnRoute = current.status === 'en_route';
       const isPicked = current.status === 'picked_up';
-      sheetActions.innerHTML = (isCalled || isEnRoute || isPicked)
+      const isCustom = viewerButtons.some(b => b.code === current.status);
+      
+      const customBtnsHtml = viewerButtons.map(b => 
+        `<button class="btn btn-outline" data-custom-code="${b.code}" style="border-left:5px solid ${b.color||'#ccc'}">${escapeHtml(b.label)}</button>`
+      ).join('');
+
+      sheetActions.innerHTML = (isCalled || isEnRoute || isPicked || isCustom)
         ? `
             <button id="aPicked" class="btn btn-primary">Picked Up</button>
             <button id="aClear" class="btn btn-danger">Clear</button>
@@ -686,6 +735,7 @@
             <button id="aFam" class="btn btn-secondary" ${!hasTag?'disabled':''}>Call Family</button>
             <button id="aRS" class="btn btn-secondary" ${!hasRSorGroup?'disabled':''}>Call Ride Share</button>
             <button id="aPicked" class="btn btn-muted">Picked Up</button>
+            ${customBtnsHtml}
           `;
       openSheet();
     });
@@ -694,15 +744,24 @@
       const b = e.target.closest('button');
       if (!b || !current) return;
       const id = current.id;
+      const customCode = b.getAttribute('data-custom-code');
       try{
-        if (b.id === 'aCall'){
+        if (customCode) {
+          await setStudentStatus(id, customCode);
+          showToast('Updated');
+        } else if (b.id === 'aCall'){
           await setStudentStatus(id, 'called');
           showToast('Called');
         } else if (b.id === 'aFam'){
           const tag = current.carTag ? String(current.carTag).trim().toUpperCase() : '';
           if (tag){
-            // Family = same tag only (do not expand to ride share or other tags)
-            await setStatusForExactTag(tag, 'called');
+            // Family = call the group (siblings) but explicitly NOT ride share
+            const grp = groupMap[tag];
+            if (grp && grp.id) {
+              await setStatusForGroup(grp.id, 'called');
+            } else {
+              await setStatusForExactTag(tag, 'called');
+            }
             showToast('Family called');
           }
         } else if (b.id === 'aRS'){
@@ -840,7 +899,9 @@
       if(carTagRaw){
         const normalized = normScanKey(carTagRaw);
         // Treat hardware/HID scans of a car tag the same as camera scans: family-only
-        setStatusForExactTag(carTagRaw, 'called')
+        const grp = tagToGroup[carTagRaw];
+        const p = (grp && grp.id) ? setStatusForGroup(grp.id, 'called') : setStatusForExactTag(carTagRaw, 'called');
+        p
           .then(updated => {
             console.log('[scan] family attempt via tag', { tag: carTagRaw, updated });
             if(updated>0){
