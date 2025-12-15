@@ -944,17 +944,24 @@
             if (absents.length) {
               absents.sort(byName);
               const html = absents.map(s => {
-                const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+                const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
                 // Find label for custom status
                 const btn = VIEWER_BUTTONS.find(b => b.code === s.status);
                 const label = btn ? btn.label : 'Absent';
+                
+                let styleAttr = '';
+                if (btn && btn.color) {
+                  // Apply custom color and ensure text is dark for contrast (matching mastercaller)
+                  styleAttr = ` style="background-color: ${btn.color}; color: #1e293b; border-color: ${btn.color}"`;
+                }
+
                 // Allow resetting to waiting?
                 const resetBtn = `<button class="btn btn-outline btn-xs" data-act="reset" data-id="${s.id}">Reset</button>`;
                 return `
-                  <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"${s.status}\"> 
-                    <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}\">${s.displayName || s.name}</span>
+                  <li class="student waiting absent" data-id="${s.id}" data-status="${s.status}"${styleAttr}> 
+                    <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                     ${tag}
-                    <span class=\"status\">${label}</span>
+                    <span class="status">${label}</span>
                     <span class="inline-actions">${resetBtn}</span>
                   </li>`;
               }).join('');
