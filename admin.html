@@ -143,6 +143,9 @@
           </div>
           <div class="row mt-8">
             <button id="saveViewerBtns" class="btn btn-primary" type="button">Save Buttons</button>
+            <label class="small" style="display:flex; align-items:center; gap:6px; margin-left:12px;">
+              <input type="checkbox" id="showOnCaller" /> Show on Master Caller
+            </label>
             <span id="viewerBtnsStatus" class="small muted"></span>
           </div>
         </article>
@@ -216,6 +219,7 @@
           const data = snap.data() || {}; 
           if(typeof data.autoEndMinutes === 'number') document.getElementById('autoEndMinutes').value = data.autoEndMinutes;
           if(Array.isArray(data.viewerButtons)) renderViewerButtons(data.viewerButtons);
+          if(document.getElementById('showOnCaller')) document.getElementById('showOnCaller').checked = !!data.showCustomBtnsOnCaller;
         }
       } catch(e){ console.warn('[admin] load dismissal settings failed', e); }
     }
@@ -264,7 +268,8 @@
         const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
         if(!realOid || !realSid){ statusEl.textContent='Context missing'; return; }
         const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissal');
-        await ref.set({ viewerButtons: currentViewerButtons, updatedAt: new Date() }, { merge:true });
+        const showOnCaller = document.getElementById('showOnCaller')?.checked || false;
+        await ref.set({ viewerButtons: currentViewerButtons, showCustomBtnsOnCaller: showOnCaller, updatedAt: new Date() }, { merge:true });
         statusEl.textContent = 'Saved';
         setTimeout(()=>{ statusEl.textContent=''; }, 2000);
       } catch(err){ console.error(err); statusEl.textContent='Save failed'; }

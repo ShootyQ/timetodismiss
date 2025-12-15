@@ -261,6 +261,7 @@
   let tilesStartedAt = null; // Date object from Firestore startedAt
   let tilesEnded=false; let autoEndMinutes=30; let tilesTimer=null; let tilesEnding=false;
   let viewerButtons = []; // Custom status buttons {label, code, color}
+  let showCustomBtnsOnCaller = false;
 
   async function loadSettings(){
     try {
@@ -276,6 +277,7 @@
           const d = snap.data();
           if(d.autoEndMinutes) autoEndMinutes = d.autoEndMinutes;
           viewerButtons = Array.isArray(d.viewerButtons) ? d.viewerButtons : [];
+          showCustomBtnsOnCaller = !!d.showCustomBtnsOnCaller;
           if(allStudents.length) applyFilters();
         }
       });
@@ -499,6 +501,7 @@
             <div class="tile-tag">
               ${tag ? `<span class=\"pill\">${escapeHtml(tag)}</span>` : ''}
               ${hasRS && tag ? `<button type=\"button\" class=\"pill\" data-rs-tag=\"${escapeHtml(tag)}\">RS</button>` : ''}
+              ${customBtn ? `<span class=\"pill\" style=\"background:rgba(255,255,255,0.4); border:none;\">${escapeHtml(customBtn.label)}</span>` : ''}
               <span class="muted">${escapeHtml(fam)}</span>
             </div>
           </div>
@@ -723,9 +726,9 @@
       const isPicked = current.status === 'picked_up';
       const isCustom = viewerButtons.some(b => b.code === current.status);
       
-      const customBtnsHtml = viewerButtons.map(b => 
+      const customBtnsHtml = showCustomBtnsOnCaller ? viewerButtons.map(b => 
         `<button class="btn btn-outline" data-custom-code="${b.code}" style="border-left:5px solid ${b.color||'#ccc'}">${escapeHtml(b.label)}</button>`
-      ).join('');
+      ).join('') : '';
 
       sheetActions.innerHTML = (isCalled || isEnRoute || isPicked || isCustom)
         ? `
