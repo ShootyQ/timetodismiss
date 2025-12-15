@@ -228,7 +228,7 @@
       host.innerHTML = currentViewerButtons.map((b,i) => `
         <div class="row" style="background:#f8fafc; padding:6px 10px; border-radius:8px; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <input type="color" value="${b.color||'#e0e7ff'}" style="width:24px; height:24px; padding:0; border:none; background:none; cursor:pointer;" onchange="updateViewerBtnColor(${i}, this.value)" title="Change Color" />
+            <input type="color" value="${b.color||'#e0e7ff'}" style="width:24px; height:24px; padding:0; border:none; background:none; cursor:pointer;" oninput="updateViewerBtnColor(${i}, this.value)" title="Change Color" />
             <span style="font-weight:600;">${b.label}</span>
           </div>
           <button class="btn btn-outline btn-xs" onclick="removeViewerBtn(${i})">Remove</button>

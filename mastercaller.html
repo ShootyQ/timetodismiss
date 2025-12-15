@@ -275,10 +275,8 @@
         if(snap.exists()){
           const d = snap.data();
           if(d.autoEndMinutes) autoEndMinutes = d.autoEndMinutes;
-          if(Array.isArray(d.viewerButtons)) {
-            viewerButtons = d.viewerButtons;
-            if(allStudents.length) applyFilters();
-          }
+          viewerButtons = Array.isArray(d.viewerButtons) ? d.viewerButtons : [];
+          if(allStudents.length) applyFilters();
         }
       });
     } catch(e){ console.warn('[tiles] settings load failed', e); }
@@ -472,7 +470,8 @@
         let style = '';
         const customBtn = viewerButtons.find(b => b.code === s.status);
         if (customBtn && customBtn.color) {
-          style = `background:${customBtn.color}; border-color:rgba(0,0,0,0.1);`;
+          // Force dark text to avoid "absent" purple text look
+          style = `background:${customBtn.color}; border-color:rgba(0,0,0,0.1); color:#1e293b;`;
         }
         
         // Determine the letter grouping based on sort method (suppress groups for callAvg)
@@ -732,7 +731,7 @@
         ? `
             <button id="aPicked" class="btn btn-primary">Picked Up</button>
             <button id="aClear" class="btn btn-danger">Clear</button>
-            ${isCustom ? '' : customBtnsHtml}
+            ${customBtnsHtml}
           `
         : `
             <button id="aCall" class="btn btn-primary">Call</button>
