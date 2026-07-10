@@ -47,7 +47,8 @@
     <section id="acGrid" class="ac-grid" aria-live="polite"></section>
   </main>
   <script type="module">
-    import { onStudents, getClasses, onAftercareAttendance, getAftercareSettings, clockInAftercareStudent, clockOutAftercareStudent } from '/app.js?v=aftercare-1';
+    import { init, onStudents, getClasses, onAftercareAttendance, getAftercareSettings, clockInAftercareStudent, clockOutAftercareStudent } from '/app.js?v=aftercare-2';
+    await init();
 
     const state = { students: [], attendance: new Map(), query: '', classId: '', cutoff: null };
     const grid = document.querySelector('#acGrid');

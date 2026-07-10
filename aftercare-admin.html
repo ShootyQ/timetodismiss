@@ -46,7 +46,8 @@
     <section class="am-panel" data-panel="reports"><div class="am-form"><label class="am-field">Report type<select id="amMode"><option value="daily">Daily</option><option value="monthly">Monthly</option></select></label><label class="am-field">Period<input id="amPeriod" type="date" required></label><div class="am-actions"><button id="amRun" class="am-button" type="button">Run report</button><button id="amPrint" class="am-button secondary" type="button">Print</button></div></div><div id="amReport"></div></section>
   </main>
   <script type="module">
-    import { onStudents, getAftercareAdminData, saveAftercareSettings, saveAftercareFamily, archiveAftercareFamily, getAftercareReport } from '/app.js?v=aftercare-1';
+    import { init, onStudents, getAftercareAdminData, saveAftercareSettings, saveAftercareFamily, archiveAftercareFamily, getAftercareReport } from '/app.js?v=aftercare-2';
+    await init();
     const state = { students: [], families: [], settings: null };
     const notice = document.querySelector('#amNotice'); const familyList = document.querySelector('#amFamilies'); const studentSelect = document.querySelector('#amStudents');
     const today = new Date(); const isoToday = today.toISOString().slice(0,10); document.querySelector('#amPeriod').value = isoToday;
