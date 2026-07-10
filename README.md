@@ -38,7 +38,9 @@ Add the following repository secret in GitHub → Settings → Secrets and varia
 
 ### Deploy Aftercare Functions
 
-From a local clone of the repository, run `./deploy.ps1 -ProjectId dismissalcaller` (PowerShell: `./deploy.ps1 -ProjectId dismissalcaller`). This deploys the targeted Aftercare callables and `autoCloseAftercareSessions` without deploying Firestore rules or indexes. The command updates the shared `dismissalcaller` Functions backend used by the preview and live Hosting sites; use a separate Firebase project for a fully isolated dev backend.
+From GitHub Actions, run the `Deploy Aftercare Functions` workflow manually, enter `deploy-functions` for confirmation, and choose the Firebase project. It deploys the targeted Aftercare callables and `autoCloseAftercareSessions` without deploying Firestore rules or indexes. The `FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER` secret must have Functions deployment permissions; Hosting Admin alone is insufficient. The workflow updates the selected project's Functions backend, while Hosting preview channels still share that project's Auth and Firestore.
+
+For a local clone, the equivalent PowerShell command is `./deploy.ps1 -ProjectId dismissalcaller`. The repository now targets the Node 20 Functions runtime.
 
 ### Hosting configuration
 
