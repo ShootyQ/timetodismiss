@@ -136,6 +136,9 @@
               <a href="/callerhub.html?stay=1"  class="nav-icon" data-requires="caller" aria-label="Master Caller" title="Master Caller">
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
+              <a href="/aftercare" class="nav-icon" data-requires="viewer" aria-label="Aftercare" title="Aftercare">
+                <span aria-hidden="true" style="font-weight:900;font-size:18px;">A</span>
+              </a>
               <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
                 <img src="/admin.png" alt="Admin" width="26" height="26" decoding="async" style="display:block;" />
               </a>
@@ -190,6 +193,7 @@
           <nav class="menu-links">
             <a href="/class.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Classes</a>
             <a href="/callerhub.html?stay=1" style="display:block !important; opacity:1 !important; visibility:visible !important;">Master Caller</a>
+            <a href="/aftercare" data-requires="viewer" style="display:block !important; opacity:1 !important; visibility:visible !important;">Aftercare</a>
             <a href="/leaderboard.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Leaderboard</a>
             <a href="/admin.html" style="display:block !important; opacity:1 !important; visibility:visible !important;">Admin</a>
             <a href="/guardian-invites.html" data-requires="admin" title="Guardian Invites" style="display:block !important; opacity:1 !important; visibility:visible !important;">Guardian Invites</a>

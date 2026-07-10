@@ -31,6 +31,9 @@ Add the following repository secret in GitHub → Settings → Secrets and varia
 
 - Open the Actions run log for the dev workflow; the job summary prints the preview URL.
 - Or visit: https://dev--dismissalcaller.web.app
+- Aftercare operator page: `/aftercare`
+- Aftercare management page: `/aftercare-manage`
+- The Hosting workflow does not deploy Functions, Firestore rules, or indexes. Deploy the Aftercare Functions separately only when the target Firebase project is ready for them.
 
 ### Hosting configuration
 

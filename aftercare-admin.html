@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aftercare Management | Time To Dismiss</title>
+  <link rel="stylesheet" href="/styles.css?v=aftercare-1">
+  <script src="/site-header.js?v=aftercare-1" defer></script>
+  <style>
+    :root { --am-ink:#17212b; --am-muted:#66727d; --am-line:#d9e0e5; --am-blue:#1769aa; }
+    body { background:#f7f9fa; color:var(--am-ink); }
+    .am-shell { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+    .am-head { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:20px; }
+    .am-head h1 { margin:0; font-size:clamp(1.6rem,4vw,2.3rem); }
+    .am-head p { margin:6px 0 0; color:var(--am-muted); }
+    .am-link, .am-button { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 14px; border:1px solid var(--am-blue); border-radius:8px; background:var(--am-blue); color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
+    .am-button.secondary, .am-link.secondary { background:#fff; color:var(--am-blue); }
+    .am-tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--am-line); }
+    .am-tabs button { border:0; border-bottom:3px solid transparent; background:transparent; padding:12px 8px; font-weight:800; cursor:pointer; color:var(--am-muted); }
+    .am-tabs button[aria-selected="true"] { border-color:var(--am-blue); color:var(--am-blue); }
+    .am-panel { display:none; background:#fff; border:1px solid var(--am-line); border-radius:10px; padding:16px; }
+    .am-panel.active { display:block; }
+    .am-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; }
+    .am-field { display:grid; gap:5px; font-weight:700; }
+    .am-field input, .am-field select { min-height:40px; border:1px solid var(--am-line); border-radius:7px; padding:8px; font:inherit; font-weight:400; }
+    .am-field select[multiple] { min-height:150px; }
+    .am-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+    .am-table { width:100%; border-collapse:collapse; margin-top:16px; }
+    .am-table th, .am-table td { border-bottom:1px solid var(--am-line); padding:10px 8px; text-align:left; vertical-align:top; }
+    .am-table th { color:var(--am-muted); font-size:.85rem; }
+    .am-muted { color:var(--am-muted); }
+    .am-summary { display:flex; flex-wrap:wrap; gap:20px; margin-top:16px; }
+    .am-summary strong { display:block; font-size:1.3rem; }
+    #amNotice { min-height:24px; margin:0 0 12px; color:var(--am-muted); }
+    @media (max-width:640px) { .am-head { align-items:stretch; flex-direction:column; } .am-table { font-size:.9rem; } }
+    @media print { .am-head, .am-tabs, .am-actions, #amNotice { display:none; } .am-panel { display:block; border:0; padding:0; } body { background:#fff; } }
+  </style>
+</head>
+<body>
+  <main class="am-shell">
+    <header class="am-head"><div><h1>Aftercare management</h1><p>Rates, billing families, and reports.</p></div><a class="am-link secondary" href="/aftercare">Operator view</a></header>
+    <p id="amNotice" role="status" aria-live="polite"></p>
+    <nav class="am-tabs" aria-label="Aftercare management sections"><button type="button" data-tab="settings" aria-selected="true">Settings</button><button type="button" data-tab="families" aria-selected="false">Billing families</button><button type="button" data-tab="reports" aria-selected="false">Reports</button></nav>
+    <section class="am-panel active" data-panel="settings"><h2>School settings</h2><form id="amSettings" class="am-form"><label class="am-field">Single-child rate ($/hour)<input name="singleRate" type="number" min="0" step="0.01" required></label><label class="am-field">Sibling rate ($/hour)<input name="familyRate" type="number" min="0" step="0.01" required></label><label class="am-field">Daily cutoff<input name="cutoff" type="time" required></label><label class="am-field">Timezone<input name="timezone" required></label><div class="am-actions"><button class="am-button" type="submit">Save settings</button></div></form></section>
+    <section class="am-panel" data-panel="families"><h2>Billing family</h2><form id="amFamily" class="am-form"><label class="am-field">Family name<input name="name" required maxlength="100"></label><label class="am-field">Students<select name="studentIds" id="amStudents" multiple required></select></label><div class="am-actions"><button class="am-button" type="submit">Save family</button></div></form><table class="am-table"><thead><tr><th>Family</th><th>Students</th><th></th></tr></thead><tbody id="amFamilies"></tbody></table></section>
+    <section class="am-panel" data-panel="reports"><div class="am-form"><label class="am-field">Report type<select id="amMode"><option value="daily">Daily</option><option value="monthly">Monthly</option></select></label><label class="am-field">Period<input id="amPeriod" type="date" required></label><div class="am-actions"><button id="amRun" class="am-button" type="button">Run report</button><button id="amPrint" class="am-button secondary" type="button">Print</button></div></div><div id="amReport"></div></section>
+  </main>
+  <script type="module">
+    import { onStudents, getAftercareAdminData, saveAftercareSettings, saveAftercareFamily, archiveAftercareFamily, getAftercareReport } from '/app.js?v=aftercare-1';
+    const state = { students: [], families: [], settings: null };
+    const notice = document.querySelector('#amNotice'); const familyList = document.querySelector('#amFamilies'); const studentSelect = document.querySelector('#amStudents');
+    const today = new Date(); const isoToday = today.toISOString().slice(0,10); document.querySelector('#amPeriod').value = isoToday;
+    const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
+    const duration = (ms) => { const minutes = Math.round(Number(ms || 0) / 60000); return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; };
+    function renderStudents() { studentSelect.replaceChildren(); state.students.slice().sort((a,b) => (a.name || '').localeCompare(b.name || '')).forEach((student) => { const option = document.createElement('option'); option.value = student.id; option.textContent = student.name || student.id; studentSelect.append(option); }); }
+    function renderFamilies() { familyList.replaceChildren(); state.families.forEach((family) => { const row = document.createElement('tr'); const name = document.createElement('td'); name.textContent = family.name || family.id; const students = document.createElement('td'); students.textContent = (family.students || []).map((student) => student.name || student.studentId).join(', '); const action = document.createElement('td'); const button = document.createElement('button'); button.className = 'am-button secondary'; button.type = 'button'; button.textContent = 'Archive'; button.addEventListener('click', async () => { if (!confirm(`Archive ${family.name}?`)) return; try { await archiveAftercareFamily(family.id); await load(); notice.textContent = 'Family archived.'; } catch (error) { notice.textContent = error?.message || 'Could not archive family.'; } }); action.append(button); row.append(name, students, action); familyList.append(row); }); }
+    function fillSettings() { const form = document.querySelector('#amSettings'); form.singleRate.value = (state.settings.singleRateCents / 100).toFixed(2); form.familyRate.value = (state.settings.familyRateCents / 100).toFixed(2); form.cutoff.value = state.settings.cutoffLocalTime; form.timezone.value = state.settings.timezone; }
+    async function load() { const data = await getAftercareAdminData(); state.settings = data.settings; state.families = data.families || []; fillSettings(); renderFamilies(); }
+    function renderReport(data) { const report = document.querySelector('#amReport'); report.replaceChildren(); const summary = document.createElement('div'); summary.className = 'am-summary'; summary.innerHTML = `<div><span class="am-muted">Families</span><strong>${data.familyRows.length}</strong></div><div><span class="am-muted">Open sessions</span><strong>${data.openSessionCount}</strong></div><div><span class="am-muted">Auto-closed</span><strong>${data.autoClosedCount}</strong></div>`; report.append(summary); const table = document.createElement('table'); table.className = 'am-table'; table.innerHTML = '<thead><tr><th>Family</th><th>Days</th><th>Duration</th><th>Decimal hours</th><th>Total</th></tr></thead>'; const body = document.createElement('tbody'); data.familyRows.forEach((row) => { const tr = document.createElement('tr'); tr.innerHTML = `<td>${row.familyName}</td><td>${row.days}</td><td>${duration(row.singleMilliseconds + row.familyMilliseconds)}</td><td>${((row.singleMilliseconds + row.familyMilliseconds) / 3600000).toFixed(2)}</td><td>${money(row.totalAmountCents)}</td>`; body.append(tr); }); table.append(body); report.append(table); }
+    async function bootstrap(claims) { if (!claims || !(claims.owner || claims.superintendent || claims.admin)) { location.replace('/index.html#login'); return; } try { onStudents(null, (students) => { state.students = students; renderStudents(); }); await load(); } catch (error) { notice.textContent = error?.message || 'Aftercare management could not be loaded.'; } }
+    window.initAppWithClaims = bootstrap; const claims = window.SD?.claims || window.SD?.userClaims; if (claims) bootstrap(claims); else window.addEventListener('sd:claims-ready', (event) => bootstrap(event.detail?.claims || event.detail || window.SD?.claims || {}), { once:true });
+    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('[data-tab]').forEach((item) => item.setAttribute('aria-selected', String(item === button))); document.querySelectorAll('[data-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab)); }));
+    document.querySelector('#amSettings').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareSettings({ timezone: form.timezone.value.trim(), cutoffLocalTime: form.cutoff.value, singleRateCents: Math.round(Number(form.singleRate.value) * 100), familyRateCents: Math.round(Number(form.familyRate.value) * 100) }); notice.textContent = 'Settings saved.'; await load(); } catch (error) { notice.textContent = error?.message || 'Could not save settings.'; } });
+    document.querySelector('#amFamily').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareFamily({ name: form.name.value.trim(), studentIds: Array.from(form.studentIds.selectedOptions).map((option) => option.value) }); form.reset(); await load(); notice.textContent = 'Billing family saved.'; } catch (error) { notice.textContent = error?.message || 'Could not save family.'; } });
+    document.querySelector('#amRun').addEventListener('click', async () => { const mode = document.querySelector('#amMode').value; const raw = document.querySelector('#amPeriod').value; const period = mode === 'monthly' ? raw.slice(0,7) : raw; try { notice.textContent = 'Loading report...'; renderReport(await getAftercareReport({ mode, period })); notice.textContent = ''; } catch (error) { notice.textContent = error?.message || 'Could not load report.'; } });
+    document.querySelector('#amMode').addEventListener('change', () => { document.querySelector('#amPeriod').type = document.querySelector('#amMode').value === 'monthly' ? 'month' : 'date'; });
+    document.querySelector('#amPrint').addEventListener('click', () => window.print());
+  </script>
+</body>
+</html>
