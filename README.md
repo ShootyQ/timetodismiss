@@ -5,10 +5,11 @@ Dismissal Platform for Schools
 
 This repo uses GitHub Actions to deploy to Firebase Hosting.
 
-- Dev previews: on pushes to `dev` or manual runs
+- Dev previews: on pushes to `aftercare-dev` or manual runs
 	- Workflow: `.github/workflows/deploy-dev-hosting.yml`
 	- Creates a Hosting preview channel named `dev` that auto-expires in 7 days
 	- URL: https://dev--dismissalcaller.web.app (stable named channel URL)
+	- Deploys Hosting only; it does not modify Firestore rules, indexes, or Functions
 
 - Production: on pushes to `main` or manual runs
 	- Workflow: `.github/workflows/deploy-live-on-main.yml`
@@ -24,7 +25,7 @@ Add the following repository secret in GitHub → Settings → Secrets and varia
 
 1) Go to the Actions tab.
 2) Choose the workflow (Dev or Live).
-3) Click “Run workflow” and select a branch (e.g., `dev` for previews or `main` for live).
+3) Click “Run workflow” and select a branch (e.g., `aftercare-dev` for previews or `main` for live).
 
 ### Verify dev preview
 
