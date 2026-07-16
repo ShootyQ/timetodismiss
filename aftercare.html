@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/styles.css?v=aftercare-1">
   <script src="/site-header.js?v=aftercare-1" defer></script>
   <style>
-    :root { --ac-ink:#17212b; --ac-muted:#66727d; --ac-line:#d9e0e5; --ac-blue:#1769aa; --ac-green:#e4f5ed; --ac-yellow:#fff4d6; --ac-gray:#f4f6f7; }
+    :root { --ac-ink:#17212b; --ac-muted:#66727d; --ac-line:#d9e0e5; --ac-blue:#1769aa; --ac-green:#e4f5ed; --ac-yellow:#fff4d6; --ac-gray:#f4f6f7; --ac-checkedin:#eee9ff; --ac-checkedin-border:#6d4aff; --ac-checkedin-ink:#4a2ea3; }
     body { background:#f7f9fa; color:var(--ac-ink); }
     .ac-shell { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
     .ac-head { display:flex; justify-content:space-between; gap:16px; align-items:end; margin-bottom:20px; }
@@ -22,7 +22,8 @@
     .ac-card { background:#fff; border:1px solid var(--ac-line); border-radius:10px; padding:16px; box-shadow:0 2px 8px rgba(23,33,43,.05); }
     .ac-card h2 { margin:0 0 4px; font-size:1rem; }
     .ac-card p { margin:0; color:var(--ac-muted); }
-    .ac-card.in { border-color:#5dbb8a; background:var(--ac-green); }
+    .ac-card.in { border:2px solid var(--ac-checkedin-border); background:var(--ac-checkedin); box-shadow:0 3px 12px rgba(109,74,255,.18); }
+    .ac-card.in .ac-status { color:var(--ac-checkedin-ink); }
     .ac-card.called { background:var(--ac-yellow); }
     .ac-card.done { background:var(--ac-gray); }
     .ac-card-top { display:flex; justify-content:space-between; gap:10px; align-items:start; }
@@ -58,7 +59,7 @@
 
     function nameOf(student) { return student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || student.id; }
     function timeOf(value) { try { if (value?.toDate) return value.toDate().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); if (value) return new Date(value).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch {} return ''; }
-    function rank(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return 0; if (!attendance) return ['waiting','called','en_route'].includes(student.status) ? (student.status === 'waiting' ? 1 : 2) : 3; return 3; }
+    function rank(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return 4; if (!attendance) return ['waiting','called','en_route'].includes(student.status) ? (student.status === 'waiting' ? 1 : 2) : 3; return 3; }
     function statusText(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return `In since ${timeOf(attendance.clockedInAt)}`; if (attendance?.status === 'out') return `Completed${timeOf(attendance.clockedOutAt) ? ` at ${timeOf(attendance.clockedOutAt)}` : ''}`; if (student.status === 'waiting') return 'Waiting for pickup'; if (student.status === 'called') return 'Called'; if (student.status === 'en_route') return 'En route'; return student.status || 'Available'; }
     function render() {
       const query = state.query.toLowerCase();

@@ -50,7 +50,7 @@
     await init();
     const state = { students: [], families: [], settings: null };
     const notice = document.querySelector('#amNotice'); const familyList = document.querySelector('#amFamilies'); const studentSelect = document.querySelector('#amStudents');
-    const today = new Date(); const isoToday = today.toISOString().slice(0,10); document.querySelector('#amPeriod').value = isoToday;
+    const today = new Date(); const isoToday = today.toISOString().slice(0,10); const periodInput = document.querySelector('#amPeriod'); periodInput.value = isoToday;
     const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
     const duration = (ms) => { const minutes = Math.round(Number(ms || 0) / 60000); return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; };
     function renderStudents() { studentSelect.replaceChildren(); state.students.slice().sort((a,b) => (a.name || '').localeCompare(b.name || '')).forEach((student) => { const option = document.createElement('option'); option.value = student.id; option.textContent = student.name || student.id; studentSelect.append(option); }); }
@@ -64,7 +64,7 @@
     document.querySelector('#amSettings').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareSettings({ timezone: form.timezone.value.trim(), cutoffLocalTime: form.cutoff.value, singleRateCents: Math.round(Number(form.singleRate.value) * 100), familyRateCents: Math.round(Number(form.familyRate.value) * 100) }); notice.textContent = 'Settings saved.'; await load(); } catch (error) { notice.textContent = error?.message || 'Could not save settings.'; } });
     document.querySelector('#amFamily').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareFamily({ name: form.name.value.trim(), studentIds: Array.from(form.studentIds.selectedOptions).map((option) => option.value) }); form.reset(); await load(); notice.textContent = 'Billing family saved.'; } catch (error) { notice.textContent = error?.message || 'Could not save family.'; } });
     document.querySelector('#amRun').addEventListener('click', async () => { const mode = document.querySelector('#amMode').value; const raw = document.querySelector('#amPeriod').value; const period = mode === 'monthly' ? raw.slice(0,7) : raw; try { notice.textContent = 'Loading report...'; renderReport(await getAftercareReport({ mode, period })); notice.textContent = ''; } catch (error) { notice.textContent = error?.message || 'Could not load report.'; } });
-    document.querySelector('#amMode').addEventListener('change', () => { document.querySelector('#amPeriod').type = document.querySelector('#amMode').value === 'monthly' ? 'month' : 'date'; });
+    document.querySelector('#amMode').addEventListener('change', () => { const monthly = document.querySelector('#amMode').value === 'monthly'; periodInput.type = monthly ? 'month' : 'date'; periodInput.value = monthly ? isoToday.slice(0,7) : isoToday; });
     document.querySelector('#amPrint').addEventListener('click', () => window.print());
   </script>
 </body>

@@ -1,7 +1,7 @@
 {
   "name": "ttd-functions",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": { "node": "22" },
   "type": "commonjs",
   "scripts": {
     "test": "node --test test/*.test.js"
