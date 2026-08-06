@@ -1,0 +1,74 @@
+name: Deploy Aftercare Functions
+
+on:
+  workflow_dispatch:
+    inputs:
+      projectId:
+        description: Firebase project to receive the Aftercare Functions
+        required: true
+        default: dismissalcaller
+      confirm:
+        description: Type deploy-functions to confirm this backend deployment
+        required: true
+        default: deploy-functions
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deployment confirmation
+        if: ${{ inputs.confirm != 'deploy-functions' }}
+        run: |
+          echo "The confirmation field must be exactly deploy-functions."
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm install --global firebase-tools
+
+      - name: Deploy Aftercare Functions only
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
+          PROJECT_ID: ${{ github.event.inputs.projectId }}
+        run: |
+          set -euo pipefail
+          key_file="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key_file"
+          export GOOGLE_APPLICATION_CREDENTIALS="$key_file"
+          firebase --project "$PROJECT_ID" deploy --only functions:getAftercareAdminData,functions:saveAftercareSettings,functions:saveAftercareFamily,functions:archiveAftercareFamily,functions:clockInAftercareStudent,functions:clockOutAftercareStudent,functions:getAftercareReport,functions:autoCloseAftercareSessions
+
+      - name: Verify deployed Aftercare Functions
+        env:
+          PROJECT_ID: ${{ inputs.projectId }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
+        run: |
+          set -euo pipefail
+          key_file="$RUNNER_TEMP/firebase-service-account.json"
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key_file"
+          export GOOGLE_APPLICATION_CREDENTIALS="$key_file"
+          functions="$(firebase functions:list --project "$PROJECT_ID")"
+          printf '%s\n' "$functions"
+          for name in \
+            getAftercareAdminData saveAftercareSettings saveAftercareFamily \
+            archiveAftercareFamily clockInAftercareStudent clockOutAftercareStudent \
+            getAftercareReport autoCloseAftercareSessions; do
+            if ! printf '%s\n' "$functions" | grep -q "$name"; then
+              echo "Missing deployed function: $name"
+              exit 1
+            fi
+          done
+
+      - name: Deployment summary
+        run: |
+          echo "Aftercare Functions deployed to ${{ github.event.inputs.projectId }}." >> "$GITHUB_STEP_SUMMARY"
+          echo "Firestore rules and indexes were not deployed." >> "$GITHUB_STEP_SUMMARY"

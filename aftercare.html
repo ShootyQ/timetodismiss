@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aftercare | Time To Dismiss</title>
+  <link rel="stylesheet" href="/styles.css?v=aftercare-1">
+  <script src="/site-header.js?v=aftercare-1" defer></script>
+  <style>
+    :root { --ac-ink:#17212b; --ac-muted:#66727d; --ac-line:#d9e0e5; --ac-blue:#1769aa; --ac-green:#e4f5ed; --ac-yellow:#fff4d6; --ac-gray:#f4f6f7; --ac-checkedin:#eee9ff; --ac-checkedin-border:#6d4aff; --ac-checkedin-ink:#4a2ea3; }
+    body { background:#f7f9fa; color:var(--ac-ink); }
+    .ac-shell { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
+    .ac-head { display:flex; justify-content:space-between; gap:16px; align-items:end; margin-bottom:20px; }
+    .ac-head h1 { margin:0; font-size:clamp(1.6rem,4vw,2.3rem); }
+    .ac-head p { margin:6px 0 0; color:var(--ac-muted); }
+    .ac-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .ac-tools input, .ac-tools select { min-height:42px; padding:8px 10px; border:1px solid var(--ac-line); border-radius:8px; background:#fff; font-size:1rem; }
+    .ac-tools input { min-width:220px; }
+    .ac-link, .ac-button { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 14px; border:1px solid var(--ac-blue); border-radius:8px; background:var(--ac-blue); color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
+    .ac-link.secondary, .ac-button.secondary { background:#fff; color:var(--ac-blue); }
+    .ac-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+    .ac-card { background:#fff; border:1px solid var(--ac-line); border-radius:10px; padding:16px; box-shadow:0 2px 8px rgba(23,33,43,.05); }
+    .ac-card h2 { margin:0 0 4px; font-size:1rem; }
+    .ac-card p { margin:0; color:var(--ac-muted); }
+    .ac-card.in { border:2px solid var(--ac-checkedin-border); background:var(--ac-checkedin); box-shadow:0 3px 12px rgba(109,74,255,.18); }
+    .ac-card.in .ac-status { color:var(--ac-checkedin-ink); }
+    .ac-card.called { background:var(--ac-yellow); }
+    .ac-card.done { background:var(--ac-gray); }
+    .ac-card-top { display:flex; justify-content:space-between; gap:10px; align-items:start; }
+    .ac-status { font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-muted); }
+    .ac-card button { width:100%; margin-top:14px; }
+    .ac-empty { grid-column:1/-1; padding:32px; text-align:center; color:var(--ac-muted); border:1px dashed var(--ac-line); border-radius:10px; background:#fff; }
+    #acNotice { min-height:24px; margin:0 0 12px; color:var(--ac-muted); }
+    @media (max-width:640px) { .ac-head { align-items:stretch; flex-direction:column; } .ac-tools input { flex:1 1 100%; min-width:0; } }
+  </style>
+</head>
+<body>
+  <main class="ac-shell">
+    <header class="ac-head">
+      <div><h1>Aftercare</h1><p>Tap a student to clock them in or out.</p></div>
+      <a class="ac-link secondary" id="acManage" href="/aftercare-manage">Manage aftercare</a>
+    </header>
+    <div class="ac-tools" aria-label="Aftercare filters">
+      <input id="acSearch" type="search" placeholder="Search students" autocomplete="off">
+      <select id="acClass"><option value="">All classes</option></select>
+    </div>
+    <p id="acNotice" role="status" aria-live="polite"></p>
+    <section id="acGrid" class="ac-grid" aria-live="polite"></section>
+  </main>
+  <script type="module">
+    import { init, onStudents, getClasses, onAftercareAttendance, getAftercareSettings, clockInAftercareStudent, clockOutAftercareStudent } from '/app.js?v=aftercare-2';
+    await init();
+
+    const state = { students: [], attendance: new Map(), query: '', classId: '', cutoff: null };
+    const grid = document.querySelector('#acGrid');
+    const notice = document.querySelector('#acNotice');
+    const search = document.querySelector('#acSearch');
+    const classSelect = document.querySelector('#acClass');
+
+    function nameOf(student) { return student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || student.id; }
+    function timeOf(value) { try { if (value?.toDate) return value.toDate().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); if (value) return new Date(value).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch {} return ''; }
+    function rank(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return 4; if (!attendance) return ['waiting','called','en_route'].includes(student.status) ? (student.status === 'waiting' ? 1 : 2) : 3; return 3; }
+    function statusText(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return `In since ${timeOf(attendance.clockedInAt)}`; if (attendance?.status === 'out') return `Completed${timeOf(attendance.clockedOutAt) ? ` at ${timeOf(attendance.clockedOutAt)}` : ''}`; if (student.status === 'waiting') return 'Waiting for pickup'; if (student.status === 'called') return 'Called'; if (student.status === 'en_route') return 'En route'; return student.status || 'Available'; }
+    function render() {
+      const query = state.query.toLowerCase();
+      const rows = state.students.filter((student) => (!state.classId || student.classId === state.classId) && (!query || nameOf(student).toLowerCase().includes(query))).filter((student) => !['picked_up','absent','dismissed','home'].includes(student.status)).sort((a,b) => rank(a)-rank(b) || nameOf(a).localeCompare(nameOf(b)));
+      grid.replaceChildren();
+      if (!rows.length) { const empty = document.createElement('div'); empty.className = 'ac-empty'; empty.textContent = 'No students match the current view.'; grid.append(empty); return; }
+      rows.forEach((student) => {
+        const attendance = state.attendance.get(student.id);
+        const card = document.createElement('article');
+        card.className = `ac-card ${attendance?.status === 'in' ? 'in' : attendance?.status === 'out' ? 'done' : student.status === 'waiting' ? '' : 'called'}`;
+        const top = document.createElement('div'); top.className = 'ac-card-top';
+        const heading = document.createElement('div'); const title = document.createElement('h2'); title.textContent = nameOf(student); const meta = document.createElement('p'); meta.textContent = student.className || student.classId || ''; heading.append(title, meta);
+        const badge = document.createElement('span'); badge.className = 'ac-status'; badge.textContent = attendance?.status === 'in' ? 'Checked in' : attendance?.status === 'out' ? 'Checked out' : student.status || 'Ready'; top.append(heading, badge);
+        const detail = document.createElement('p'); detail.textContent = statusText(student);
+        const button = document.createElement('button'); button.className = 'ac-button'; button.type = 'button'; button.textContent = attendance?.status === 'in' ? 'Clock out' : 'Clock in'; button.disabled = attendance?.status === 'out';
+        button.addEventListener('click', async () => {
+          const action = attendance?.status === 'in' ? 'clock out' : 'clock in';
+          if (!confirm(`${action[0].toUpperCase()}${action.slice(1)} ${nameOf(student)}?`)) return;
+          button.disabled = true; notice.textContent = `${action[0].toUpperCase()}${action.slice(1)}ing ${nameOf(student)}...`;
+          try { if (action === 'clock in') await clockInAftercareStudent(student.id); else await clockOutAftercareStudent(student.id); notice.textContent = `${nameOf(student)} was clocked ${action === 'clock in' ? 'in' : 'out'}.`; } catch (error) { notice.textContent = error?.message || `Could not clock ${action === 'clock in' ? 'in' : 'out'} the student.`; button.disabled = false; }
+        });
+        card.append(top, detail, button); grid.append(card);
+      });
+    }
+    async function bootstrap(claims) {
+      if (!claims || !(claims.owner || claims.superintendent || claims.admin || claims.caller || claims.viewer)) { location.replace('/index.html#login'); return; }
+      try {
+        const classes = await getClasses(); classes.forEach((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name || item.id; classSelect.append(option); });
+        await getAftercareSettings();
+        onStudents(null, (students) => { state.students = students; render(); });
+        onAftercareAttendance((rows) => { state.attendance = new Map(rows.map((row) => [row.id, row])); render(); });
+      } catch (error) { notice.textContent = error?.message || 'Aftercare could not be loaded.'; }
+    }
+    window.initAppWithClaims = bootstrap;
+    const claims = window.SD?.claims || window.SD?.userClaims; if (claims) bootstrap(claims); else window.addEventListener('sd:claims-ready', (event) => bootstrap(event.detail?.claims || event.detail || window.SD?.claims || {}), { once:true });
+    search.addEventListener('input', () => { state.query = search.value.trim(); render(); });
+    classSelect.addEventListener('change', () => { state.classId = classSelect.value; render(); });
+  </script>
+</body>
+</html>

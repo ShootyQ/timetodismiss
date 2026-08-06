@@ -201,10 +201,43 @@ service cloud.firestore {
           allow delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastAdmin();
         }
 
+        // AFTERCARE: live attendance is visible to staff; financial and family data is manager-only.
+        // All writes are owned by callable Cloud Functions so clock races and billing history stay authoritative.
+        match /aftercareAttendance/{studentId} {
+          allow get, list: if isAuthed() && isAtLeastViewer() && inSchool(orgId, schoolId);
+          allow create, update, delete: if false;
+        }
+
+        match /aftercareFamilies/{familyId} {
+          allow get, list: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+          allow create, update, delete: if false;
+        }
+
+        match /aftercareStudentFamilies/{studentId} {
+          allow get, list: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+          allow create, update, delete: if false;
+        }
+
+        match /aftercareServiceDays/{serviceDate} {
+          allow get, list: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+          allow create, update, delete: if false;
+        }
+
+        match /aftercareSessions/{sessionId} {
+          allow get, list: if isAuthed() && isAtLeastAdmin() && inSchool(orgId, schoolId);
+          allow create, update, delete: if false;
+        }
+
         // Catch-all subcollections
         match /{sub}/{doc} {
           allow get, list: if isAuthed() && inSchool(orgId, schoolId);
-          allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
+          allow create, update, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller()
+                                        && sub != 'settings'
+                                        && sub != 'aftercareAttendance'
+                                        && sub != 'aftercareFamilies'
+                                        && sub != 'aftercareStudentFamilies'
+                                        && sub != 'aftercareServiceDays'
+                                        && sub != 'aftercareSessions';
         }
       }
     }

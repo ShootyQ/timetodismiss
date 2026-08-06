@@ -7,8 +7,11 @@ import {
 import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
 } from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-auth.js';
+import {
+  getFunctions, httpsCallable
+} from 'https://www.gstatic.com/firebasejs/10.12.4/firebase-functions.js';
 
-let app, db, auth;
+let app, db, auth, cloudFunctions;
 let ACTIVE_SESSION_ID = null; // optional: set by caller UI; used for analytics event tagging
 
 /* ------------------------------------------------------------------ */
@@ -37,6 +40,7 @@ export async function init() {
   }
   db   = getFirestore(app);
   auth = getAuth(app);
+  cloudFunctions = getFunctions(app, 'us-central1');
 }
 
 // Optional: set the current active session id so events can be tagged for session analytics
@@ -738,6 +742,72 @@ export function onGroupStudents(groupId, cb){
   })();
   return () => { stopped = true; cleanup(); };
 }
+
+/* ------------------------------------------------------------------ */
+/* Aftercare                                                          */
+/* ------------------------------------------------------------------ */
+
+function aftercareTenant() {
+  const orgId = globalThis.SD?.orgId;
+  const schoolId = globalThis.SD?.schoolId;
+  if (!orgId || !schoolId) throw new Error('Missing school context');
+  return { orgId, schoolId };
+}
+
+async function callAftercare(name, data = {}) {
+  await waitForTenant();
+  const callable = httpsCallable(cloudFunctions, name);
+  const result = await callable({ ...aftercareTenant(), ...data });
+  return result.data;
+}
+
+export function onAftercareAttendance(cb) {
+  let unsub = () => {};
+  (async () => {
+    try {
+      await waitForTenant();
+      unsub = onSnapshot(colPath('aftercareAttendance'), (snapshot) => {
+        cb(snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
+      }, (error) => console.error('[aftercare] attendance listener failed:', error));
+    } catch (error) {
+      console.error('[aftercare] attendance listener init failed:', error);
+    }
+  })();
+  return () => { try { unsub(); } catch {} };
+}
+
+export async function getAftercareSettings() {
+  await waitForTenant();
+  const snapshot = await getDoc(docPath('settings', 'aftercare'));
+  return {
+    timezone: 'America/Chicago',
+    cutoffLocalTime: '18:00',
+    singleRateCents: 1000,
+    familyRateCents: 1600,
+    ...(snapshot.exists() ? snapshot.data() : {}),
+  };
+}
+
+export const clockInAftercareStudent = (studentId) =>
+  callAftercare('clockInAftercareStudent', { studentId });
+
+export const clockOutAftercareStudent = (studentId) =>
+  callAftercare('clockOutAftercareStudent', { studentId });
+
+export const getAftercareAdminData = () =>
+  callAftercare('getAftercareAdminData');
+
+export const saveAftercareSettings = (settings) =>
+  callAftercare('saveAftercareSettings', { settings });
+
+export const saveAftercareFamily = ({ familyId = null, name, studentIds }) =>
+  callAftercare('saveAftercareFamily', { familyId, name, studentIds });
+
+export const archiveAftercareFamily = (familyId) =>
+  callAftercare('archiveAftercareFamily', { familyId });
+
+export const getAftercareReport = ({ mode, period }) =>
+  callAftercare('getAftercareReport', { mode, period });
 
 /* ------------------------------------------------------------------ */
 /* (Optional) Demo seeding                                             */

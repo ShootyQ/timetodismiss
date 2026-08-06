@@ -9,8 +9,16 @@ const { beforeUserSignedIn }       = require('firebase-functions/v2/identity');
 const { defineBoolean }            = require('firebase-functions/params');
 const { initializeApp }            = require('firebase-admin/app');
 const { getAuth }                  = require('firebase-admin/auth');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const crypto = require('crypto');
+const {
+  calculateFamilyDay,
+  decimalHours,
+  formatDuration,
+  getServiceDay,
+  parseCutoff,
+  validateTimezone,
+} = require('./aftercare-domain');
 
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
@@ -250,6 +258,62 @@ async function computeClaims(uid, email) {
     return (d.status || 'active') === 'active' && f.admin;
   };
 
+  const AFTERCARE_DEFAULTS = Object.freeze({
+    timezone: 'America/Chicago',
+    cutoffLocalTime: '18:00',
+    singleRateCents: 1000,
+    familyRateCents: 1600,
+  });
+
+  const cleanDocId = (value, field) => {
+    const result = String(value || '').trim();
+    if (!result || result.includes('/')) throw new HttpsError('invalid-argument', `${field} is invalid.`);
+    return result;
+  };
+
+  const aftercarePath = (orgId, schoolId, collectionName, docId) =>
+    db.doc(`orgs/${orgId}/schools/${schoolId}/${collectionName}/${docId}`);
+
+  const actorFrom = (req) => ({
+    uid: req.auth.uid,
+    email: req.auth.token?.email || null,
+  });
+
+  const normalizeAftercareSettings = (source = {}) => {
+    const timezone = String(source.timezone || AFTERCARE_DEFAULTS.timezone);
+    const cutoffLocalTime = String(source.cutoffLocalTime || AFTERCARE_DEFAULTS.cutoffLocalTime);
+    const singleRateCents = Number(source.singleRateCents ?? AFTERCARE_DEFAULTS.singleRateCents);
+    const familyRateCents = Number(source.familyRateCents ?? AFTERCARE_DEFAULTS.familyRateCents);
+    try {
+      validateTimezone(timezone);
+      parseCutoff(cutoffLocalTime);
+    } catch (error) {
+      throw new HttpsError('invalid-argument', error.message);
+    }
+    if (!Number.isInteger(singleRateCents) || singleRateCents < 0 || singleRateCents > 10000000 ||
+        !Number.isInteger(familyRateCents) || familyRateCents < 0 || familyRateCents > 10000000) {
+      throw new HttpsError('invalid-argument', 'Aftercare rates must be nonnegative integer cents.');
+    }
+    return { timezone, cutoffLocalTime, singleRateCents, familyRateCents };
+  };
+
+  const canUseAftercare = async (claims, orgId, schoolId, uid) => {
+    if (canManageOrg(claims, orgId)) return true;
+    const snap = await aftercarePath(orgId, schoolId, 'members', uid).get();
+    const member = snap.data() || {};
+    return (member.status || 'active') === 'active' && flagsFrom(member).viewer;
+  };
+
+  const requireAftercareOperator = async (req, orgId, schoolId) => {
+    const allowed = await canUseAftercare(req.auth.token || {}, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Active school staff access is required.');
+  };
+
+  const requireAftercareManager = async (req, orgId, schoolId) => {
+    const allowed = await canManageSchool(req.auth.token || {}, orgId, schoolId, req.auth.uid);
+    if (!allowed) throw new HttpsError('permission-denied', 'Admin, Superintendent, or Owner access is required.');
+  };
+
   // ───────────────── Callables ─────────────────
 
   // Owner bootstrap (one-time)
@@ -475,6 +539,416 @@ async function computeClaims(uid, email) {
       console.warn('[autoEnd] scan failed', e);
     }
     if (ended.length) console.log('[autoEnd] ended sessions:', ended.join(','));
+  });
+
+  // ───────────────── Aftercare ─────────────────
+  exports.getAftercareAdminData = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    await requireAftercareManager(req, orgId, schoolId);
+
+    const [settingsSnap, familiesSnap] = await Promise.all([
+      aftercarePath(orgId, schoolId, 'settings', 'aftercare').get(),
+      db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareFamilies`).get(),
+    ]);
+    const settings = normalizeAftercareSettings(settingsSnap.data() || {});
+    const families = familiesSnap.docs
+      .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
+      .filter((family) => family.active !== false)
+      .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')));
+    return { ok: true, settings, families };
+  });
+
+  exports.saveAftercareSettings = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    await requireAftercareManager(req, orgId, schoolId);
+    const settings = normalizeAftercareSettings(req.data?.settings || {});
+    await aftercarePath(orgId, schoolId, 'settings', 'aftercare').set({
+      ...settings,
+      updatedAt: ts(),
+      updatedBy: actorFrom(req),
+    }, { merge: true });
+    return { ok: true, settings };
+  });
+
+  exports.saveAftercareFamily = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    await requireAftercareManager(req, orgId, schoolId);
+    const familyId = req.data?.familyId ? cleanDocId(req.data.familyId, 'familyId') : db.collection('_').doc().id;
+    const name = String(req.data?.name || '').trim().slice(0, 100);
+    if (!Array.isArray(req.data?.studentIds)) throw new HttpsError('invalid-argument', 'studentIds must be an array.');
+    const studentIds = uniq(req.data.studentIds.map((id) => cleanDocId(id, 'studentId')));
+    if (!name) throw new HttpsError('invalid-argument', 'Family name is required.');
+    if (studentIds.length > 50) throw new HttpsError('invalid-argument', 'A family may contain at most 50 students.');
+
+    const familyRef = aftercarePath(orgId, schoolId, 'aftercareFamilies', familyId);
+    const result = await db.runTransaction(async (tx) => {
+      const familySnap = await tx.get(familyRef);
+      const previousIds = Array.isArray(familySnap.data()?.studentIds) ? familySnap.data().studentIds : [];
+      const allIds = uniq([...previousIds, ...studentIds]);
+      const studentRefs = allIds.map((studentId) => aftercarePath(orgId, schoolId, 'students', studentId));
+      const mappingRefs = allIds.map((studentId) => aftercarePath(orgId, schoolId, 'aftercareStudentFamilies', studentId));
+      const studentSnaps = studentRefs.length ? await tx.getAll(...studentRefs) : [];
+      const mappingSnaps = mappingRefs.length ? await tx.getAll(...mappingRefs) : [];
+      const studentById = new Map(studentSnaps.map((snap) => [snap.id, snap]));
+
+      for (let index = 0; index < allIds.length; index++) {
+        const studentId = allIds[index];
+        const mapping = mappingSnaps[index].data() || {};
+        if (studentIds.includes(studentId) && !studentById.get(studentId)?.exists) {
+          throw new HttpsError('not-found', `Student ${studentId} was not found.`);
+        }
+        if (studentIds.includes(studentId) && mapping.familyId && mapping.familyId !== familyId) {
+          throw new HttpsError('already-exists', 'One or more students already belong to another billing family.');
+        }
+      }
+
+      const students = studentIds.map((studentId) => {
+        const data = studentById.get(studentId).data() || {};
+        return {
+          studentId,
+          name: data.name || [data.firstName, data.lastName].filter(Boolean).join(' ') || studentId,
+          classId: data.classId || null,
+        };
+      });
+      const familyPayload = {
+        name,
+        studentIds,
+        students,
+        active: true,
+        updatedAt: ts(),
+        updatedBy: actorFrom(req),
+      };
+      if (!familySnap.exists) familyPayload.createdAt = ts();
+      tx.set(familyRef, familyPayload, { merge: true });
+
+      for (let index = 0; index < allIds.length; index++) {
+        const studentId = allIds[index];
+        const mappingRef = mappingRefs[index];
+        const mapping = mappingSnaps[index].data() || {};
+        if (studentIds.includes(studentId)) {
+          tx.set(mappingRef, { familyId, familyName: name, updatedAt: ts() }, { merge: true });
+        } else if (mapping.familyId === familyId) {
+          tx.delete(mappingRef);
+        }
+      }
+      return { familyId, name, studentIds, students };
+    });
+    return { ok: true, family: result };
+  });
+
+  exports.archiveAftercareFamily = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const familyId = cleanDocId(req.data?.familyId, 'familyId');
+    await requireAftercareManager(req, orgId, schoolId);
+    const familyRef = aftercarePath(orgId, schoolId, 'aftercareFamilies', familyId);
+    await db.runTransaction(async (tx) => {
+      const familySnap = await tx.get(familyRef);
+      if (!familySnap.exists) throw new HttpsError('not-found', 'Billing family not found.');
+      const studentIds = Array.isArray(familySnap.get('studentIds')) ? familySnap.get('studentIds') : [];
+      const mappingRefs = studentIds.map((studentId) => aftercarePath(orgId, schoolId, 'aftercareStudentFamilies', studentId));
+      const mappingSnaps = mappingRefs.length ? await tx.getAll(...mappingRefs) : [];
+      tx.update(familyRef, { active: false, archivedAt: ts(), updatedAt: ts(), updatedBy: actorFrom(req) });
+      mappingSnaps.forEach((mappingSnap, index) => {
+        if (mappingSnap.get('familyId') === familyId) tx.delete(mappingRefs[index]);
+      });
+    });
+    return { ok: true };
+  });
+
+  exports.clockInAftercareStudent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const studentId = cleanDocId(req.data?.studentId, 'studentId');
+    await requireAftercareOperator(req, orgId, schoolId);
+
+    const now = new Date();
+    const settingsRef = aftercarePath(orgId, schoolId, 'settings', 'aftercare');
+    const studentRef = aftercarePath(orgId, schoolId, 'students', studentId);
+    const mappingRef = aftercarePath(orgId, schoolId, 'aftercareStudentFamilies', studentId);
+    const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
+    const sessionRef = db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).doc();
+
+    const result = await db.runTransaction(async (tx) => {
+      const [settingsSnap, studentSnap, mappingSnap, attendanceSnap] = await tx.getAll(
+        settingsRef, studentRef, mappingRef, attendanceRef
+      );
+      if (!studentSnap.exists) throw new HttpsError('not-found', 'Student not found.');
+      const settings = normalizeAftercareSettings(settingsSnap.data() || {});
+      const day = getServiceDay(now, settings.timezone, settings.cutoffLocalTime);
+      if (day.isAfterCutoff) throw new HttpsError('failed-precondition', 'Aftercare clock-in is closed for today.');
+      if (attendanceSnap.get('status') === 'in' && attendanceSnap.get('openSessionId')) {
+        return { alreadyOpen: true, sessionId: attendanceSnap.get('openSessionId') };
+      }
+
+      const dayRef = aftercarePath(orgId, schoolId, 'aftercareServiceDays', day.serviceDate);
+      const daySnap = await tx.get(dayRef);
+      const daySettings = daySnap.exists ? normalizeAftercareSettings(daySnap.data()) : settings;
+      const familyId = mappingSnap.get('familyId') || null;
+      let familyName = mappingSnap.get('familyName') || null;
+      if (familyId) {
+        const familySnap = await tx.get(aftercarePath(orgId, schoolId, 'aftercareFamilies', familyId));
+        if (familySnap.exists && familySnap.get('active') !== false) familyName = familySnap.get('name') || familyName;
+      }
+      const student = studentSnap.data() || {};
+      const studentName = student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || studentId;
+      const actor = actorFrom(req);
+      const cutoffAt = Timestamp.fromDate(day.cutoffAt);
+      const clockInAt = Timestamp.fromDate(now);
+
+      if (!daySnap.exists) {
+        tx.create(dayRef, {
+          serviceDate: day.serviceDate,
+          billingMonth: day.billingMonth,
+          ...daySettings,
+          cutoffAt,
+          createdAt: ts(),
+          createdBy: actor,
+        });
+      }
+      tx.create(sessionRef, {
+        studentId,
+        studentName,
+        classId: student.classId || null,
+        familyId,
+        familyName,
+        serviceDate: day.serviceDate,
+        billingMonth: day.billingMonth,
+        timezone: daySettings.timezone,
+        singleRateCents: daySettings.singleRateCents,
+        familyRateCents: daySettings.familyRateCents,
+        clockInAt,
+        clockOutAt: null,
+        autoCloseAt: cutoffAt,
+        status: 'open',
+        openedBy: actor,
+        createdAt: ts(),
+        updatedAt: ts(),
+      });
+      tx.set(attendanceRef, {
+        studentId,
+        studentName,
+        status: 'in',
+        openSessionId: sessionRef.id,
+        serviceDate: day.serviceDate,
+        clockedInAt: clockInAt,
+        clockedOutAt: null,
+        intervalCount: attendanceSnap.get('serviceDate') === day.serviceDate
+          ? Number(attendanceSnap.get('intervalCount') || 0) + 1
+          : 1,
+        updatedAt: ts(),
+        updatedBy: actor,
+      }, { merge: true });
+      return { alreadyOpen: false, sessionId: sessionRef.id, serviceDate: day.serviceDate };
+    });
+    return { ok: true, ...result };
+  });
+
+  exports.clockOutAftercareStudent = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const studentId = cleanDocId(req.data?.studentId, 'studentId');
+    await requireAftercareOperator(req, orgId, schoolId);
+    const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
+    const now = Timestamp.now();
+
+    const result = await db.runTransaction(async (tx) => {
+      const attendanceSnap = await tx.get(attendanceRef);
+      const sessionId = attendanceSnap.get('openSessionId');
+      if (attendanceSnap.get('status') !== 'in' || !sessionId) return { alreadyClosed: true };
+      const sessionRef = aftercarePath(orgId, schoolId, 'aftercareSessions', sessionId);
+      const sessionSnap = await tx.get(sessionRef);
+      if (!sessionSnap.exists || sessionSnap.get('status') !== 'open') {
+        tx.set(attendanceRef, { status: 'out', openSessionId: null, updatedAt: ts() }, { merge: true });
+        return { alreadyClosed: true, sessionId };
+      }
+      const cutoffAt = sessionSnap.get('autoCloseAt');
+      const clockOutAt = cutoffAt && cutoffAt.toMillis() < now.toMillis() ? cutoffAt : now;
+      const closeMethod = clockOutAt.toMillis() < now.toMillis() ? 'cutoff' : 'manual';
+      tx.update(sessionRef, {
+        clockOutAt,
+        closedAt: ts(),
+        status: 'closed',
+        closeMethod,
+        closedBy: actorFrom(req),
+        updatedAt: ts(),
+      });
+      tx.set(attendanceRef, {
+        status: 'out',
+        openSessionId: null,
+        lastSessionId: sessionId,
+        clockedOutAt: clockOutAt,
+        updatedAt: ts(),
+        updatedBy: actorFrom(req),
+      }, { merge: true });
+      return {
+        alreadyClosed: false,
+        sessionId,
+        durationMilliseconds: Math.max(0, clockOutAt.toMillis() - sessionSnap.get('clockInAt').toMillis()),
+      };
+    });
+    return { ok: true, ...result };
+  });
+
+  exports.getAftercareReport = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const mode = req.data?.mode === 'daily' ? 'daily' : 'monthly';
+    const period = String(req.data?.period || '').trim();
+    const validPeriod = mode === 'daily' ? /^\d{4}-\d{2}-\d{2}$/.test(period) : /^\d{4}-\d{2}$/.test(period);
+    if (!validPeriod) throw new HttpsError('invalid-argument', `period must match ${mode === 'daily' ? 'YYYY-MM-DD' : 'YYYY-MM'}.`);
+    await requireAftercareManager(req, orgId, schoolId);
+
+    const field = mode === 'daily' ? 'serviceDate' : 'billingMonth';
+    const snapshot = await db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`)
+      .where(field, '==', period).get();
+    const closedSessions = [];
+    let openSessionCount = 0;
+    let autoClosedCount = 0;
+    snapshot.docs.forEach((sessionSnap) => {
+      const session = { id: sessionSnap.id, ...sessionSnap.data() };
+      if (session.status === 'open' || !session.clockOutAt) {
+        openSessionCount++;
+      } else {
+        if (session.closeMethod === 'auto') autoClosedCount++;
+        closedSessions.push(session);
+      }
+    });
+
+    const groups = new Map();
+    closedSessions.forEach((session) => {
+      const familyKey = session.familyId || `student:${session.studentId}`;
+      const key = `${session.serviceDate}|${familyKey}`;
+      if (!groups.has(key)) groups.set(key, {
+        serviceDate: session.serviceDate,
+        familyId: session.familyId || null,
+        familyKey,
+        familyName: session.familyName || session.studentName,
+        singleRateCents: Number(session.singleRateCents ?? AFTERCARE_DEFAULTS.singleRateCents),
+        familyRateCents: Number(session.familyRateCents ?? AFTERCARE_DEFAULTS.familyRateCents),
+        sessions: [],
+        studentNames: {},
+      });
+      const group = groups.get(key);
+      group.sessions.push(session);
+      group.studentNames[session.studentId] = session.studentName;
+    });
+
+    const dayRows = Array.from(groups.values()).map((group) => {
+      const calculation = calculateFamilyDay(group.sessions, group);
+      const students = Object.entries(calculation.studentMilliseconds).map(([studentId, milliseconds]) => ({
+        studentId,
+        studentName: group.studentNames[studentId] || studentId,
+        milliseconds,
+        duration: formatDuration(milliseconds),
+        decimalHours: decimalHours(milliseconds),
+      })).sort((left, right) => left.studentName.localeCompare(right.studentName));
+      return {
+        serviceDate: group.serviceDate,
+        familyId: group.familyId,
+        familyKey: group.familyKey,
+        familyName: group.familyName,
+        singleRateCents: group.singleRateCents,
+        familyRateCents: group.familyRateCents,
+        singleMilliseconds: calculation.singleMilliseconds,
+        singleDuration: formatDuration(calculation.singleMilliseconds),
+        singleDecimalHours: decimalHours(calculation.singleMilliseconds),
+        familyMilliseconds: calculation.familyMilliseconds,
+        familyDuration: formatDuration(calculation.familyMilliseconds),
+        familyDecimalHours: decimalHours(calculation.familyMilliseconds),
+        totalAmountCents: calculation.totalAmountCents,
+        singleAmountCents: calculation.singleAmountCents,
+        familyAmountCents: calculation.familyAmountCents,
+        students,
+      };
+    }).sort((left, right) => left.serviceDate.localeCompare(right.serviceDate) || left.familyName.localeCompare(right.familyName));
+
+    const familyTotals = new Map();
+    dayRows.forEach((row) => {
+      if (!familyTotals.has(row.familyKey)) familyTotals.set(row.familyKey, {
+        familyId: row.familyId,
+        familyKey: row.familyKey,
+        familyName: row.familyName,
+        singleMilliseconds: 0,
+        familyMilliseconds: 0,
+        singleAmountCents: 0,
+        familyAmountCents: 0,
+        totalAmountCents: 0,
+        days: 0,
+      });
+      const total = familyTotals.get(row.familyKey);
+      total.singleMilliseconds += row.singleMilliseconds;
+      total.familyMilliseconds += row.familyMilliseconds;
+      total.singleAmountCents += row.singleAmountCents;
+      total.familyAmountCents += row.familyAmountCents;
+      total.totalAmountCents += row.totalAmountCents;
+      total.days++;
+    });
+    const familyRows = Array.from(familyTotals.values()).map((row) => ({
+      ...row,
+      singleDuration: formatDuration(row.singleMilliseconds),
+      singleDecimalHours: decimalHours(row.singleMilliseconds),
+      familyDuration: formatDuration(row.familyMilliseconds),
+      familyDecimalHours: decimalHours(row.familyMilliseconds),
+    })).sort((left, right) => left.familyName.localeCompare(right.familyName));
+
+    return { ok: true, mode, period, openSessionCount, autoClosedCount, dayRows, familyRows };
+  });
+
+  exports.autoCloseAftercareSessions = onSchedule({
+    schedule: 'every 5 minutes',
+    region: 'us-central1',
+    timeZone: 'UTC',
+    minInstances: 0,
+  }, async () => {
+    const due = await db.collectionGroup('aftercareSessions')
+      .where('status', '==', 'open')
+      .where('autoCloseAt', '<=', Timestamp.now())
+      .get();
+    let closed = 0;
+    for (const sessionDoc of due.docs) {
+      await db.runTransaction(async (tx) => {
+        const sessionSnap = await tx.get(sessionDoc.ref);
+        if (!sessionSnap.exists || sessionSnap.get('status') !== 'open') return;
+        const segments = sessionDoc.ref.path.split('/');
+        const orgId = segments[1];
+        const schoolId = segments[3];
+        const studentId = sessionSnap.get('studentId');
+        const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
+        const attendanceSnap = await tx.get(attendanceRef);
+        const cutoffAt = sessionSnap.get('autoCloseAt');
+        tx.update(sessionDoc.ref, {
+          clockOutAt: cutoffAt,
+          closedAt: ts(),
+          status: 'closed',
+          closeMethod: 'auto',
+          closedBy: null,
+          updatedAt: ts(),
+        });
+        if (attendanceSnap.get('openSessionId') === sessionDoc.id) {
+          tx.set(attendanceRef, {
+            status: 'out',
+            openSessionId: null,
+            lastSessionId: sessionDoc.id,
+            clockedOutAt: cutoffAt,
+            updatedAt: ts(),
+            updatedBy: { uid: 'system', email: null },
+          }, { merge: true });
+        }
+        closed++;
+      });
+    }
+    if (closed) console.log(`[aftercare] auto-closed ${closed} session(s)`);
   });
 
   // Add a school (owner or superintendent of that org)

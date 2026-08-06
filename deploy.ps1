@@ -48,7 +48,12 @@ $src = Get-Content $indexPath -Raw
 $exports = Select-String -InputObject $src -Pattern "exports\\.(\\w+)\s*=\s*onCall" -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
 Write-Host "Detected callable exports: $($exports -join ', ')" -ForegroundColor Gray
 
-$target = @('setTeacherClasses','listSchoolClasses','listSchoolMembers')
+$target = @(
+  'setTeacherClasses','listSchoolClasses','listSchoolMembers',
+  'getAftercareAdminData','saveAftercareSettings','saveAftercareFamily',
+  'archiveAftercareFamily','clockInAftercareStudent','clockOutAftercareStudent',
+  'getAftercareReport','autoCloseAftercareSessions'
+)
 $present = $exports | Where-Object { $_ -in $target }
 
 if ($All -or $present.Count -eq 0) {
@@ -66,6 +71,6 @@ Write-Host "Deployment complete." -ForegroundColor Green
 
 # 7. Quick post-deploy verification: list functions
 Write-Host "Listing deployed functions (filtered)" -ForegroundColor Cyan
-firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers"
+firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers|getAftercareAdminData|saveAftercareSettings|saveAftercareFamily|archiveAftercareFamily|clockInAftercareStudent|clockOutAftercareStudent|getAftercareReport|autoCloseAftercareSessions"
 
 Write-Host "If functions show as 'ACTIVE', you can hard reload the Roles page now." -ForegroundColor Green

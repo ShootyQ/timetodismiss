@@ -16,6 +16,10 @@
     "redirects": [
       { "source": "/oldindex.html", "destination": "/index.html", "type": 301 }
     ],
+    "rewrites": [
+      { "source": "/aftercare", "destination": "/aftercare.html" },
+      { "source": "/aftercare-manage", "destination": "/aftercare-admin.html" }
+    ],
     "headers": [
       {
         "source": "**/*.{html,htm}",
@@ -34,7 +38,7 @@
   },
   "functions": {
     "source": "functions",
-    "runtime": "nodejs18"
+    "runtime": "nodejs20"
   },
   "firestore": {
     "rules": "firestore.rules",
