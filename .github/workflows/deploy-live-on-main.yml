@@ -1,4 +1,4 @@
-name: Deploy to Firebase Hosting (live)
+name: Deploy live site to GitHub Pages
 
 on:
   push:
@@ -7,27 +7,31 @@ on:
 
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
-  deploy:
+  deploy-pages:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v4
         with:
-          node-version: '22'
+          path: .
 
-      - name: Install Firebase Tools
-        run: npm i -g firebase-tools
-
-      - name: Deploy to Firebase Hosting (live)
-        env:
-          FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER }}
-        run: |
-          echo "Using service account auth via GOOGLE_APPLICATION_CREDENTIALS"
-          export GOOGLE_APPLICATION_CREDENTIALS=$RUNNER_TEMP/firebase_key.json
-          echo "$FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER" > "$GOOGLE_APPLICATION_CREDENTIALS"
-          firebase --project dismissalcaller deploy --only hosting:dismissalcaller
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

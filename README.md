@@ -3,7 +3,9 @@ Dismissal Platform for Schools
 
 ## Deployments
 
-This repo uses GitHub Actions to deploy to Firebase Hosting.
+The live website is hosted by GitHub Pages. Every push to `main` runs
+`.github/workflows/deploy-live-on-main.yml`, publishes the repository root, and
+serves it at https://timetodismiss.com using the root `CNAME` file.
 
 - Dev previews: on pushes to `aftercare-dev` or manual runs
 	- Workflow: `.github/workflows/deploy-dev-hosting.yml`
@@ -14,19 +16,24 @@ This repo uses GitHub Actions to deploy to Firebase Hosting.
 
 - Production: on pushes to `main` or manual runs
 	- Workflow: `.github/workflows/deploy-live-on-main.yml`
-	- Deploys to the live site `https://dismissalcaller.web.app` (and custom domains if configured)
+	- Deploys the static site to GitHub Pages at https://timetodismiss.com
+	- Firebase continues to provide Auth, Firestore, and Functions; Firebase Hosting is not the production frontend
 
 ### Prerequisites
 
-Add the following repository secret in GitHub → Settings → Secrets and variables → Actions:
+In GitHub → Settings → Pages, set **Source** to **GitHub Actions**. No deployment
+secret is required for the live GitHub Pages workflow.
 
-- `FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER`: contents of a Firebase service account JSON key with role `Firebase Hosting Admin` on project `dismissalcaller`.
+The Firebase service account secret is required only for Firebase preview and
+Functions workflows:
+
+- `FIREBASE_SERVICE_ACCOUNT_DISMISSALCALLER`: contents of a Firebase service account JSON key with the permissions required by the selected Firebase workflow.
 
 ### Manually run a deploy
 
 1) Go to the Actions tab.
-2) Choose the workflow (Dev or Live).
-3) Click “Run workflow” and select a branch (e.g., `aftercare-dev` for previews or `main` for live).
+2) Choose `Deploy live site to GitHub Pages`.
+3) Click “Run workflow” and select `main`.
 
 ### Verify dev preview
 
@@ -44,7 +51,10 @@ For a local clone, the equivalent PowerShell command is `./deploy.ps1 -ProjectId
 
 ### Hosting configuration
 
-`firebase.json` includes a Hosting target with:
+GitHub Pages publishes the repository root. `CNAME` maps the deployment to
+`timetodismiss.com`, and `.nojekyll` keeps the site in plain static-file mode.
+
+`firebase.json` remains available for Firebase preview hosting and includes:
 
 - site: `dismissalcaller`
 - public: `.` (serves static files from repo root)
