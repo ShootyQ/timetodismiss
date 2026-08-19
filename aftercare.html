@@ -16,6 +16,10 @@
     .ac-tools { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
     .ac-tools input, .ac-tools select { min-height:42px; padding:8px 10px; border:1px solid var(--ac-line); border-radius:8px; background:#fff; font-size:1rem; }
     .ac-tools input { min-width:220px; }
+    .ac-view { display:inline-flex; min-height:42px; border:1px solid var(--ac-line); border-radius:8px; overflow:hidden; background:#fff; }
+    .ac-view button { padding:8px 12px; border:0; border-right:1px solid var(--ac-line); background:#fff; color:var(--ac-ink); font:inherit; font-weight:700; cursor:pointer; }
+    .ac-view button:last-child { border-right:0; }
+    .ac-view button[aria-pressed="true"] { background:var(--ac-blue); color:#fff; }
     .ac-link, .ac-button { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 14px; border:1px solid var(--ac-blue); border-radius:8px; background:var(--ac-blue); color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
     .ac-link.secondary, .ac-button.secondary { background:#fff; color:var(--ac-blue); }
     .ac-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
@@ -43,6 +47,15 @@
     <div class="ac-tools" aria-label="Aftercare filters">
       <input id="acSearch" type="search" placeholder="Search students" autocomplete="off">
       <select id="acClass"><option value="">All classes</option></select>
+      <div class="ac-view" aria-label="Roster view">
+        <button id="acViewAll" type="button" aria-pressed="true">See all</button>
+        <button id="acViewCheckedIn" type="button" aria-pressed="false">Checked in</button>
+      </div>
+      <select id="acSort" aria-label="Sort students">
+        <option value="last">Last name</option>
+        <option value="first">First name</option>
+        <option value="grade">Grade</option>
+      </select>
     </div>
     <p id="acNotice" role="status" aria-live="polite"></p>
     <section id="acGrid" class="ac-grid" aria-live="polite"></section>
@@ -51,19 +64,33 @@
     import { init, onStudents, getClasses, onAftercareAttendance, getAftercareSettings, clockInAftercareStudent, clockOutAftercareStudent } from '/app.js?v=aftercare-2';
     await init();
 
-    const state = { students: [], attendance: new Map(), query: '', classId: '', cutoff: null };
+    const state = { students: [], attendance: new Map(), query: '', classId: '', view: 'all', sort: 'last', classOrder: new Map(), cutoff: null };
     const grid = document.querySelector('#acGrid');
     const notice = document.querySelector('#acNotice');
     const search = document.querySelector('#acSearch');
     const classSelect = document.querySelector('#acClass');
+    const viewAllButton = document.querySelector('#acViewAll');
+    const viewCheckedInButton = document.querySelector('#acViewCheckedIn');
+    const sortSelect = document.querySelector('#acSort');
 
     function nameOf(student) { return student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || student.id; }
+    function nameParts(student) { const parts = nameOf(student).trim().split(/\s+/); return { first: student.firstName || parts[0] || '', last: student.lastName || parts.slice(1).join(' ') || parts[0] || '' }; }
     function timeOf(value) { try { if (value?.toDate) return value.toDate().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); if (value) return new Date(value).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }); } catch {} return ''; }
     function rank(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return 4; if (!attendance) return ['waiting','called','en_route'].includes(student.status) ? (student.status === 'waiting' ? 1 : 2) : 3; return 3; }
     function statusText(student) { const attendance = state.attendance.get(student.id); if (attendance?.status === 'in') return `In since ${timeOf(attendance.clockedInAt)}`; if (attendance?.status === 'out') return `Completed${timeOf(attendance.clockedOutAt) ? ` at ${timeOf(attendance.clockedOutAt)}` : ''}`; if (student.status === 'waiting') return 'Waiting for pickup'; if (student.status === 'called') return 'Called'; if (student.status === 'en_route') return 'En route'; return student.status || 'Available'; }
+    function compareNames(a, b, primary = 'last') {
+      const left = nameParts(a); const right = nameParts(b);
+      const firstKey = primary === 'first' ? 'first' : 'last';
+      const secondKey = primary === 'first' ? 'last' : 'first';
+      return left[firstKey].localeCompare(right[firstKey]) || left[secondKey].localeCompare(right[secondKey]) || nameOf(a).localeCompare(nameOf(b));
+    }
+    function sortRows(a, b) {
+      if (state.sort === 'grade') return (state.classOrder.get(a.classId) ?? Number.MAX_SAFE_INTEGER) - (state.classOrder.get(b.classId) ?? Number.MAX_SAFE_INTEGER) || (a.className || a.classId || '').localeCompare(b.className || b.classId || '') || compareNames(a, b);
+      return compareNames(a, b, state.sort);
+    }
     function render() {
       const query = state.query.toLowerCase();
-      const rows = state.students.filter((student) => (!state.classId || student.classId === state.classId) && (!query || nameOf(student).toLowerCase().includes(query))).filter((student) => !['picked_up','absent','dismissed','home'].includes(student.status)).sort((a,b) => rank(a)-rank(b) || nameOf(a).localeCompare(nameOf(b)));
+      const rows = state.students.filter((student) => (!state.classId || student.classId === state.classId) && (!query || nameOf(student).toLowerCase().includes(query))).filter((student) => !['picked_up','absent','dismissed','home'].includes(student.status)).filter((student) => state.view !== 'checked-in' || state.attendance.get(student.id)?.status === 'in').sort(sortRows);
       grid.replaceChildren();
       if (!rows.length) { const empty = document.createElement('div'); empty.className = 'ac-empty'; empty.textContent = 'No students match the current view.'; grid.append(empty); return; }
       rows.forEach((student) => {
@@ -87,7 +114,7 @@
     async function bootstrap(claims) {
       if (!claims || !(claims.owner || claims.superintendent || claims.admin || claims.caller || claims.viewer)) { location.replace('/index.html#login'); return; }
       try {
-        const classes = await getClasses(); classes.forEach((item) => { const option = document.createElement('option'); option.value = item.id; option.textContent = item.name || item.id; classSelect.append(option); });
+        const classes = await getClasses(); classes.forEach((item, index) => { state.classOrder.set(item.id, item.order ?? index); const option = document.createElement('option'); option.value = item.id; option.textContent = item.name || item.id; classSelect.append(option); });
         await getAftercareSettings();
         onStudents(null, (students) => { state.students = students; render(); });
         onAftercareAttendance((rows) => { state.attendance = new Map(rows.map((row) => [row.id, row])); render(); });
@@ -97,6 +124,9 @@
     const claims = window.SD?.claims || window.SD?.userClaims; if (claims) bootstrap(claims); else window.addEventListener('sd:claims-ready', (event) => bootstrap(event.detail?.claims || event.detail || window.SD?.claims || {}), { once:true });
     search.addEventListener('input', () => { state.query = search.value.trim(); render(); });
     classSelect.addEventListener('change', () => { state.classId = classSelect.value; render(); });
+    viewAllButton.addEventListener('click', () => { state.view = 'all'; viewAllButton.setAttribute('aria-pressed', 'true'); viewCheckedInButton.setAttribute('aria-pressed', 'false'); render(); });
+    viewCheckedInButton.addEventListener('click', () => { state.view = 'checked-in'; viewAllButton.setAttribute('aria-pressed', 'false'); viewCheckedInButton.setAttribute('aria-pressed', 'true'); render(); });
+    sortSelect.addEventListener('change', () => { state.sort = sortSelect.value; render(); });
   </script>
 </body>
 </html>
