@@ -85,6 +85,10 @@
       return left[firstKey].localeCompare(right[firstKey]) || left[secondKey].localeCompare(right[secondKey]) || nameOf(a).localeCompare(nameOf(b));
     }
     function sortRows(a, b) {
+      if (state.view === 'all') {
+        const checkedInDifference = Number(state.attendance.get(a.id)?.status === 'in') - Number(state.attendance.get(b.id)?.status === 'in');
+        if (checkedInDifference) return checkedInDifference;
+      }
       if (state.sort === 'grade') return (state.classOrder.get(a.classId) ?? Number.MAX_SAFE_INTEGER) - (state.classOrder.get(b.classId) ?? Number.MAX_SAFE_INTEGER) || (a.className || a.classId || '').localeCompare(b.className || b.classId || '') || compareNames(a, b);
       return compareNames(a, b, state.sort);
     }
