@@ -42,7 +42,7 @@
   <main class="ac-shell">
     <header class="ac-head">
       <div><h1>Aftercare</h1><p>Tap a student to clock them in or out.</p></div>
-      <a class="ac-link secondary" id="acManage" href="/aftercare-admin.html">Manage aftercare</a>
+      <a class="ac-link secondary" id="acManage" href="/aftercare-admin.html" hidden>Manage aftercare</a>
     </header>
     <div class="ac-tools" aria-label="Aftercare filters">
       <input id="acSearch" type="search" placeholder="Search students" autocomplete="off">
@@ -69,6 +69,7 @@
     const notice = document.querySelector('#acNotice');
     const search = document.querySelector('#acSearch');
     const classSelect = document.querySelector('#acClass');
+    const manageLink = document.querySelector('#acManage');
     const viewAllButton = document.querySelector('#acViewAll');
     const viewCheckedInButton = document.querySelector('#acViewCheckedIn');
     const sortSelect = document.querySelector('#acSort');
@@ -117,6 +118,7 @@
     }
     async function bootstrap(claims) {
       if (!claims || !(claims.owner || claims.superintendent || claims.admin || claims.caller || claims.viewer)) { location.replace('/index.html#login'); return; }
+      manageLink.hidden = !(claims.owner || claims.superintendent || claims.admin);
       try {
         const classes = await getClasses(); classes.forEach((item, index) => { state.classOrder.set(item.id, item.order ?? index); const option = document.createElement('option'); option.value = item.id; option.textContent = item.name || item.id; classSelect.append(option); });
         await getAftercareSettings();

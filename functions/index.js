@@ -905,6 +905,90 @@ async function computeClaims(uid, email) {
     return { ok: true, mode, period, openSessionCount, autoClosedCount, dayRows, familyRows };
   });
 
+  exports.getAftercareDaySessions = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const serviceDate = String(req.data?.serviceDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) throw new HttpsError('invalid-argument', 'serviceDate must match YYYY-MM-DD.');
+    await requireAftercareManager(req, orgId, schoolId);
+    const snapshot = await db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`)
+      .where('serviceDate', '==', serviceDate).get();
+    const sessions = snapshot.docs.map((sessionSnap) => {
+      const session = sessionSnap.data();
+      return {
+        id: sessionSnap.id,
+        studentId: session.studentId,
+        studentName: session.studentName || session.studentId,
+        classId: session.classId || null,
+        status: session.status,
+        clockInAt: session.clockInAt?.toDate().toISOString() || null,
+        clockOutAt: session.clockOutAt?.toDate().toISOString() || null,
+        closeMethod: session.closeMethod || null,
+      };
+    }).sort((left, right) => left.studentName.localeCompare(right.studentName) || String(left.clockInAt || '').localeCompare(String(right.clockInAt || '')));
+    return { ok: true, serviceDate, sessions };
+  });
+
+  exports.updateAftercareSession = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const sessionId = cleanDocId(req.data?.sessionId, 'sessionId');
+    await requireAftercareManager(req, orgId, schoolId);
+    const clockIn = new Date(req.data?.clockInAt);
+    const clockOut = new Date(req.data?.clockOutAt);
+    if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOut.getTime()) || clockOut < clockIn) {
+      throw new HttpsError('invalid-argument', 'Clock-out time must be after clock-in time.');
+    }
+    const sessionRef = aftercarePath(orgId, schoolId, 'aftercareSessions', sessionId);
+    await db.runTransaction(async (tx) => {
+      const sessionSnap = await tx.get(sessionRef);
+      if (!sessionSnap.exists) throw new HttpsError('not-found', 'Aftercare session not found.');
+      const session = sessionSnap.data();
+      const clockInAt = Timestamp.fromDate(clockIn);
+      const clockOutAt = Timestamp.fromDate(clockOut);
+      tx.update(sessionRef, {
+        clockInAt,
+        clockOutAt,
+        status: 'closed',
+        closeMethod: 'corrected',
+        closedAt: ts(),
+        closedBy: actorFrom(req),
+        correctedAt: ts(),
+        correctedBy: actorFrom(req),
+        updatedAt: ts(),
+      });
+      const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', session.studentId);
+      const attendanceSnap = await tx.get(attendanceRef);
+      if (attendanceSnap.get('openSessionId') === sessionId) {
+        tx.set(attendanceRef, { status: 'out', openSessionId: null, lastSessionId: sessionId, clockedOutAt, updatedAt: ts(), updatedBy: actorFrom(req) }, { merge: true });
+      }
+    });
+    return { ok: true };
+  });
+
+  exports.deleteAftercareSession = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const sessionId = cleanDocId(req.data?.sessionId, 'sessionId');
+    await requireAftercareManager(req, orgId, schoolId);
+    const sessionRef = aftercarePath(orgId, schoolId, 'aftercareSessions', sessionId);
+    await db.runTransaction(async (tx) => {
+      const sessionSnap = await tx.get(sessionRef);
+      if (!sessionSnap.exists) throw new HttpsError('not-found', 'Aftercare session not found.');
+      const session = sessionSnap.data();
+      tx.delete(sessionRef);
+      const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', session.studentId);
+      const attendanceSnap = await tx.get(attendanceRef);
+      if (attendanceSnap.get('openSessionId') === sessionId) {
+        tx.set(attendanceRef, { status: 'out', openSessionId: null, updatedAt: ts(), updatedBy: actorFrom(req) }, { merge: true });
+      }
+    });
+    return { ok: true };
+  });
+
   exports.autoCloseAftercareSessions = onSchedule({
     schedule: 'every 5 minutes',
     region: 'us-central1',

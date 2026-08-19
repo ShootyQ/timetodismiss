@@ -809,6 +809,15 @@ export const archiveAftercareFamily = (familyId) =>
 export const getAftercareReport = ({ mode, period }) =>
   callAftercare('getAftercareReport', { mode, period });
 
+export const getAftercareDaySessions = (serviceDate) =>
+  callAftercare('getAftercareDaySessions', { serviceDate });
+
+export const updateAftercareSession = ({ sessionId, clockInAt, clockOutAt }) =>
+  callAftercare('updateAftercareSession', { sessionId, clockInAt, clockOutAt });
+
+export const deleteAftercareSession = (sessionId) =>
+  callAftercare('deleteAftercareSession', { sessionId });
+
 /* ------------------------------------------------------------------ */
 /* (Optional) Demo seeding                                             */
 /* ------------------------------------------------------------------ */
