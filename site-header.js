@@ -137,7 +137,7 @@
                 <img src="/caller.png" alt="Master Caller" width="26" height="26" decoding="async" style="display:block;" />
               </a>
               <a href="/aftercare.html" class="nav-icon" data-requires="viewer" aria-label="Aftercare" title="Aftercare">
-                <img src="/aftercareicon.png" alt="Aftercare" width="26" height="26" decoding="async" style="display:block;" />
+                <img src="/aftercare.png" alt="Aftercare" width="26" height="26" decoding="async" style="display:block;" />
               </a>
               <a href="/admin.html"   class="nav-icon" data-requires="admin" aria-label="Admin" title="Admin">
                 <img src="/admin.png" alt="Admin" width="26" height="26" decoding="async" style="display:block;" />
