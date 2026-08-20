@@ -685,7 +685,7 @@ async function computeClaims(uid, email) {
       const settings = normalizeAftercareSettings(settingsSnap.data() || {});
       const day = getServiceDay(now, settings.timezone, settings.cutoffLocalTime);
       if (day.isAfterCutoff) throw new HttpsError('failed-precondition', 'Aftercare clock-in is closed for today.');
-      if (attendanceSnap.get('status') === 'in' && attendanceSnap.get('openSessionId')) {
+      if (attendanceSnap.get('serviceDate') === day.serviceDate && attendanceSnap.get('status') === 'in' && attendanceSnap.get('openSessionId')) {
         return { alreadyOpen: true, sessionId: attendanceSnap.get('openSessionId') };
       }
 
