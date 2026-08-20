@@ -810,13 +810,26 @@ async function computeClaims(uid, email) {
     await requireAftercareManager(req, orgId, schoolId);
 
     const field = mode === 'daily' ? 'serviceDate' : 'billingMonth';
-    const snapshot = await db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`)
-      .where(field, '==', period).get();
+    const [snapshot, familiesSnapshot] = await Promise.all([
+      db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).where(field, '==', period).get(),
+      db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareFamilies`).get(),
+    ]);
+    const familyByStudentId = new Map();
+    familiesSnapshot.docs.forEach((familySnap) => {
+      const family = familySnap.data();
+      if (family.active === false) return;
+      (family.studentIds || []).forEach((studentId) => familyByStudentId.set(studentId, { id: familySnap.id, name: family.name || familySnap.id }));
+    });
     const closedSessions = [];
     let openSessionCount = 0;
     let autoClosedCount = 0;
     snapshot.docs.forEach((sessionSnap) => {
       const session = { id: sessionSnap.id, ...sessionSnap.data() };
+      const family = familyByStudentId.get(session.studentId);
+      if (family) {
+        session.familyId = family.id;
+        session.familyName = family.name;
+      }
       if (session.status === 'open' || !session.clockOutAt) {
         openSessionCount++;
       } else {
