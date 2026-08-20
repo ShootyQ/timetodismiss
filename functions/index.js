@@ -885,6 +885,7 @@ async function computeClaims(uid, email) {
         familyAmountCents: 0,
         totalAmountCents: 0,
         days: 0,
+        studentsById: new Map(),
       });
       const total = familyTotals.get(row.familyKey);
       total.singleMilliseconds += row.singleMilliseconds;
@@ -893,9 +894,20 @@ async function computeClaims(uid, email) {
       total.familyAmountCents += row.familyAmountCents;
       total.totalAmountCents += row.totalAmountCents;
       total.days++;
+      row.students.forEach((student) => {
+        const existing = total.studentsById.get(student.studentId) || { ...student, milliseconds: 0, days: 0 };
+        existing.milliseconds += student.milliseconds;
+        existing.days++;
+        total.studentsById.set(student.studentId, existing);
+      });
     });
-    const familyRows = Array.from(familyTotals.values()).map((row) => ({
+    const familyRows = Array.from(familyTotals.values()).map(({ studentsById, ...row }) => ({
       ...row,
+      students: Array.from(studentsById.values()).map((student) => ({
+        ...student,
+        duration: formatDuration(student.milliseconds),
+        decimalHours: decimalHours(student.milliseconds),
+      })).sort((left, right) => left.studentName.localeCompare(right.studentName)),
       singleDuration: formatDuration(row.singleMilliseconds),
       singleDecimalHours: decimalHours(row.singleMilliseconds),
       familyDuration: formatDuration(row.familyMilliseconds),
