@@ -45,7 +45,7 @@ jobs:
           key_file="$RUNNER_TEMP/firebase-service-account.json"
           printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$key_file"
           export GOOGLE_APPLICATION_CREDENTIALS="$key_file"
-          firebase --project "$PROJECT_ID" deploy --only functions:getAftercareAdminData,functions:saveAftercareSettings,functions:saveAftercareFamily,functions:archiveAftercareFamily,functions:clockInAftercareStudent,functions:clockOutAftercareStudent,functions:getAftercareReport,functions:autoCloseAftercareSessions
+          firebase --project "$PROJECT_ID" deploy --only functions:getAftercareAdminData,functions:saveAftercareSettings,functions:saveAftercareFamily,functions:archiveAftercareFamily,functions:clockInAftercareStudent,functions:clockOutAftercareStudent,functions:getAftercareReport,functions:getAftercareDaySessions,functions:updateAftercareSession,functions:deleteAftercareSession,functions:autoCloseAftercareSessions
 
       - name: Verify deployed Aftercare Functions
         env:
@@ -61,7 +61,8 @@ jobs:
           for name in \
             getAftercareAdminData saveAftercareSettings saveAftercareFamily \
             archiveAftercareFamily clockInAftercareStudent clockOutAftercareStudent \
-            getAftercareReport autoCloseAftercareSessions; do
+            getAftercareReport getAftercareDaySessions updateAftercareSession \
+            deleteAftercareSession autoCloseAftercareSessions; do
             if ! printf '%s\n' "$functions" | grep -q "$name"; then
               echo "Missing deployed function: $name"
               exit 1

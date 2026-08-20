@@ -6,7 +6,7 @@
 
 (function () {
   // Global build/version id for cache-busting across all pages
-  const BUILD_ID = '2026-07-16-HDR7';
+  const BUILD_ID = '2026-08-20-HDR8';
   // Google Analytics 4 Measurement ID
   const GA_MEASUREMENT_ID = 'G-2799S6XEND';
   // Safe mode flag (disables fancy animations / stagger / layered filters that have caused instability on some devices)
