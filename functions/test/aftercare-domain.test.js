@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { DateTime } = require('luxon');
 const {
+  aggregateAftercareReport,
   calculateFamilyDay,
   decimalHours,
   formatDuration,
@@ -85,4 +86,80 @@ test('resolves a school-local service day and cutoff across DST', () => {
 test('treats the exact local cutoff as closed', () => {
   const now = DateTime.fromISO('2026-07-10T18:00:00', { zone: 'America/Chicago' }).toJSDate();
   assert.equal(getServiceDay(now, 'America/Chicago', '18:00').isAfterCutoff, true);
+});
+
+test('reports use stored historical families instead of current student mappings', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'old', familyName: 'Old Family',
+    serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
+    singleRateCents: 1000, familyRateCents: 1600,
+  }], [{ id: 'new', name: 'New Family', students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+
+  assert.equal(result.familyRows.length, 1);
+  assert.equal(result.familyRows[0].familyId, 'old');
+  assert.equal(result.familyRows[0].familyName, 'Old Family');
+  assert.equal(result.familyRows[0].familyStatus, 'missing');
+  assert.deepEqual(result.familyRows[0].configuredStudents, []);
+  assert.deepEqual(result.familyRows[0].billedStudents.map((student) => student.studentName), ['Alex']);
+});
+
+test('keeps unlinked students as individual billing accounts', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'a', studentName: 'Alex', serviceDate: '2026-08-04',
+    status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [{ id: 'current', name: 'Current Family', students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+
+  assert.equal(result.familyRows[0].accountType, 'student');
+  assert.equal(result.familyRows[0].familyKey, 'student:a');
+  assert.equal(result.familyRows[0].familyName, 'Alex');
+});
+
+test('separates configured roster from students billed in the period', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'family', familyName: 'Example Family',
+    serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [{ id: 'family', name: 'Example Family', active: true, students: [
+    { studentId: 'a', name: 'Alex' }, { studentId: 'b', name: 'Blair' },
+  ] }], rates);
+
+  assert.deepEqual(result.familyRows[0].billedStudents.map((student) => student.studentName), ['Alex']);
+  assert.deepEqual(result.familyRows[0].configuredStudents.map((student) => student.studentName), ['Alex', 'Blair']);
+});
+
+test('excludes and flags open or invalid sessions without changing valid totals', () => {
+  const result = aggregateAftercareReport([
+    { id: 'valid', studentId: 'a', studentName: 'Alex', serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour },
+    { id: 'open', studentId: 'b', studentName: 'Blair', serviceDate: '2026-08-04', status: 'open', clockInAt: 0, clockOutAt: null },
+    { id: 'invalid', studentId: 'c', studentName: 'Casey', serviceDate: '2026-08-04', status: 'closed', clockInAt: hour, clockOutAt: 0 },
+  ], [], rates);
+
+  assert.equal(result.openSessionCount, 1);
+  assert.equal(result.exceptionCount, 2);
+  assert.equal(result.familyRows.length, 1);
+  assert.equal(result.familyRows[0].totalAmountCents, 1000);
+  assert.deepEqual(result.sessionRows.map((row) => row.included), [true, false, false]);
+});
+
+test('preserves archived family names and roster records for historical reports', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'archived', familyName: 'Former Family',
+    serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [{ id: 'archived', name: 'Renamed Family', active: false, students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+
+  assert.equal(result.familyRows[0].familyName, 'Former Family');
+  assert.equal(result.familyRows[0].familyStatus, 'archived');
+  assert.deepEqual(result.familyRows[0].exceptions, ['Historical family is archived']);
+  assert.deepEqual(result.familyRows[0].configuredStudents.map((student) => student.studentName), ['Alex']);
+});
+
+test('monthly account totals reconcile exactly to their daily rows', () => {
+  const result = aggregateAftercareReport([
+    { id: 'one', studentId: 'a', studentName: 'Alex', familyId: 'family', familyName: 'Example Family', serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour },
+    { id: 'two', studentId: 'a', studentName: 'Alex', familyId: 'family', familyName: 'Example Family', serviceDate: '2026-08-05', status: 'closed', clockInAt: 0, clockOutAt: 2 * hour },
+  ], [{ id: 'family', name: 'Example Family', active: true, students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+
+  const dailyTotal = result.dayRows.reduce((sum, row) => sum + row.totalAmountCents, 0);
+  assert.equal(result.familyRows[0].days, 2);
+  assert.equal(result.familyRows[0].totalAmountCents, dailyTotal);
+  assert.equal(dailyTotal, 3000);
 });

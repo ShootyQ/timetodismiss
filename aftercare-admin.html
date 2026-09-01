@@ -5,106 +5,77 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Aftercare Management | Time To Dismiss</title>
   <link rel="stylesheet" href="/styles.css?v=aftercare-1">
+  <link rel="stylesheet" href="/aftercare-admin.css?v=2026-09-01-1">
   <script src="/site-header.js?v=2026-08-20-HDR8" defer></script>
-  <style>
-    :root { --am-ink:#17212b; --am-muted:#66727d; --am-line:#d9e0e5; --am-blue:#1769aa; }
-    body { background:#f7f9fa; color:var(--am-ink); }
-    .am-shell { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
-    .am-head { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:20px; }
-    .am-head h1 { margin:0; font-size:clamp(1.6rem,4vw,2.3rem); }
-    .am-head p { margin:6px 0 0; color:var(--am-muted); }
-    .am-link, .am-button { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 14px; border:1px solid var(--am-blue); border-radius:8px; background:var(--am-blue); color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
-    .am-button.secondary, .am-link.secondary { background:#fff; color:var(--am-blue); }
-    .am-tabs { display:flex; gap:8px; margin-bottom:16px; border-bottom:1px solid var(--am-line); }
-    .am-tabs button { border:0; border-bottom:3px solid transparent; background:transparent; padding:12px 8px; font-weight:800; cursor:pointer; color:var(--am-muted); }
-    .am-tabs button[aria-selected="true"] { border-color:var(--am-blue); color:var(--am-blue); }
-    .am-panel { display:none; background:#fff; border:1px solid var(--am-line); border-radius:10px; padding:16px; }
-    .am-panel.active { display:block; }
-    .am-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; align-items:end; }
-    .am-field { display:grid; gap:5px; font-weight:700; }
-    .am-field input, .am-field select { min-height:40px; border:1px solid var(--am-line); border-radius:7px; padding:8px; font:inherit; font-weight:400; }
-    .am-field select[multiple] { min-height:150px; }
-    .am-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
-    .am-table { width:100%; border-collapse:collapse; margin-top:16px; }
-    .am-table th, .am-table td { border-bottom:1px solid var(--am-line); padding:10px 8px; text-align:left; vertical-align:top; }
-    .am-table th { color:var(--am-muted); font-size:.85rem; }
-    .am-table input { min-height:36px; max-width:180px; border:1px solid var(--am-line); border-radius:6px; padding:6px; font:inherit; }
-    .am-muted { color:var(--am-muted); }
-    .am-summary { display:flex; flex-wrap:wrap; gap:20px; margin-top:16px; }
-    .am-summary strong { display:block; font-size:1.3rem; }
-    .am-report-family { margin-top:20px; border:1px solid var(--am-line); border-radius:8px; overflow:hidden; }
-    .am-report-family summary { padding:14px; cursor:pointer; font-weight:800; }
-    .am-report-family[open] summary { border-bottom:1px solid var(--am-line); }
-    .am-report-detail { padding:0 14px 14px; }
-    .am-report-students { margin:12px 0; color:var(--am-muted); }
-    .am-report-total { font-weight:800; }
-    .am-report-heading { display:none; }
-    #amNotice { min-height:24px; margin:0 0 12px; color:var(--am-muted); }
-    @media (max-width:640px) { .am-head { align-items:stretch; flex-direction:column; } .am-table { font-size:.9rem; } }
-    @page { size:letter portrait; margin:0.55in; }
-    @media print {
-      body { background:#fff; color:#111; font-size:10pt; }
-      header.site-header, .am-head, .am-tabs, .am-actions, #amNotice, .am-panel:not([data-panel="reports"]) { display:none !important; }
-      .am-shell { max-width:none; margin:0; padding:0; }
-      .am-panel[data-panel="reports"] { display:block !important; border:0; padding:0; }
-      .am-panel[data-panel="reports"] > .am-form { display:none; }
-      .am-report-heading { display:flex; justify-content:space-between; align-items:end; gap:24px; padding-bottom:12px; border-bottom:2px solid #17212b; }
-      .am-report-heading h1 { margin:0; font-size:20pt; }
-      .am-report-heading p { margin:4px 0 0; color:#4b5563; }
-      .am-report-meta { text-align:right; white-space:nowrap; }
-      .am-summary { justify-content:space-between; gap:12px; margin:14px 0; padding:10px 0; border-bottom:1px solid #aeb7bf; }
-      .am-summary strong { font-size:14pt; }
-      .am-report-family { margin-top:14px; border-color:#aeb7bf; break-inside:avoid; page-break-inside:avoid; }
-      .am-report-family summary { padding:9px 10px; font-size:11pt; }
-      .am-report-detail { display:block !important; padding:0 10px 8px; }
-      .am-report-students { margin:8px 0; }
-      .am-table { margin-top:8px; font-size:9pt; }
-      .am-table th, .am-table td { padding:5px 6px; }
-      .am-table thead { display:table-header-group; }
-      .am-table tr { break-inside:avoid; page-break-inside:avoid; }
-    }
-  </style>
 </head>
 <body>
-  <main class="am-shell">
-    <header class="am-head"><div><h1>Aftercare management</h1><p>Rates, billing families, and reports.</p></div><a class="am-link secondary" href="/aftercare.html">Operator view</a></header>
-    <p id="amNotice" role="status" aria-live="polite"></p>
-    <nav class="am-tabs" aria-label="Aftercare management sections"><button type="button" data-tab="settings" aria-selected="true">Settings</button><button type="button" data-tab="families" aria-selected="false">Billing families</button><button type="button" data-tab="daily" aria-selected="false">Daily sessions</button><button type="button" data-tab="reports" aria-selected="false">Reports</button></nav>
-    <section class="am-panel active" data-panel="settings"><h2>School settings</h2><form id="amSettings" class="am-form"><label class="am-field">Single-child rate ($/hour)<input name="singleRate" type="number" min="0" step="0.01" required></label><label class="am-field">Sibling rate ($/hour)<input name="familyRate" type="number" min="0" step="0.01" required></label><label class="am-field">Daily cutoff<input name="cutoff" type="time" required></label><label class="am-field">Timezone<input name="timezone" required></label><div class="am-actions"><button class="am-button" type="submit">Save settings</button></div></form></section>
-    <section class="am-panel" data-panel="families"><h2>Billing family</h2><form id="amFamily" class="am-form"><label class="am-field">Family name<input name="name" required maxlength="100"></label><label class="am-field">Students<select name="studentIds" id="amStudents" multiple required></select></label><div class="am-actions"><button class="am-button" type="submit">Save family</button></div></form><table class="am-table"><thead><tr><th>Family</th><th>Students</th><th></th></tr></thead><tbody id="amFamilies"></tbody></table></section>
-    <section class="am-panel" data-panel="daily"><div class="am-form"><label class="am-field">Service date<input id="amSessionDate" type="date" required></label><div class="am-actions"><button id="amLoadSessions" class="am-button" type="button">Load sessions</button></div></div><div id="amSessions"></div></section>
-    <section class="am-panel" data-panel="reports"><div class="am-report-heading"><div><h1>Aftercare billing report</h1><p id="amReportPeriod"></p></div><p class="am-report-meta">Prepared <span id="amReportPrepared"></span></p></div><div class="am-form"><label class="am-field">Report type<select id="amMode"><option value="monthly" selected>Monthly</option><option value="daily">Daily</option></select></label><label class="am-field">Period<input id="amPeriod" type="month" required></label><div class="am-actions"><button id="amRun" class="am-button" type="button">Run report</button><button id="amDownload" class="am-button secondary" type="button" disabled>Download spreadsheet (.csv)</button><button id="amPrint" class="am-button secondary" type="button">Print report</button></div></div><div id="amReport"></div></section>
+  <main class="ac-shell">
+    <header class="ac-topbar">
+      <div><p class="ac-eyebrow">School operations</p><h1>Aftercare management</h1><p class="ac-subtitle">Live logistics, session review, billing families, and monthly reporting.</p></div>
+      <a class="ac-button secondary" href="/aftercare.html">Open operator view</a>
+    </header>
+    <p id="acNotice" class="ac-notice" role="status" aria-live="polite"></p>
+    <nav class="ac-nav" aria-label="Aftercare management sections">
+      <button type="button" data-view-button="overview" aria-selected="true">Overview</button>
+      <button type="button" data-view-button="sessions" aria-selected="false">Sessions</button>
+      <button type="button" data-view-button="families" aria-selected="false">Billing families</button>
+      <button type="button" data-view-button="reports" aria-selected="false">Reports</button>
+      <button type="button" data-view-button="settings" aria-selected="false">Settings</button>
+    </nav>
+
+    <section class="ac-view active" data-view="overview">
+      <header class="ac-section-head"><div><h2>Today’s logistics</h2><p id="overviewDate"></p></div><button id="refreshOverview" class="ac-button secondary" type="button">Refresh</button></header>
+      <div class="ac-metrics" aria-label="Today’s aftercare totals">
+        <div class="ac-metric"><span>Open now</span><strong id="metricOpen">—</strong></div>
+        <div class="ac-metric"><span>Closed</span><strong id="metricClosed">—</strong></div>
+        <div class="ac-metric"><span>Overdue</span><strong id="metricOverdue">—</strong></div>
+        <div class="ac-metric"><span>Auto-closed</span><strong id="metricAutoClosed">—</strong></div>
+        <div class="ac-metric"><span>Sessions</span><strong id="metricSessions">—</strong></div>
+        <div class="ac-metric"><span>Closed total</span><strong id="metricDue">—</strong></div>
+      </div>
+      <div class="ac-workspace">
+        <header class="ac-workspace-head"><h3>Today’s sessions</h3></header>
+        <div class="ac-toolbar"><label class="ac-field grow">Search<input id="overviewSearch" type="search" placeholder="Student, family, or class"></label><label class="ac-field">Status<select id="overviewStatus"><option value="all">All sessions</option><option value="open">Open</option><option value="overdue">Overdue</option><option value="closed">Closed</option></select></label></div>
+        <div class="ac-table-wrap"><table class="ac-table"><thead><tr><th>Student</th><th>Billing account</th><th>Clock in</th><th>Clock out</th><th>Elapsed</th><th>Status</th><th></th></tr></thead><tbody id="overviewBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="ac-view" data-view="sessions">
+      <header class="ac-section-head"><div><h2>Session review</h2><p>Review and correct individual attendance records.</p></div></header>
+      <div class="ac-workspace">
+        <div class="ac-toolbar"><label class="ac-field">Service date<input id="sessionDate" type="date"></label><button id="loadSessions" class="ac-button" type="button">Load date</button><label class="ac-field grow">Search<input id="sessionSearch" type="search" placeholder="Student, family, or class"></label><label class="ac-field">Status<select id="sessionStatus"><option value="all">All</option><option value="open">Open</option><option value="overdue">Overdue</option><option value="closed">Closed</option></select></label></div>
+        <div class="ac-table-wrap"><table class="ac-table"><thead><tr><th>Student</th><th>Historical account</th><th>Clock in</th><th>Clock out</th><th>Duration</th><th>Status</th><th></th></tr></thead><tbody id="sessionBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="ac-view" data-view="families">
+      <header class="ac-section-head"><div><h2>Billing families</h2><p>Current links apply to future clock-ins. Historical reports keep the family stored on each session.</p></div><button id="newFamily" class="ac-button" type="button">Create family</button></header>
+      <div class="ac-workspace">
+        <div class="ac-toolbar"><label class="ac-field grow">Search<input id="familySearch" type="search" placeholder="Family or student"></label></div>
+        <div class="ac-table-wrap"><table class="ac-table"><thead><tr><th>Family</th><th>Current students</th><th class="number">Days this month</th><th class="number">Month total</th><th></th></tr></thead><tbody id="familyBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="ac-view" data-view="reports">
+      <header class="ac-section-head"><div><h2 id="reportTitle">Monthly billing report</h2><p id="reportSchool">Choose a month to build the report.</p></div><div class="ac-actions"><label class="ac-field">Billing month<input id="reportMonth" type="month"></label><button id="runReport" class="ac-button" type="button">Build report</button></div></header>
+      <div class="ac-actions"><button id="exportSummary" class="ac-button secondary" type="button" disabled>Summary CSV</button><button id="exportAudit" class="ac-button secondary" type="button" disabled>Session audit CSV</button><button id="printAll" class="ac-button secondary" type="button" disabled>Print all statements</button></div>
+      <div class="ac-report-summary"><div><span>Billing accounts</span><strong id="reportAccounts">—</strong></div><div><span>Total due</span><strong id="reportTotal">—</strong></div><div><span>Open sessions excluded</span><strong id="reportOpen">—</strong></div><div><span>Review items</span><strong id="reportIssues">—</strong></div></div>
+      <div id="reportWarning" class="ac-callout" hidden></div>
+      <div class="ac-workspace">
+        <div class="ac-toolbar"><label class="ac-field grow">Search accounts<input id="reportSearch" type="search" placeholder="Family or student"></label><label class="ac-field">Sort<select id="reportSort"><option value="name">Account name</option><option value="total-desc">Total due, highest first</option><option value="days-desc">Attendance days, highest first</option></select></label></div>
+        <div class="ac-table-wrap"><table class="ac-table"><thead><tr><th>Account</th><th>Students billed</th><th class="number">Days</th><th class="number">Solo time</th><th class="number">Solo charge</th><th class="number">Sibling time</th><th class="number">Sibling charge</th><th class="number">Total due</th></tr></thead><tbody id="reportBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section class="ac-view" data-view="settings">
+      <header class="ac-section-head"><div><h2>Aftercare settings</h2><p>Rates are captured on each new session so historical billing remains stable.</p></div></header>
+      <form id="settingsForm" class="ac-settings"><div class="ac-settings-grid"><label class="ac-field">Single-child rate ($/hour)<input name="singleRate" type="number" min="0" step="0.01" required></label><label class="ac-field">Sibling rate ($/hour)<input name="familyRate" type="number" min="0" step="0.01" required></label><label class="ac-field">Daily cutoff<input name="cutoff" type="time" required></label><label class="ac-field">School timezone<input name="timezone" required></label></div><div class="ac-actions"><button class="ac-button" type="submit">Save settings</button></div></form>
+    </section>
   </main>
-  <script type="module">
-    import { init, onStudents, getAftercareAdminData, saveAftercareSettings, saveAftercareFamily, archiveAftercareFamily, getAftercareReport, getAftercareDaySessions, updateAftercareSession, deleteAftercareSession } from '/app.js?v=aftercare-2';
-    await init();
-    const state = { students: [], families: [], settings: null, report: null };
-    const notice = document.querySelector('#amNotice'); const familyList = document.querySelector('#amFamilies'); const studentSelect = document.querySelector('#amStudents');
-    const today = new Date(); const isoToday = today.toISOString().slice(0,10); const periodInput = document.querySelector('#amPeriod'); periodInput.value = isoToday.slice(0,7);
-    const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
-    const duration = (ms) => { const minutes = Math.round(Number(ms || 0) / 60000); return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; };
-    const sessionDateInput = document.querySelector('#amSessionDate'); sessionDateInput.value = isoToday;
-    const localDateTime = (iso) => { if (!iso) return ''; const date = new Date(iso); return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
-    function renderStudents() { studentSelect.replaceChildren(); state.students.slice().sort((a,b) => (a.name || '').localeCompare(b.name || '')).forEach((student) => { const option = document.createElement('option'); option.value = student.id; option.textContent = student.name || student.id; studentSelect.append(option); }); }
-    function renderFamilies() { familyList.replaceChildren(); state.families.forEach((family) => { const row = document.createElement('tr'); const name = document.createElement('td'); name.textContent = family.name || family.id; const students = document.createElement('td'); students.textContent = (family.students || []).map((student) => student.name || student.studentId).join(', '); const action = document.createElement('td'); const button = document.createElement('button'); button.className = 'am-button secondary'; button.type = 'button'; button.textContent = 'Archive'; button.addEventListener('click', async () => { if (!confirm(`Archive ${family.name}?`)) return; try { await archiveAftercareFamily(family.id); await load(); notice.textContent = 'Family archived.'; } catch (error) { notice.textContent = error?.message || 'Could not archive family.'; } }); action.append(button); row.append(name, students, action); familyList.append(row); }); }
-    function fillSettings() { const form = document.querySelector('#amSettings'); form.singleRate.value = (state.settings.singleRateCents / 100).toFixed(2); form.familyRate.value = (state.settings.familyRateCents / 100).toFixed(2); form.cutoff.value = state.settings.cutoffLocalTime; form.timezone.value = state.settings.timezone; }
-    async function load() { const data = await getAftercareAdminData(); state.settings = data.settings; state.families = data.families || []; fillSettings(); renderFamilies(); }
-    function renderSessions(sessions) { const container = document.querySelector('#amSessions'); container.replaceChildren(); if (!sessions.length) { const empty = document.createElement('p'); empty.className = 'am-muted'; empty.textContent = 'No aftercare sessions for this date.'; container.append(empty); return; } const table = document.createElement('table'); table.className = 'am-table'; table.innerHTML = '<thead><tr><th>Student</th><th>Clock in</th><th>Clock out</th><th>Status</th><th></th></tr></thead>'; const body = document.createElement('tbody'); sessions.forEach((session) => { const row = document.createElement('tr'); const student = document.createElement('td'); student.textContent = session.studentName; const clockIn = document.createElement('input'); clockIn.type = 'datetime-local'; clockIn.value = localDateTime(session.clockInAt); const clockOut = document.createElement('input'); clockOut.type = 'datetime-local'; clockOut.value = localDateTime(session.clockOutAt); const status = document.createElement('td'); status.textContent = session.status === 'open' ? 'Open' : 'Closed'; const actions = document.createElement('td'); const save = document.createElement('button'); save.className = 'am-button secondary'; save.type = 'button'; save.textContent = 'Save'; save.addEventListener('click', async () => { if (!clockIn.value || !clockOut.value) { notice.textContent = 'Clock-in and clock-out times are required.'; return; } try { save.disabled = true; await updateAftercareSession({ sessionId: session.id, clockInAt: new Date(clockIn.value).toISOString(), clockOutAt: new Date(clockOut.value).toISOString() }); notice.textContent = `${session.studentName}'s session was updated.`; await loadSessions(); } catch (error) { notice.textContent = error?.message || 'Could not update session.'; save.disabled = false; } }); const remove = document.createElement('button'); remove.className = 'am-button secondary'; remove.type = 'button'; remove.textContent = 'Delete'; remove.addEventListener('click', async () => { if (!confirm(`Delete ${session.studentName}'s aftercare session?`)) return; try { remove.disabled = true; await deleteAftercareSession(session.id); notice.textContent = `${session.studentName}'s session was deleted.`; await loadSessions(); } catch (error) { notice.textContent = error?.message || 'Could not delete session.'; remove.disabled = false; } }); actions.append(save, remove); [student, clockIn, clockOut].forEach((element) => { const cell = document.createElement('td'); cell.append(element); row.append(cell); }); row.append(status, actions); body.append(row); }); table.append(body); container.append(table); }
-    async function loadSessions() { const serviceDate = sessionDateInput.value; if (!serviceDate) return; notice.textContent = 'Loading sessions...'; try { const data = await getAftercareDaySessions(serviceDate); renderSessions(data.sessions || []); notice.textContent = ''; } catch (error) { notice.textContent = error?.message || 'Could not load sessions.'; } }
-    function reportCell(value, className = '') { const cell = document.createElement('td'); cell.textContent = value; if (className) cell.className = className; return cell; }
-    function csvCell(value) { const text = String(value ?? ''); return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text; }
-    function downloadReport() { if (!state.report) return; const monthly = state.report.mode === 'monthly'; const headers = monthly ? ['Family or student', 'Students', 'Monthly total due'] : ['Family or student', 'Service date', 'Students', 'Single hours', 'Single rate', 'Single charge', 'Family overlap hours', 'Family rate', 'Family charge', 'Total due']; const rows = monthly ? state.report.familyRows.map((row) => [row.familyName, (row.students || []).map((student) => student.studentName).join('; '), (Number(row.totalAmountCents || 0) / 100).toFixed(2)]) : state.report.dayRows.map((row) => [row.familyName, row.serviceDate, (row.students || []).map((student) => student.studentName).join('; '), Number(row.singleDecimalHours || 0).toFixed(2), (Number(row.singleRateCents || 0) / 100).toFixed(2), (Number(row.singleAmountCents || 0) / 100).toFixed(2), Number(row.familyDecimalHours || 0).toFixed(2), (Number(row.familyRateCents || 0) / 100).toFixed(2), (Number(row.familyAmountCents || 0) / 100).toFixed(2), (Number(row.totalAmountCents || 0) / 100).toFixed(2)]); const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n'); const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `aftercare-report-${state.report.period}.csv`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url); }
-    function renderReport(data) { const report = document.querySelector('#amReport'); report.replaceChildren(); const totalAmountCents = data.familyRows.reduce((sum, row) => sum + Number(row.totalAmountCents || 0), 0); const summary = document.createElement('div'); summary.className = 'am-summary'; [['Billing families', data.familyRows.length], ['Total due', money(totalAmountCents)], ['Open sessions', data.openSessionCount], ['Auto-closed', data.autoClosedCount]].forEach(([label, value]) => { const item = document.createElement('div'); const muted = document.createElement('span'); muted.className = 'am-muted'; muted.textContent = label; const strong = document.createElement('strong'); strong.textContent = value; item.append(muted, strong); summary.append(item); }); report.append(summary); if (!data.familyRows.length) { const empty = document.createElement('p'); empty.className = 'am-muted'; empty.textContent = 'No closed aftercare sessions for this period.'; report.append(empty); return; } data.familyRows.forEach((family) => { const statement = document.createElement('details'); statement.className = 'am-report-family'; statement.open = data.familyRows.length === 1; const title = document.createElement('summary'); title.textContent = `${family.familyName} - ${money(family.totalAmountCents)} due`; statement.append(title); const detail = document.createElement('div'); detail.className = 'am-report-detail'; const students = document.createElement('p'); students.className = 'am-report-students'; students.textContent = `Linked students: ${(family.students || []).map((student) => `${student.studentName} (${student.duration})`).join(', ') || 'None'}`; detail.append(students); const table = document.createElement('table'); table.className = 'am-table'; const head = document.createElement('thead'); head.innerHTML = '<tr><th>Date</th><th>Single time</th><th>Single charge</th><th>Family overlap</th><th>Family charge</th><th>Total</th></tr>'; table.append(head); const body = document.createElement('tbody'); data.dayRows.filter((row) => row.familyKey === family.familyKey).forEach((day) => { const row = document.createElement('tr'); row.append(reportCell(day.serviceDate), reportCell(`${day.singleDuration} at ${money(day.singleRateCents)}/hr`), reportCell(money(day.singleAmountCents)), reportCell(`${day.familyDuration} at ${money(day.familyRateCents)}/hr`), reportCell(money(day.familyAmountCents)), reportCell(money(day.totalAmountCents), 'am-report-total')); body.append(row); }); const total = document.createElement('tr'); total.append(reportCell(`Total (${family.days} day${family.days === 1 ? '' : 's'})`, 'am-report-total'), reportCell(`${family.singleDuration} single`, 'am-report-total'), reportCell(money(family.singleAmountCents), 'am-report-total'), reportCell(`${family.familyDuration} family`, 'am-report-total'), reportCell(money(family.familyAmountCents), 'am-report-total'), reportCell(money(family.totalAmountCents), 'am-report-total')); body.append(total); table.append(body); detail.append(table); statement.append(detail); report.append(statement); }); }
-    async function bootstrap(claims) { if (!claims || !(claims.owner || claims.superintendent || claims.admin)) { location.replace('/index.html#login'); return; } try { onStudents(null, (students) => { state.students = students; renderStudents(); }); await load(); } catch (error) { notice.textContent = error?.message || 'Aftercare management could not be loaded.'; } }
-    window.initAppWithClaims = bootstrap; const claims = window.SD?.claims || window.SD?.userClaims; if (claims) bootstrap(claims); else window.addEventListener('sd:claims-ready', (event) => bootstrap(event.detail?.claims || event.detail || window.SD?.claims || {}), { once:true });
-    document.querySelectorAll('[data-tab]').forEach((button) => button.addEventListener('click', () => { document.querySelectorAll('[data-tab]').forEach((item) => item.setAttribute('aria-selected', String(item === button))); document.querySelectorAll('[data-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.panel === button.dataset.tab)); }));
-    document.querySelector('#amSettings').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareSettings({ timezone: form.timezone.value.trim(), cutoffLocalTime: form.cutoff.value, singleRateCents: Math.round(Number(form.singleRate.value) * 100), familyRateCents: Math.round(Number(form.familyRate.value) * 100) }); notice.textContent = 'Settings saved.'; await load(); } catch (error) { notice.textContent = error?.message || 'Could not save settings.'; } });
-    document.querySelector('#amFamily').addEventListener('submit', async (event) => { event.preventDefault(); const form = event.currentTarget; try { await saveAftercareFamily({ name: form.name.value.trim(), studentIds: Array.from(form.studentIds.selectedOptions).map((option) => option.value) }); form.reset(); await load(); notice.textContent = 'Billing family saved.'; } catch (error) { notice.textContent = error?.message || 'Could not save family.'; } });
-    document.querySelector('#amRun').addEventListener('click', async () => { const mode = document.querySelector('#amMode').value; const raw = document.querySelector('#amPeriod').value; const period = mode === 'monthly' ? raw.slice(0,7) : raw; const download = document.querySelector('#amDownload'); state.report = null; download.disabled = true; try { notice.textContent = 'Loading report...'; state.report = await getAftercareReport({ mode, period }); renderReport(state.report); download.disabled = false; notice.textContent = ''; } catch (error) { notice.textContent = error?.message || 'Could not load report.'; } });
-    document.querySelector('#amLoadSessions').addEventListener('click', loadSessions);
-    document.querySelector('#amMode').addEventListener('change', () => { const monthly = document.querySelector('#amMode').value === 'monthly'; periodInput.type = monthly ? 'month' : 'date'; periodInput.value = monthly ? isoToday.slice(0,7) : isoToday; });
-    document.querySelector('#amDownload').addEventListener('click', downloadReport);
-    document.querySelector('#amPrint').addEventListener('click', () => { if (!state.report) { notice.textContent = 'Run a report before printing.'; return; } const periodDate = state.report.mode === 'monthly' ? new Date(`${state.report.period}-01T12:00:00`) : new Date(`${state.report.period}T12:00:00`); document.querySelector('#amReportPeriod').textContent = state.report.mode === 'monthly' ? periodDate.toLocaleDateString(undefined, { month:'long', year:'numeric' }) : periodDate.toLocaleDateString(undefined, { weekday:'long', month:'long', day:'numeric', year:'numeric' }); document.querySelector('#amReportPrepared').textContent = new Date().toLocaleDateString(undefined, { month:'long', day:'numeric', year:'numeric' }); const statements = Array.from(document.querySelectorAll('.am-report-family')); const openStates = statements.map((statement) => statement.open); statements.forEach((statement) => { statement.open = true; }); window.print(); statements.forEach((statement, index) => { statement.open = openStates[index]; }); });
-  </script>
+
+  <dialog id="sessionDialog" class="ac-dialog"><form id="sessionForm"><header class="ac-dialog-head"><h2 id="sessionDialogTitle">Review session</h2><button id="closeSessionDialog" class="ac-dialog-close" type="button" aria-label="Close">×</button></header><div class="ac-dialog-body"><input id="editSessionId" type="hidden"><label class="ac-field">Clock in<input id="editClockIn" type="datetime-local" required></label><label class="ac-field">Clock out<input id="editClockOut" type="datetime-local" required></label><p id="editTimezone" class="ac-secondary"></p></div><footer class="ac-dialog-actions"><button id="cancelSession" class="ac-button secondary" type="button">Cancel</button><button class="ac-button" type="submit">Save correction</button></footer></form></dialog>
+  <dialog id="familyDialog" class="ac-dialog"><form id="familyForm"><header class="ac-dialog-head"><h2 id="familyDialogTitle">Billing family</h2><button id="closeFamilyDialog" class="ac-dialog-close" type="button" aria-label="Close">×</button></header><div class="ac-dialog-body"><label class="ac-field">Family name<input id="familyName" required maxlength="100"></label><label class="ac-field">Current students<select id="familyStudents" multiple required></select></label><p class="ac-secondary">Changes affect future clock-ins only. Existing sessions keep their historical billing assignment.</p></div><footer class="ac-dialog-actions"><button id="cancelFamily" class="ac-button secondary" type="button">Cancel</button><button class="ac-button" type="submit">Save family</button></footer></form></dialog>
+  <div id="printStatements" aria-hidden="true"></div>
+  <script type="module" src="/aftercare-admin.js?v=2026-09-01-1"></script>
 </body>
 </html>

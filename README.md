@@ -49,6 +49,12 @@ From GitHub Actions, run the `Deploy Aftercare Functions` workflow manually, ent
 
 For a local clone, the equivalent PowerShell command is `./deploy.ps1 -ProjectId dismissalcaller`. The repository targets the Node 22 Functions runtime.
 
+### Aftercare reporting semantics
+
+Aftercare reports are read-only. Billing uses the family assignment and rates stored on each session when it was created; changing a family's current student roster does not rewrite or retroactively regroup historical sessions. Reports show the current configured roster separately from the students billed in the selected month and flag open or invalid sessions that were excluded from totals.
+
+The management page provides a one-row-per-account monthly summary CSV, a session-level audit CSV, and family statements through browser Print / Save as PDF. Viewing, exporting, and printing reports do not write Firestore data.
+
 ### Hosting configuration
 
 GitHub Pages publishes the repository root. `CNAME` maps the deployment to

@@ -12,6 +12,7 @@ const { getAuth }                  = require('firebase-admin/auth');
 const { getFirestore, FieldValue, Timestamp } = require('firebase-admin/firestore');
 const crypto = require('crypto');
 const {
+  aggregateAftercareReport,
   calculateFamilyDay,
   decimalHours,
   formatDuration,
@@ -557,7 +558,16 @@ async function computeClaims(uid, email) {
       .map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }))
       .filter((family) => family.active !== false)
       .sort((left, right) => String(left.name || '').localeCompare(String(right.name || '')));
-    return { ok: true, settings, families };
+    const serviceDay = getServiceDay(new Date(), settings.timezone, settings.cutoffLocalTime);
+    return {
+      ok: true,
+      settings,
+      families,
+      serviceDate: serviceDay.serviceDate,
+      billingMonth: serviceDay.billingMonth,
+      cutoffAt: serviceDay.cutoffAt.toISOString(),
+      isAfterCutoff: serviceDay.isAfterCutoff,
+    };
   });
 
   exports.saveAftercareSettings = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
@@ -814,120 +824,19 @@ async function computeClaims(uid, email) {
       db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).where(field, '==', period).get(),
       db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareFamilies`).get(),
     ]);
-    const familyByStudentId = new Map();
-    familiesSnapshot.docs.forEach((familySnap) => {
-      const family = familySnap.data();
-      if (family.active === false) return;
-      (family.studentIds || []).forEach((studentId) => familyByStudentId.set(studentId, { id: familySnap.id, name: family.name || familySnap.id }));
-    });
-    const closedSessions = [];
-    let openSessionCount = 0;
-    let autoClosedCount = 0;
-    snapshot.docs.forEach((sessionSnap) => {
-      const session = { id: sessionSnap.id, ...sessionSnap.data() };
-      const family = familyByStudentId.get(session.studentId);
-      if (family) {
-        session.familyId = family.id;
-        session.familyName = family.name;
-      }
-      if (session.status === 'open' || !session.clockOutAt) {
-        openSessionCount++;
-      } else {
-        if (session.closeMethod === 'auto') autoClosedCount++;
-        closedSessions.push(session);
-      }
-    });
-
-    const groups = new Map();
-    closedSessions.forEach((session) => {
-      const familyKey = session.familyId || `student:${session.studentId}`;
-      const key = `${session.serviceDate}|${familyKey}`;
-      if (!groups.has(key)) groups.set(key, {
-        serviceDate: session.serviceDate,
-        familyId: session.familyId || null,
-        familyKey,
-        familyName: session.familyName || session.studentName,
-        singleRateCents: Number(session.singleRateCents ?? AFTERCARE_DEFAULTS.singleRateCents),
-        familyRateCents: Number(session.familyRateCents ?? AFTERCARE_DEFAULTS.familyRateCents),
-        sessions: [],
-        studentNames: {},
-      });
-      const group = groups.get(key);
-      group.sessions.push(session);
-      group.studentNames[session.studentId] = session.studentName;
-    });
-
-    const dayRows = Array.from(groups.values()).map((group) => {
-      const calculation = calculateFamilyDay(group.sessions, group);
-      const students = Object.entries(calculation.studentMilliseconds).map(([studentId, milliseconds]) => ({
-        studentId,
-        studentName: group.studentNames[studentId] || studentId,
-        milliseconds,
-        duration: formatDuration(milliseconds),
-        decimalHours: decimalHours(milliseconds),
-      })).sort((left, right) => left.studentName.localeCompare(right.studentName));
+    const sessions = snapshot.docs.map((sessionSnap) => {
+      const session = sessionSnap.data();
       return {
-        serviceDate: group.serviceDate,
-        familyId: group.familyId,
-        familyKey: group.familyKey,
-        familyName: group.familyName,
-        singleRateCents: group.singleRateCents,
-        familyRateCents: group.familyRateCents,
-        singleMilliseconds: calculation.singleMilliseconds,
-        singleDuration: formatDuration(calculation.singleMilliseconds),
-        singleDecimalHours: decimalHours(calculation.singleMilliseconds),
-        familyMilliseconds: calculation.familyMilliseconds,
-        familyDuration: formatDuration(calculation.familyMilliseconds),
-        familyDecimalHours: decimalHours(calculation.familyMilliseconds),
-        totalAmountCents: calculation.totalAmountCents,
-        singleAmountCents: calculation.singleAmountCents,
-        familyAmountCents: calculation.familyAmountCents,
-        students,
+        id: sessionSnap.id,
+        ...session,
+        clockInAt: session.clockInAt?.toDate().toISOString() || null,
+        clockOutAt: session.clockOutAt?.toDate().toISOString() || null,
+        closedAt: session.closedAt?.toDate().toISOString() || null,
       };
-    }).sort((left, right) => left.serviceDate.localeCompare(right.serviceDate) || left.familyName.localeCompare(right.familyName));
-
-    const familyTotals = new Map();
-    dayRows.forEach((row) => {
-      if (!familyTotals.has(row.familyKey)) familyTotals.set(row.familyKey, {
-        familyId: row.familyId,
-        familyKey: row.familyKey,
-        familyName: row.familyName,
-        singleMilliseconds: 0,
-        familyMilliseconds: 0,
-        singleAmountCents: 0,
-        familyAmountCents: 0,
-        totalAmountCents: 0,
-        days: 0,
-        studentsById: new Map(),
-      });
-      const total = familyTotals.get(row.familyKey);
-      total.singleMilliseconds += row.singleMilliseconds;
-      total.familyMilliseconds += row.familyMilliseconds;
-      total.singleAmountCents += row.singleAmountCents;
-      total.familyAmountCents += row.familyAmountCents;
-      total.totalAmountCents += row.totalAmountCents;
-      total.days++;
-      row.students.forEach((student) => {
-        const existing = total.studentsById.get(student.studentId) || { ...student, milliseconds: 0, days: 0 };
-        existing.milliseconds += student.milliseconds;
-        existing.days++;
-        total.studentsById.set(student.studentId, existing);
-      });
     });
-    const familyRows = Array.from(familyTotals.values()).map(({ studentsById, ...row }) => ({
-      ...row,
-      students: Array.from(studentsById.values()).map((student) => ({
-        ...student,
-        duration: formatDuration(student.milliseconds),
-        decimalHours: decimalHours(student.milliseconds),
-      })).sort((left, right) => left.studentName.localeCompare(right.studentName)),
-      singleDuration: formatDuration(row.singleMilliseconds),
-      singleDecimalHours: decimalHours(row.singleMilliseconds),
-      familyDuration: formatDuration(row.familyMilliseconds),
-      familyDecimalHours: decimalHours(row.familyMilliseconds),
-    })).sort((left, right) => left.familyName.localeCompare(right.familyName));
-
-    return { ok: true, mode, period, openSessionCount, autoClosedCount, dayRows, familyRows };
+    const families = familiesSnapshot.docs.map((familySnap) => ({ id: familySnap.id, ...familySnap.data() }));
+    const report = aggregateAftercareReport(sessions, families, AFTERCARE_DEFAULTS);
+    return { ok: true, mode, period, ...report };
   });
 
   exports.getAftercareDaySessions = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
@@ -946,9 +855,16 @@ async function computeClaims(uid, email) {
         studentId: session.studentId,
         studentName: session.studentName || session.studentId,
         classId: session.classId || null,
+        familyId: session.familyId || null,
+        familyName: session.familyName || null,
+        serviceDate: session.serviceDate,
+        timezone: session.timezone || null,
+        singleRateCents: Number(session.singleRateCents ?? AFTERCARE_DEFAULTS.singleRateCents),
+        familyRateCents: Number(session.familyRateCents ?? AFTERCARE_DEFAULTS.familyRateCents),
         status: session.status,
         clockInAt: session.clockInAt?.toDate().toISOString() || null,
         clockOutAt: session.clockOutAt?.toDate().toISOString() || null,
+        autoCloseAt: session.autoCloseAt?.toDate().toISOString() || null,
         closeMethod: session.closeMethod || null,
       };
     }).sort((left, right) => left.studentName.localeCompare(right.studentName) || String(left.clockInAt || '').localeCompare(String(right.clockInAt || '')));
@@ -973,9 +889,14 @@ async function computeClaims(uid, email) {
       const session = sessionSnap.data();
       const clockInAt = Timestamp.fromDate(clockIn);
       const clockOutAt = Timestamp.fromDate(clockOut);
+      const correctedDay = getServiceDay(clockIn, session.timezone || AFTERCARE_DEFAULTS.timezone, AFTERCARE_DEFAULTS.cutoffLocalTime);
+      const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', session.studentId);
+      const attendanceSnap = await tx.get(attendanceRef);
       tx.update(sessionRef, {
         clockInAt,
         clockOutAt,
+        serviceDate: correctedDay.serviceDate,
+        billingMonth: correctedDay.billingMonth,
         status: 'closed',
         closeMethod: 'corrected',
         closedAt: ts(),
@@ -984,8 +905,6 @@ async function computeClaims(uid, email) {
         correctedBy: actorFrom(req),
         updatedAt: ts(),
       });
-      const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', session.studentId);
-      const attendanceSnap = await tx.get(attendanceRef);
       if (attendanceSnap.get('openSessionId') === sessionId) {
         tx.set(attendanceRef, { status: 'out', openSessionId: null, lastSessionId: sessionId, clockedOutAt, updatedAt: ts(), updatedBy: actorFrom(req) }, { merge: true });
       }
@@ -1004,9 +923,9 @@ async function computeClaims(uid, email) {
       const sessionSnap = await tx.get(sessionRef);
       if (!sessionSnap.exists) throw new HttpsError('not-found', 'Aftercare session not found.');
       const session = sessionSnap.data();
-      tx.delete(sessionRef);
       const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', session.studentId);
       const attendanceSnap = await tx.get(attendanceRef);
+      tx.delete(sessionRef);
       if (attendanceSnap.get('openSessionId') === sessionId) {
         tx.set(attendanceRef, { status: 'out', openSessionId: null, updatedAt: ts(), updatedBy: actorFrom(req) }, { merge: true });
       }
