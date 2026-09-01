@@ -368,14 +368,14 @@ async function runReport() {
   const month = elements.reportMonth.value;
   if (!month) return;
   setNotice('Building monthly report…');
-  elements.exportSummary.disabled = true; elements.exportAudit.disabled = true; elements.printAll.disabled = true;
+  elements.exportSummary.disabled = true; elements.exportAudit.disabled = true; elements.downloadStatements.disabled = true; elements.printAll.disabled = true;
   try {
     state.report = normalizeReport(await getAftercareReport({ mode: 'monthly', period: month }));
     state.reportMonth = month;
     state.expandedAccount = null;
     renderReport();
     renderFamilies();
-    elements.exportSummary.disabled = false; elements.exportAudit.disabled = false; elements.printAll.disabled = false;
+    elements.exportSummary.disabled = false; elements.exportAudit.disabled = false; elements.downloadStatements.disabled = false; elements.printAll.disabled = false;
     setNotice('');
   } catch (error) { setNotice(error?.message || 'Could not build report.', true); }
 }
@@ -445,6 +445,115 @@ function downloadCsv(filename, headers, rows) {
   const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
   const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a'); link.href = url; link.download = filename; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+}
+function loadLibrary(globalCheck, source) {
+  if (globalCheck()) return Promise.resolve(globalCheck());
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    const timeout = setTimeout(() => { script.remove(); reject(new Error('PDF export libraries took too long to load. Check your internet connection and try again.')); }, 15000);
+    script.src = source;
+    script.crossOrigin = 'anonymous';
+    script.onload = () => { clearTimeout(timeout); resolve(globalCheck()); };
+    script.onerror = () => { clearTimeout(timeout); reject(new Error('Could not load the PDF export library.')); };
+    document.head.append(script);
+  });
+}
+const ensureJSPDF = () => loadLibrary(() => window.jspdf?.jsPDF, 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+const ensureJSZip = () => loadLibrary(() => window.JSZip, 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+function safeFileName(account) {
+  let name = String(account.familyName || billedStudents(account)[0]?.studentName || 'Statement').trim();
+  if (account.accountType === 'student' && name.includes(',')) { const [last, ...given] = name.split(','); name = `${last.trim()} - ${given.join(',').trim()}`; }
+  name = name.replace(/^the\s+/i, '').replace(/\s+family$/i, '').replace(/[<>:"/\\|?*\u0000-\u001F]/g, '').replace(/[. ]+$/g, '').trim();
+  return name || 'Statement';
+}
+function pdfText(value) {
+  return String(value ?? '').replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+}
+function statementPdf(jsPDF, account) {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
+  const margin = 42;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const columns = [margin, 126, 342, 414, 486];
+  const widths = [84, 216, 72, 72, 84];
+  const days = reportDays().filter((day) => day.familyKey === account.familyKey);
+  let y = margin;
+
+  function drawHeader(continued = false) {
+    doc.setTextColor(23, 33, 43); doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+    doc.text(pdfText(schoolName()), margin, y);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(88, 101, 112);
+    doc.text(`Aftercare statement - ${pdfText(formatMonth(state.report.period))}${continued ? ' - continued' : ''}`, margin, y + 18);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(23, 33, 43); doc.setFontSize(9);
+    doc.text('TOTAL DUE', pageWidth - margin, y, { align: 'right' });
+    doc.setFontSize(18); doc.text(money(account.totalAmountCents), pageWidth - margin, y + 20, { align: 'right' });
+    y += 48; doc.setDrawColor(23, 33, 43); doc.setLineWidth(1.5); doc.line(margin, y, pageWidth - margin, y); y += 18;
+  }
+  function drawTableHeader() {
+    doc.setFillColor(240, 244, 243); doc.rect(margin, y, pageWidth - margin * 2, 22, 'F');
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(76, 90, 100);
+    ['DATE', 'STUDENTS', 'SOLO', 'SIBLING', 'TOTAL'].forEach((label, index) => doc.text(label, columns[index] + 4, y + 14));
+    y += 22;
+  }
+  function newPage() { doc.addPage('letter', 'portrait'); y = margin; drawHeader(true); drawTableHeader(); }
+
+  drawHeader();
+  doc.setFontSize(9); doc.setTextColor(23, 33, 43); doc.setFont('helvetica', 'bold'); doc.text('BILLING ACCOUNT', margin, y);
+  doc.setFont('helvetica', 'normal'); doc.text(pdfText(account.familyName), margin, y + 14);
+  doc.setFont('helvetica', 'bold'); doc.text('STUDENTS BILLED', 260, y);
+  doc.setFont('helvetica', 'normal');
+  const studentLines = doc.splitTextToSize(pdfText(nameList(billedStudents(account))), pageWidth - 260 - margin);
+  doc.text(studentLines, 260, y + 14);
+  const totalHours = hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000);
+  doc.setFont('helvetica', 'bold'); doc.text('TOTAL HOURS', margin, y + 39);
+  doc.setFont('helvetica', 'normal'); doc.text(`${totalHours} hours`, margin, y + 53);
+  y += Math.max(70, 34 + studentLines.length * 11);
+  drawTableHeader();
+
+  for (const day of days) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 33, 43);
+    const values = [formatDate(day.serviceDate), nameList(billedStudents(day)), money(day.singleAmountCents), money(day.familyAmountCents), money(day.totalAmountCents)];
+    const lines = values.map((value, index) => doc.splitTextToSize(pdfText(value), widths[index] - 8));
+    const rowHeight = Math.max(24, Math.max(...lines.map((value) => value.length)) * 10 + 8);
+    if (y + rowHeight > pageHeight - 90) newPage();
+    lines.forEach((value, index) => doc.text(value, columns[index] + 4, y + 14));
+    doc.setDrawColor(220, 226, 230); doc.setLineWidth(.5); doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight);
+    y += rowHeight;
+  }
+  if (y + 70 > pageHeight - margin) newPage();
+  y += 18; doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(23, 33, 43);
+  doc.text(`Solo ${money(account.singleAmountCents)}`, pageWidth - margin, y, { align: 'right' });
+  doc.text(`Sibling overlap ${money(account.familyAmountCents)}`, pageWidth - margin, y + 16, { align: 'right' });
+  doc.setFontSize(13); doc.text(`Total due ${money(account.totalAmountCents)}`, pageWidth - margin, y + 38, { align: 'right' });
+  const pages = doc.getNumberOfPages();
+  for (let page = 1; page <= pages; page++) { doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110); doc.text(`Prepared ${new Date().toLocaleDateString()}  |  Page ${page} of ${pages}`, margin, pageHeight - 24); }
+  return doc;
+}
+async function downloadAllStatements() {
+  if (!state.report?.familyRows?.length) return;
+  const originalLabel = elements.downloadStatements.textContent;
+  elements.downloadStatements.disabled = true;
+  elements.downloadStatements.textContent = 'Preparing PDFs…';
+  setNotice(`Preparing ${state.report.familyRows.length} statement PDF(s)…`);
+  try {
+    const [jsPDF, JSZip] = await Promise.all([ensureJSPDF(), ensureJSZip()]);
+    const zip = new JSZip();
+    const names = new Map();
+    for (const account of state.report.familyRows) {
+      const base = safeFileName(account);
+      const count = (names.get(base.toLowerCase()) || 0) + 1;
+      names.set(base.toLowerCase(), count);
+      const fileName = `${base}${count > 1 ? `-${count}` : ''}.pdf`;
+      zip.file(fileName, statementPdf(jsPDF, account).output('arraybuffer'));
+    }
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `${safeFileName({ familyName: schoolName() })}-aftercare-statements-${state.report.period}.zip`;
+    document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    setNotice(`${state.report.familyRows.length} statement PDF(s) downloaded.`);
+  } catch (error) { setNotice(error?.message || 'Could not create statement PDFs.', true); }
+  finally { elements.downloadStatements.disabled = false; elements.downloadStatements.textContent = originalLabel; }
 }
 function exportSummary() {
   const headers = ['School', 'Month', 'Account type', 'Family or student', 'Students billed', 'Attendance days', 'Solo hours', 'Solo charge', 'Sibling overlap hours', 'Sibling charge', 'Total due'];
@@ -525,6 +634,7 @@ function bindEvents() {
   elements.reportSort.addEventListener('change', () => { if (state.report) renderReport(); });
   elements.exportSummary.addEventListener('click', exportSummary);
   elements.exportAudit.addEventListener('click', exportAudit);
+  elements.downloadStatements.addEventListener('click', downloadAllStatements);
   elements.printAll.addEventListener('click', () => printStatements());
   elements.settingsForm.addEventListener('submit', saveSettings);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && state.serviceDate) loadOverview(); });
