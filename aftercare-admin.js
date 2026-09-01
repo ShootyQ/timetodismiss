@@ -22,6 +22,10 @@ const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 const hours = (value) => Number(value || 0).toFixed(2);
 const schoolName = () => window.SD?.schoolName || window.SD?.schoolId || 'School';
 const nameList = (students) => (students || []).map((student) => student.studentName || student.name || student.studentId).join(', ') || 'None';
+const billedStudents = (row) => row.billedStudents || row.students || [];
+const billedStudentDetails = (row) => billedStudents(row).map((student) => `${student.studentName || student.name || student.studentId}${student.duration ? ` (${student.duration})` : ''}`).join(', ') || 'None';
+const reportDays = () => state.report?.dayRows || [];
+const reportSessions = () => state.report?.sessionRows || [];
 const localInputValue = (iso) => {
   if (!iso) return '';
   const date = new Date(iso);
@@ -285,16 +289,16 @@ function renderReport() {
   elements.reportWarning.textContent = `${report.openSessionCount || 0} open session(s) are excluded from totals. ${report.exceptionCount || 0} reconciliation item(s) need review.`;
   clear(elements.reportBody);
   const search = elements.reportSearch.value.trim().toLowerCase();
-  const accounts = report.familyRows.filter((account) => !search || `${account.familyName} ${nameList(account.billedStudents)}`.toLowerCase().includes(search));
+  const accounts = report.familyRows.filter((account) => !search || `${account.familyName} ${nameList(billedStudents(account))}`.toLowerCase().includes(search));
   accounts.sort((left, right) => elements.reportSort.value === 'total-desc' ? right.totalAmountCents - left.totalAmountCents : elements.reportSort.value === 'days-desc' ? right.days - left.days : left.familyName.localeCompare(right.familyName));
   if (!accounts.length) return emptyRow(elements.reportBody, 8, report.familyRows.length ? 'No billing accounts match this search.' : 'No closed aftercare sessions were found for this month.');
   for (const account of accounts) {
     const row = document.createElement('tr'); row.className = 'ac-report-row'; row.tabIndex = 0;
     const accountCell = cell('');
     const primary = document.createElement('div'); primary.className = 'ac-primary'; primary.textContent = account.familyName;
-    const secondary = document.createElement('div'); secondary.className = 'ac-secondary'; secondary.textContent = account.accountType === 'family' ? 'Family account' : 'Individual student';
+    const secondary = document.createElement('div'); secondary.className = 'ac-secondary'; secondary.textContent = `${account.accountType === 'family' ? 'Family account' : 'Individual student'} · Select for statement details`;
     accountCell.append(primary, secondary);
-    row.append(accountCell, cell(nameList(account.billedStudents)), cell(String(account.days), 'number'), cell(account.singleDuration, 'number'), cell(money(account.singleAmountCents), 'number'), cell(account.familyDuration, 'number'), cell(money(account.familyAmountCents), 'number'), cell(money(account.totalAmountCents), 'number'));
+    row.append(accountCell, cell(nameList(billedStudents(account))), cell(String(account.days), 'number'), cell(account.singleDuration, 'number'), cell(money(account.singleAmountCents), 'number'), cell(account.familyDuration, 'number'), cell(money(account.familyAmountCents), 'number'), cell(money(account.totalAmountCents), 'number'));
     const toggle = () => { state.expandedAccount = state.expandedAccount === account.familyKey ? null : account.familyKey; renderReport(); };
     row.addEventListener('click', toggle); row.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') toggle(); });
     elements.reportBody.append(row);
@@ -308,21 +312,22 @@ function buildReportDetail(account) {
   const detail = document.createElement('div'); detail.className = 'ac-detail';
   const grid = document.createElement('div'); grid.className = 'ac-detail-grid';
   const rosterLabel = account.familyStatus === 'archived' ? 'Archived family roster record' : account.familyStatus === 'missing' ? 'Current family roster unavailable' : 'Current family roster';
-  for (const [title, value] of [['Students billed this month', nameList(account.billedStudents)], [rosterLabel, account.accountType === 'family' ? nameList(account.configuredStudents) : 'Not applicable']]) {
+  const totalBillableHours = hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000);
+  for (const [title, value] of [['Total billable hours', `${totalBillableHours} hours`], ['Students billed this month', billedStudentDetails(account)], [rosterLabel, account.accountType === 'family' ? nameList(account.configuredStudents) : 'Not applicable']]) {
     const item = document.createElement('div'); const heading = document.createElement('h4'); heading.textContent = title; const text = document.createElement('p'); text.textContent = value; item.append(heading, text); grid.append(item);
   }
   detail.append(grid);
   for (const issue of account.exceptions || []) { const warning = document.createElement('div'); warning.className = 'ac-callout'; warning.textContent = issue; detail.append(warning); }
   const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>Students</th><th class="number">Solo</th><th class="number">Sibling overlap</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
-  for (const day of state.report.dayRows.filter((item) => item.familyKey === account.familyKey)) {
-    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(nameList(day.billedStudents)), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
+  for (const day of reportDays().filter((item) => item.familyKey === account.familyKey)) {
+    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(nameList(billedStudents(day))), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
   }
   table.append(body); detail.append(table);
   const auditHeading = document.createElement('h4'); auditHeading.textContent = 'Session audit'; detail.append(auditHeading);
   const auditTable = document.createElement('table'); auditTable.className = 'ac-table'; auditTable.innerHTML = '<thead><tr><th>Date</th><th>Student</th><th>Clock in</th><th>Clock out</th><th>Status</th><th>Review note</th></tr></thead>';
   const auditBody = document.createElement('tbody');
-  for (const session of state.report.sessionRows.filter((item) => item.familyKey === account.familyKey)) { const auditRow = document.createElement('tr'); auditRow.append(cell(formatDate(session.serviceDate)), cell(session.studentName), cell(formatTime(session.clockInAt)), cell(formatTime(session.clockOutAt)), cell(session.included ? session.status : 'Excluded'), cell(session.exclusionReason || 'Included in totals')); auditBody.append(auditRow); }
+  for (const session of reportSessions().filter((item) => item.familyKey === account.familyKey)) { const auditRow = document.createElement('tr'); auditRow.append(cell(formatDate(session.serviceDate)), cell(session.studentName), cell(formatTime(session.clockInAt)), cell(formatTime(session.clockOutAt)), cell(session.included ? session.status : 'Excluded'), cell(session.exclusionReason || 'Included in totals')); auditBody.append(auditRow); }
   auditTable.append(auditBody); detail.append(auditTable);
   const actions = document.createElement('div'); actions.className = 'ac-actions'; actions.append(button('Print this statement', (event) => { event.stopPropagation(); printStatements(account.familyKey); })); detail.append(actions);
   td.append(detail); row.append(td); return row;
@@ -339,12 +344,12 @@ function downloadCsv(filename, headers, rows) {
 }
 function exportSummary() {
   const headers = ['School', 'Month', 'Account type', 'Family or student', 'Students billed', 'Attendance days', 'Solo hours', 'Solo charge', 'Sibling overlap hours', 'Sibling charge', 'Total due'];
-  const rows = state.report.familyRows.map((row) => [schoolName(), state.report.period, row.accountType, row.familyName, nameList(row.billedStudents), row.days, hours(row.singleDecimalHours), (row.singleAmountCents / 100).toFixed(2), hours(row.familyDecimalHours), (row.familyAmountCents / 100).toFixed(2), (row.totalAmountCents / 100).toFixed(2)]);
+  const rows = state.report.familyRows.map((row) => [schoolName(), state.report.period, row.accountType, row.familyName, nameList(billedStudents(row)), row.days, hours(row.singleDecimalHours), (row.singleAmountCents / 100).toFixed(2), hours(row.familyDecimalHours), (row.familyAmountCents / 100).toFixed(2), (row.totalAmountCents / 100).toFixed(2)]);
   downloadCsv(`aftercare-summary-${state.report.period}.csv`, headers, rows);
 }
 function exportAudit() {
   const headers = ['School', 'Service date', 'Student', 'Account type', 'Historical family or student', 'Clock in', 'Clock out', 'Duration', 'Single rate', 'Sibling rate', 'Status', 'Close method', 'Included in totals', 'Review note'];
-  const rows = state.report.sessionRows.map((row) => [schoolName(), row.serviceDate, row.studentName, row.accountType, row.familyName, row.clockInAt, row.clockOutAt, row.duration || '', (row.singleRateCents / 100).toFixed(2), (row.familyRateCents / 100).toFixed(2), row.status, row.closeMethod || '', row.included ? 'Yes' : 'No', row.exclusionReason || '']);
+  const rows = reportSessions().map((row) => [schoolName(), row.serviceDate, row.studentName, row.accountType, row.familyName, row.clockInAt, row.clockOutAt, row.duration || '', (row.singleRateCents / 100).toFixed(2), (row.familyRateCents / 100).toFixed(2), row.status, row.closeMethod || '', row.included ? 'Yes' : 'No', row.exclusionReason || '']);
   downloadCsv(`aftercare-audit-${state.report.period}.csv`, headers, rows);
 }
 
@@ -353,8 +358,9 @@ function printStatements(familyKey = null) {
   const accounts = state.report.familyRows.filter((row) => !familyKey || row.familyKey === familyKey);
   for (const account of accounts) elements.printStatements.append(buildStatement(account));
   document.body.classList.add('printing');
+  const finishPrinting = () => document.body.classList.remove('printing');
+  window.addEventListener('afterprint', finishPrinting, { once: true });
   window.print();
-  document.body.classList.remove('printing');
 }
 function buildStatement(account) {
   const statement = document.createElement('section'); statement.className = 'ac-statement';
@@ -362,10 +368,10 @@ function buildStatement(account) {
   const identity = document.createElement('div'); const title = document.createElement('h1'); title.textContent = schoolName(); const subtitle = document.createElement('p'); subtitle.textContent = `Aftercare statement · ${formatMonth(state.report.period)} · Prepared ${new Date().toLocaleDateString()}`; identity.append(title, subtitle);
   const total = document.createElement('div'); total.className = 'ac-statement-total'; const label = document.createElement('span'); label.textContent = 'Total due'; const amount = document.createElement('strong'); amount.textContent = money(account.totalAmountCents); total.append(label, amount); head.append(identity, total);
   const meta = document.createElement('div'); meta.className = 'ac-statement-meta';
-  for (const [labelText, value] of [['Billing account', account.familyName], ['Students billed', nameList(account.billedStudents)]]) { const block = document.createElement('div'); const labelNode = document.createElement('strong'); labelNode.textContent = labelText; const valueNode = document.createElement('div'); valueNode.textContent = value; block.append(labelNode, valueNode); meta.append(block); }
+  for (const [labelText, value] of [['Billing account', account.familyName], ['Students billed', nameList(billedStudents(account))], ['Total hours', `${hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000)} hours`]]) { const block = document.createElement('div'); const labelNode = document.createElement('strong'); labelNode.textContent = labelText; const valueNode = document.createElement('div'); valueNode.textContent = value; block.append(labelNode, valueNode); meta.append(block); }
   const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>Students</th><th class="number">Solo charge</th><th class="number">Sibling charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
-  for (const day of state.report.dayRows.filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(nameList(day.billedStudents)), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
+  for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(nameList(billedStudents(day))), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
   table.append(body);
   const foot = document.createElement('div'); foot.className = 'ac-statement-foot'; foot.textContent = `Solo ${money(account.singleAmountCents)} · Sibling overlap ${money(account.familyAmountCents)} · Total ${money(account.totalAmountCents)}`;
   statement.append(head, meta, table, foot); return statement;

@@ -147,17 +147,23 @@ function formatDuration(milliseconds) {
 
 function aggregateAftercareReport(sessions, families, defaultRates) {
   const familyById = new Map((families || []).map((family) => [family.id, family]));
+  const currentFamilyByStudentId = new Map();
+  for (const family of families || []) {
+    if (family.active === false) continue;
+    for (const studentId of family.studentIds || []) currentFamilyByStudentId.set(studentId, family);
+  }
   const groups = new Map();
   const sessionRows = [];
   let openSessionCount = 0;
   let autoClosedCount = 0;
 
   for (const source of sessions || []) {
-    const familyId = source.familyId || null;
+    const currentFamily = !source.familyId ? currentFamilyByStudentId.get(source.studentId) : null;
+    const familyId = source.familyId || currentFamily?.id || null;
     const accountType = familyId ? 'family' : 'student';
     const family = familyId ? familyById.get(familyId) : null;
     const familyKey = familyId || `student:${source.studentId}`;
-    const familyName = source.familyName || family?.name || source.studentName || source.studentId;
+    const familyName = source.familyName || currentFamily?.name || family?.name || source.studentName || source.studentId;
     const audit = {
       id: source.id,
       serviceDate: source.serviceDate,
@@ -167,6 +173,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyKey,
       familyName,
       accountType,
+      assignmentSource: source.familyId ? 'historical' : currentFamily ? 'current-family-fallback' : 'individual',
       clockInAt: source.clockInAt ?? null,
       clockOutAt: source.clockOutAt ?? null,
       singleRateCents: Number(source.singleRateCents ?? defaultRates.singleRateCents),
@@ -217,6 +224,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyName,
       accountType,
       familyStatus: !familyId ? null : !family ? 'missing' : family.active === false ? 'archived' : 'active',
+      assignmentSource: source.familyId ? 'historical' : currentFamily ? 'current-family-fallback' : 'individual',
       singleRateCents: audit.singleRateCents,
       familyRateCents: audit.familyRateCents,
       sessions: [],
@@ -245,6 +253,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyName: group.familyName,
       accountType: group.accountType,
       familyStatus: group.familyStatus,
+      assignmentSource: group.assignmentSource,
       singleRateCents: group.singleRateCents,
       familyRateCents: group.familyRateCents,
       singleMilliseconds: calculation.singleMilliseconds,
@@ -270,6 +279,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyName: row.familyName,
       accountType: row.accountType,
       familyStatus: row.familyStatus,
+      assignmentSource: row.assignmentSource,
       singleMilliseconds: 0,
       familyMilliseconds: 0,
       singleAmountCents: 0,

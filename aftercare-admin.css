@@ -72,6 +72,7 @@ button, input, select { font: inherit; }
 .ac-report-summary strong { display: block; margin-top: 5px; font-size: 1.25rem; }
 .ac-report-row { cursor: pointer; }
 .ac-detail-row td { padding: 0; background: #f8faf9; }
+.ac-detail-row:hover { background: #f8faf9; }
 .ac-detail { padding: 14px 16px 18px; }
 .ac-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .ac-detail h4 { margin: 0 0 5px; font-size: .83rem; text-transform: uppercase; }
@@ -103,7 +104,7 @@ button, input, select { font: inherit; }
   body { background: #fff; color: #111; font-family: Arial, sans-serif; font-size: 9.5pt; }
   header.site-header, .ac-shell, dialog { display: none !important; }
   body.printing #printStatements { display: block; }
-  .ac-statement { break-after: page; page-break-after: always; }
+  .ac-statement { display: block; min-height: 9.5in; break-after: page; page-break-after: always; overflow: visible; }
   .ac-statement:last-child { break-after: auto; page-break-after: auto; }
   .ac-statement-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; padding-bottom: 12px; border-bottom: 2px solid #17212b; }
   .ac-statement-head h1 { margin: 0; font: 700 20pt Georgia, serif; }

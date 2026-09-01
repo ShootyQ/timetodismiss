@@ -51,7 +51,7 @@ For a local clone, the equivalent PowerShell command is `./deploy.ps1 -ProjectId
 
 ### Aftercare reporting semantics
 
-Aftercare reports are read-only. Billing uses the family assignment and rates stored on each session when it was created; changing a family's current student roster does not rewrite or retroactively regroup historical sessions. Reports show the current configured roster separately from the students billed in the selected month and flag open or invalid sessions that were excluded from totals.
+Aftercare reports are read-only. Billing uses the family assignment and rates stored on each session when it was created. Legacy sessions that never stored a family assignment use the student's current active family at report time, without rewriting the session. Reports show the current configured roster separately from the students billed in the selected month and flag open or invalid sessions that were excluded from totals.
 
 The management page provides a one-row-per-account monthly summary CSV, a session-level audit CSV, and family statements through browser Print / Save as PDF. Viewing, exporting, and printing reports do not write Firestore data.
 

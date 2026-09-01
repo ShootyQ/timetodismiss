@@ -103,11 +103,23 @@ test('reports use stored historical families instead of current student mappings
   assert.deepEqual(result.familyRows[0].billedStudents.map((student) => student.studentName), ['Alex']);
 });
 
-test('keeps unlinked students as individual billing accounts', () => {
+test('uses the current active family for legacy sessions with no stored assignment', () => {
   const result = aggregateAftercareReport([{
     id: 'session-1', studentId: 'a', studentName: 'Alex', serviceDate: '2026-08-04',
     status: 'closed', clockInAt: 0, clockOutAt: hour,
-  }], [{ id: 'current', name: 'Current Family', students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+  }], [{ id: 'current', name: 'Current Family', active: true, studentIds: ['a'], students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+
+  assert.equal(result.familyRows[0].accountType, 'family');
+  assert.equal(result.familyRows[0].familyKey, 'current');
+  assert.equal(result.familyRows[0].familyName, 'Current Family');
+  assert.equal(result.sessionRows[0].assignmentSource, 'current-family-fallback');
+});
+
+test('keeps truly unlinked students as individual billing accounts', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'a', studentName: 'Alex', serviceDate: '2026-08-04',
+    status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [], rates);
 
   assert.equal(result.familyRows[0].accountType, 'student');
   assert.equal(result.familyRows[0].familyKey, 'student:a');
