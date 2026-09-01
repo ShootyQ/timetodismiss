@@ -841,7 +841,7 @@ async function computeClaims(uid, email) {
     });
     const families = familiesSnapshot.docs.map((familySnap) => ({ id: familySnap.id, ...familySnap.data() }));
     const report = aggregateAftercareReport(sessions, families, AFTERCARE_DEFAULTS);
-    return { ok: true, mode, period, ...report };
+    return { ok: true, reportSchemaVersion: 3, mode, period, ...report };
   });
 
   exports.getAftercareDaySessions = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {

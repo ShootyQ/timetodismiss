@@ -88,7 +88,7 @@ test('treats the exact local cutoff as closed', () => {
   assert.equal(getServiceDay(now, 'America/Chicago', '18:00').isAfterCutoff, true);
 });
 
-test('reports use stored historical families instead of current student mappings', () => {
+test('reports use stored historical families when no current mapping exists', () => {
   const result = aggregateAftercareReport([{
     id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'old', familyName: 'Old Family',
     serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
@@ -112,7 +112,7 @@ test('uses the current active family for legacy sessions with no stored assignme
   assert.equal(result.familyRows[0].accountType, 'family');
   assert.equal(result.familyRows[0].familyKey, 'current');
   assert.equal(result.familyRows[0].familyName, 'Current Family');
-  assert.equal(result.sessionRows[0].assignmentSource, 'current-family-fallback');
+  assert.equal(result.sessionRows[0].assignmentSource, 'current-family');
 });
 
 test('keeps truly unlinked students as individual billing accounts', () => {
@@ -145,7 +145,19 @@ test('uses the canonical current mapping for a legacy session without a family',
 
   assert.equal(result.familyRows[0].familyId, 'aguila');
   assert.equal(result.familyRows[0].familyName, 'Aguila');
-  assert.equal(result.sessionRows[0].assignmentSource, 'current-family-fallback');
+  assert.equal(result.sessionRows[0].assignmentSource, 'current-family');
+});
+
+test('canonical current mapping reunites sessions with stale stored family assignments', () => {
+  const result = aggregateAftercareReport([
+    { id: 'one', studentId: 'a', studentName: 'Aguila, Ethan', familyId: 'old-a', familyName: 'Aguila, Ethan', currentFamilyId: 'aguila', currentFamilyName: 'Aguila', serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour },
+    { id: 'two', studentId: 'b', studentName: 'Aguila, Isaac', familyId: 'old-b', familyName: 'Aguila, Isaac', currentFamilyId: 'aguila', currentFamilyName: 'Aguila', serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour },
+  ], [{ id: 'aguila', name: 'Aguila', active: true, studentIds: ['a', 'b'], students: [{ studentId: 'a', name: 'Aguila, Ethan' }, { studentId: 'b', name: 'Aguila, Isaac' }] }], rates);
+
+  assert.equal(result.familyRows.length, 1);
+  assert.equal(result.familyRows[0].familyId, 'aguila');
+  assert.deepEqual(result.familyRows[0].billedStudents.map((student) => student.studentName), ['Aguila, Ethan', 'Aguila, Isaac']);
+  assert.equal(result.familyRows[0].familyAmountCents, 1600);
 });
 
 test('separates configured roster from students billed in the period', () => {

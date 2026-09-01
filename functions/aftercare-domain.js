@@ -167,12 +167,13 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
 
   for (const source of sessions || []) {
     const mappedFamily = source.currentFamilyId ? familyById.get(source.currentFamilyId) || { id: source.currentFamilyId, name: source.currentFamilyName || source.currentFamilyId, active: true, students: [] } : null;
-    const currentFamily = !source.familyId ? mappedFamily || currentFamilyByStudentId.get(source.studentId) || currentFamilyByStudentName.get(String(source.studentName || '').trim().toLowerCase()) || currentFamilyByName.get(String(source.familyName || '').trim().toLowerCase()) : null;
-    const familyId = source.familyId || currentFamily?.id || null;
+    const currentFamily = mappedFamily || currentFamilyByStudentId.get(source.studentId) || currentFamilyByStudentName.get(String(source.studentName || '').trim().toLowerCase()) || null;
+    const storedFamily = source.familyId ? familyById.get(source.familyId) : null;
+    const familyId = currentFamily?.id || source.familyId || null;
     const accountType = familyId ? 'family' : 'student';
     const family = familyId ? familyById.get(familyId) : null;
     const familyKey = familyId || `student:${source.studentId}`;
-    const familyName = source.familyName || currentFamily?.name || family?.name || source.studentName || source.studentId;
+    const familyName = currentFamily?.name || source.currentFamilyName || source.familyName || storedFamily?.name || family?.name || source.studentName || source.studentId;
     const audit = {
       id: source.id,
       serviceDate: source.serviceDate,
@@ -182,7 +183,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyKey,
       familyName,
       accountType,
-      assignmentSource: source.familyId ? 'historical' : currentFamily ? 'current-family-fallback' : 'individual',
+      assignmentSource: currentFamily ? 'current-family' : source.familyId ? 'historical' : 'individual',
       clockInAt: source.clockInAt ?? null,
       clockOutAt: source.clockOutAt ?? null,
       singleRateCents: Number(source.singleRateCents ?? defaultRates.singleRateCents),
@@ -233,7 +234,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       familyName,
       accountType,
       familyStatus: !familyId ? null : !family ? 'missing' : family.active === false ? 'archived' : 'active',
-      assignmentSource: source.familyId ? 'historical' : currentFamily ? 'current-family-fallback' : 'individual',
+      assignmentSource: currentFamily ? 'current-family' : source.familyId ? 'historical' : 'individual',
       singleRateCents: audit.singleRateCents,
       familyRateCents: audit.familyRateCents,
       sessions: [],

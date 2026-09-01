@@ -73,6 +73,9 @@ function isOverdue(session) {
 }
 
 function normalizeReport(report) {
+  if (Number(report.reportSchemaVersion || 0) >= 3) {
+    return { ...report, dayRows: report.dayRows || [], familyRows: report.familyRows || [], sessionRows: report.sessionRows || [], exceptionCount: report.exceptionCount || 0 };
+  }
   const familyById = new Map(state.families.map((family) => [family.id, family]));
   const familyByStudentId = new Map();
   const familyByStudentName = new Map();
