@@ -1,6 +1,7 @@
 const { DateTime, IANAZone } = require('luxon');
 
 const HOUR_MS = 60 * 60 * 1000;
+const FAMILY_ENDPOINT_TOLERANCE_MS = 5 * 60 * 1000;
 
 function validateTimezone(timezone) {
   if (!IANAZone.isValidZone(timezone)) {
@@ -73,7 +74,6 @@ function calculateFamilyDay(sessions, rates) {
     throw new Error('rates must be nonnegative integer cents');
   }
 
-  const eventsByTime = new Map();
   const intervalsByStudent = new Map();
   for (const session of sessions || []) {
     const studentId = String(session.studentId || '').trim();
@@ -88,16 +88,49 @@ function calculateFamilyDay(sessions, rates) {
   }
 
   const studentMilliseconds = {};
+  const mergedByStudent = new Map();
   for (const [studentId, intervals] of intervalsByStudent) {
     const merged = mergeIntervals(intervals);
+    mergedByStudent.set(studentId, merged);
     studentMilliseconds[studentId] = merged.reduce((sum, interval) => sum + interval.end - interval.start, 0);
-    for (const interval of merged) {
-      const starts = eventsByTime.get(interval.start) || { start: [], end: [] };
+  }
+
+  const billingIntervals = Array.from(mergedByStudent, ([studentId, intervals]) => intervals.map((interval) => ({
+    studentId,
+    start: interval.start,
+    end: interval.end,
+    billingStart: interval.start,
+    billingEnd: interval.end,
+  }))).flat();
+  for (let index = 0; index < billingIntervals.length; index++) {
+    const interval = billingIntervals[index];
+    const matches = billingIntervals.filter((candidate, candidateIndex) =>
+      candidateIndex !== index && candidate.studentId !== interval.studentId &&
+      Math.abs(candidate.start - interval.start) <= FAMILY_ENDPOINT_TOLERANCE_MS &&
+      Math.abs(candidate.end - interval.end) <= FAMILY_ENDPOINT_TOLERANCE_MS
+    );
+    if (!matches.length) continue;
+    const group = [interval, ...matches];
+    const earliestStart = Math.min(...group.map((item) => item.start));
+    const latestStart = Math.max(...group.map((item) => item.start));
+    const earliestEnd = Math.min(...group.map((item) => item.end));
+    const latestEnd = Math.max(...group.map((item) => item.end));
+    if (latestStart - earliestStart > FAMILY_ENDPOINT_TOLERANCE_MS || latestEnd - earliestEnd > FAMILY_ENDPOINT_TOLERANCE_MS) continue;
+    for (const item of group) {
+      item.billingStart = earliestStart;
+      item.billingEnd = latestEnd;
+    }
+  }
+
+  const eventsByTime = new Map();
+  for (const { studentId, billingStart: start, billingEnd: end } of billingIntervals) {
+    if (end > start) {
+      const starts = eventsByTime.get(start) || { start: [], end: [] };
       starts.start.push(studentId);
-      eventsByTime.set(interval.start, starts);
-      const ends = eventsByTime.get(interval.end) || { start: [], end: [] };
+      eventsByTime.set(start, starts);
+      const ends = eventsByTime.get(end) || { start: [], end: [] };
       ends.end.push(studentId);
-      eventsByTime.set(interval.end, ends);
+      eventsByTime.set(end, ends);
     }
   }
 
@@ -278,6 +311,8 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       students,
       billedStudents: students,
       sessionIds: group.sessionIds,
+      firstClockInAt: new Date(Math.min(...group.sessions.map((session) => asMillis(session.clockInAt, 'clockInAt')))).toISOString(),
+      lastClockOutAt: new Date(Math.max(...group.sessions.map((session) => asMillis(session.clockOutAt, 'clockOutAt')))).toISOString(),
     };
   }).sort((left, right) => left.serviceDate.localeCompare(right.serviceDate) || left.familyName.localeCompare(right.familyName));
 

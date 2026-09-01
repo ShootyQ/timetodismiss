@@ -32,6 +32,41 @@ test('charges solo and sibling overlap once per family', () => {
   assert.deepEqual(result.studentMilliseconds, { a: 2 * hour, b: 2 * hour });
 });
 
+test('treats sibling endpoints within five minutes as one family interval', () => {
+  const minute = 60 * 1000;
+  const result = calculateFamilyDay([
+    { studentId: 'a', clockInAt: 0, clockOutAt: 2 * hour },
+    { studentId: 'b', clockInAt: 4 * minute, clockOutAt: 2 * hour - 3 * minute },
+  ], rates);
+
+  assert.equal(result.singleMilliseconds, 0);
+  assert.equal(result.familyMilliseconds, 2 * hour);
+  assert.equal(result.familyAmountCents, 3200);
+  assert.deepEqual(result.studentMilliseconds, { a: 2 * hour, b: 113 * minute });
+});
+
+test('includes an exact five-minute endpoint difference in family billing', () => {
+  const minute = 60 * 1000;
+  const result = calculateFamilyDay([
+    { studentId: 'a', clockInAt: 0, clockOutAt: 2 * hour },
+    { studentId: 'b', clockInAt: 5 * minute, clockOutAt: 2 * hour - 5 * minute },
+  ], rates);
+
+  assert.equal(result.singleMilliseconds, 0);
+  assert.equal(result.familyMilliseconds, 2 * hour);
+});
+
+test('keeps solo edge time when sibling endpoints differ by more than five minutes', () => {
+  const minute = 60 * 1000;
+  const result = calculateFamilyDay([
+    { studentId: 'a', clockInAt: 0, clockOutAt: 2 * hour },
+    { studentId: 'b', clockInAt: 6 * minute, clockOutAt: 2 * hour - 6 * minute },
+  ], rates);
+
+  assert.equal(result.singleMilliseconds, 12 * minute);
+  assert.equal(result.familyMilliseconds, 108 * minute);
+});
+
 test('counts three simultaneous siblings at one family rate', () => {
   const result = calculateFamilyDay([
     { studentId: 'a', clockInAt: 0, clockOutAt: hour },

@@ -27,6 +27,9 @@ const billedStudents = (row) => row.billedStudents || row.students || [];
 const billedStudentDetails = (row) => billedStudents(row).map((student) => `${student.studentName || student.name || student.studentId}${student.duration ? ` (${student.duration})` : ''}`).join(', ') || 'None';
 const reportDays = () => state.report?.dayRows || [];
 const reportSessions = () => state.report?.sessionRows || [];
+const daySessions = (day) => reportSessions().filter((session) => session.familyKey === day.familyKey && session.serviceDate === day.serviceDate && session.included !== false);
+const dayFirstIn = (day) => day.firstClockInAt || daySessions(day).map((session) => session.clockInAt).filter(Boolean).sort()[0] || null;
+const dayLastOut = (day) => day.lastClockOutAt || daySessions(day).map((session) => session.clockOutAt).filter(Boolean).sort().at(-1) || null;
 const localInputValue = (iso) => {
   if (!iso) return '';
   const date = new Date(iso);
@@ -425,10 +428,10 @@ function buildReportDetail(account) {
   }
   detail.append(grid);
   for (const issue of account.exceptions || []) { const warning = document.createElement('div'); warning.className = 'ac-callout'; warning.textContent = issue; detail.append(warning); }
-  const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>Students</th><th class="number">Solo</th><th class="number">Sibling overlap</th><th class="number">Total</th></tr></thead>';
+  const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>First in</th><th>Last out</th><th>Students</th><th class="number">Solo</th><th class="number">Sibling overlap</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
   for (const day of reportDays().filter((item) => item.familyKey === account.familyKey)) {
-    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(nameList(billedStudents(day))), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
+    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayLastOut(day))), cell(nameList(billedStudents(day))), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
   }
   table.append(body); detail.append(table);
   const auditHeading = document.createElement('h4'); auditHeading.textContent = 'Session audit'; detail.append(auditHeading);
@@ -477,8 +480,8 @@ function statementPdf(jsPDF, account) {
   const margin = 42;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const columns = [margin, 126, 342, 414, 486];
-  const widths = [84, 216, 72, 72, 84];
+  const columns = [margin, 106, 154, 202, 362, 432, 502];
+  const widths = [64, 48, 48, 160, 70, 70, 68];
   const days = reportDays().filter((day) => day.familyKey === account.familyKey);
   let y = margin;
 
@@ -495,7 +498,7 @@ function statementPdf(jsPDF, account) {
   function drawTableHeader() {
     doc.setFillColor(240, 244, 243); doc.rect(margin, y, pageWidth - margin * 2, 22, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(76, 90, 100);
-    ['DATE', 'STUDENTS', 'SOLO', 'SIBLING', 'TOTAL'].forEach((label, index) => doc.text(label, columns[index] + 4, y + 14));
+    ['DATE', 'IN', 'OUT', 'STUDENTS', 'SOLO', 'SIBLING', 'TOTAL'].forEach((label, index) => doc.text(label, columns[index] + 4, y + 14));
     y += 22;
   }
   function newPage() { doc.addPage('letter', 'portrait'); y = margin; drawHeader(true); drawTableHeader(); }
@@ -515,7 +518,7 @@ function statementPdf(jsPDF, account) {
 
   for (const day of days) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 33, 43);
-    const values = [formatDate(day.serviceDate), nameList(billedStudents(day)), money(day.singleAmountCents), money(day.familyAmountCents), money(day.totalAmountCents)];
+    const values = [formatDate(day.serviceDate), formatTime(dayFirstIn(day)), formatTime(dayLastOut(day)), nameList(billedStudents(day)), money(day.singleAmountCents), money(day.familyAmountCents), money(day.totalAmountCents)];
     const lines = values.map((value, index) => doc.splitTextToSize(pdfText(value), widths[index] - 8));
     const rowHeight = Math.max(24, Math.max(...lines.map((value) => value.length)) * 10 + 8);
     if (y + rowHeight > pageHeight - 90) newPage();
@@ -585,9 +588,9 @@ function buildStatement(account) {
   const total = document.createElement('div'); total.className = 'ac-statement-total'; const label = document.createElement('span'); label.textContent = 'Total due'; const amount = document.createElement('strong'); amount.textContent = money(account.totalAmountCents); total.append(label, amount); head.append(identity, total);
   const meta = document.createElement('div'); meta.className = 'ac-statement-meta';
   for (const [labelText, value] of [['Billing account', account.familyName], ['Students billed', nameList(billedStudents(account))], ['Total hours', `${hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000)} hours`]]) { const block = document.createElement('div'); const labelNode = document.createElement('strong'); labelNode.textContent = labelText; const valueNode = document.createElement('div'); valueNode.textContent = value; block.append(labelNode, valueNode); meta.append(block); }
-  const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>Students</th><th class="number">Solo charge</th><th class="number">Sibling charge</th><th class="number">Total</th></tr></thead>';
+  const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>First in</th><th>Last out</th><th>Students</th><th class="number">Solo charge</th><th class="number">Sibling charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
-  for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(nameList(billedStudents(day))), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
+  for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayLastOut(day))), cell(nameList(billedStudents(day))), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
   table.append(body);
   const foot = document.createElement('div'); foot.className = 'ac-statement-foot'; foot.textContent = `Solo ${money(account.singleAmountCents)} · Sibling overlap ${money(account.familyAmountCents)} · Total ${money(account.totalAmountCents)}`;
   statement.append(head, meta, table, foot); return statement;
