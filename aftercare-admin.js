@@ -20,6 +20,7 @@ const state = {
 const elements = Object.fromEntries(Array.from(document.querySelectorAll('[id]')).map((element) => [element.id, element]));
 const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 const hours = (value) => Number(value || 0).toFixed(2);
+const durationLabel = (milliseconds) => { const minutes = Math.round(Number(milliseconds || 0) / 60000); return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; };
 const schoolName = () => window.SD?.schoolName || window.SD?.schoolId || 'School';
 const nameList = (students) => (students || []).map((student) => student.studentName || student.name || student.studentId).join(', ') || 'None';
 const billedStudents = (row) => row.billedStudents || row.students || [];
@@ -69,6 +70,109 @@ function emptyRow(body, columns, message) {
 }
 function isOverdue(session) {
   return session.status === 'open' && session.autoCloseAt && new Date(session.autoCloseAt) < new Date();
+}
+
+function normalizeReport(report) {
+  const familyById = new Map(state.families.map((family) => [family.id, family]));
+  const familyByStudentId = new Map();
+  const familyByStudentName = new Map();
+  const familyByName = new Map();
+  for (const family of state.families) {
+    familyByName.set(String(family.name || '').trim().toLowerCase(), family);
+    const ids = family.studentIds || (family.students || []).map((student) => student.studentId || student.id);
+    for (const studentId of ids) if (studentId) familyByStudentId.set(studentId, family);
+    for (const student of family.students || []) {
+      const studentName = String(student.name || student.studentName || '').trim().toLowerCase();
+      if (studentName) familyByStudentName.set(studentName, family);
+    }
+  }
+  const normalizedDays = (report.dayRows || []).map((day) => {
+    const students = billedStudents(day);
+    const inferredFamily = !day.familyId ? familyByName.get(String(day.familyName || '').trim().toLowerCase()) || (students.length === 1 ? familyByStudentId.get(students[0].studentId) || familyByStudentName.get(String(students[0].studentName || students[0].name || '').trim().toLowerCase()) : null) : null;
+    const familyId = day.familyId || inferredFamily?.id || null;
+    return {
+      ...day,
+      sourceFamilyKey: day.familyKey,
+      familyId,
+      familyKey: familyId || day.familyKey || `student:${students[0]?.studentId || day.familyName}`,
+      familyName: day.familyName || inferredFamily?.name || students[0]?.studentName,
+      accountType: familyId ? 'family' : 'student',
+      billedStudents: students,
+    };
+  });
+  const normalizedFamilies = (report.familyRows || []).map((account) => {
+    const matchingDays = normalizedDays.filter((day) => day.sourceFamilyKey === account.familyKey || day.familyKey === account.familyKey || (account.familyId && day.familyId === account.familyId));
+    const studentMap = new Map();
+    const summaryStudents = billedStudents(account);
+    const studentSources = summaryStudents.length ? summaryStudents : matchingDays.flatMap((day) => billedStudents(day));
+    for (const student of studentSources) {
+      if (!student?.studentId && !student?.studentName) continue;
+      const key = student.studentId || student.studentName;
+      const existing = studentMap.get(key) || { ...student, milliseconds: 0, days: 0 };
+      existing.milliseconds += Number(student.milliseconds || 0);
+      existing.days += Number(student.days || (summaryStudents.length ? 0 : 1));
+      existing.duration = existing.duration || student.duration;
+      studentMap.set(key, existing);
+    }
+    const inferredStudent = Array.from(studentMap.values())[0];
+    const inferredFamily = !account.familyId ? familyByName.get(String(account.familyName || '').trim().toLowerCase()) || (studentMap.size === 1 ? familyByStudentId.get(inferredStudent.studentId) || familyByStudentName.get(String(inferredStudent.studentName || inferredStudent.name || '').trim().toLowerCase()) : null) : null;
+    const familyId = account.familyId || inferredFamily?.id || null;
+    const configuredFamily = familyId ? familyById.get(familyId) : null;
+    return {
+      ...account,
+      familyId,
+      familyKey: familyId || account.familyKey,
+      familyName: inferredFamily?.name || account.familyName,
+      accountType: familyId ? 'family' : 'student',
+      billedStudents: Array.from(studentMap.values()),
+      configuredStudents: account.configuredStudents?.length ? account.configuredStudents : (configuredFamily?.students || []).map((student) => ({ studentId: student.studentId || student.id, studentName: student.name || student.studentName || student.studentId || student.id })),
+      exceptions: account.exceptions || [],
+    };
+  });
+  const accountsByKey = new Map();
+  for (const account of normalizedFamilies) {
+    const key = account.familyId || account.familyKey;
+    if (!accountsByKey.has(key)) accountsByKey.set(key, {
+      ...account,
+      singleMilliseconds: 0,
+      familyMilliseconds: 0,
+      singleAmountCents: 0,
+      familyAmountCents: 0,
+      totalAmountCents: 0,
+      billedStudentsById: new Map(),
+      exceptions: [],
+    });
+    const merged = accountsByKey.get(key);
+    merged.singleMilliseconds += Number(account.singleMilliseconds || Number(account.singleDecimalHours || 0) * 3600000);
+    merged.familyMilliseconds += Number(account.familyMilliseconds || Number(account.familyDecimalHours || 0) * 3600000);
+    merged.singleAmountCents += Number(account.singleAmountCents || 0);
+    merged.familyAmountCents += Number(account.familyAmountCents || 0);
+    merged.totalAmountCents += Number(account.totalAmountCents || 0);
+    merged.exceptions.push(...account.exceptions);
+    for (const student of billedStudents(account)) {
+      const studentKey = student.studentId || student.studentName;
+      const existing = merged.billedStudentsById.get(studentKey) || { ...student, milliseconds: 0, days: 0 };
+      existing.milliseconds += Number(student.milliseconds || 0);
+      existing.days += Number(student.days || 0);
+      merged.billedStudentsById.set(studentKey, existing);
+    }
+  }
+  const familyRows = Array.from(accountsByKey.values()).map(({ billedStudentsById, ...account }) => {
+    const attendanceDates = new Set(normalizedDays.filter((day) => day.familyKey === account.familyKey).map((day) => day.serviceDate));
+    const students = Array.from(billedStudentsById.values()).map((student) => ({ ...student, duration: durationLabel(student.milliseconds) }));
+    return {
+      ...account,
+      days: attendanceDates.size || account.days,
+      students,
+      billedStudents: students,
+      singleDuration: durationLabel(account.singleMilliseconds),
+      singleDecimalHours: account.singleMilliseconds / 3600000,
+      familyDuration: durationLabel(account.familyMilliseconds),
+      familyDecimalHours: account.familyMilliseconds / 3600000,
+      exceptions: Array.from(new Set(account.exceptions)),
+    };
+  });
+  return { ...report, dayRows: normalizedDays, familyRows, sessionRows: report.sessionRows || [], exceptionCount: report.exceptionCount || 0 };
 }
 function sessionMatches(session, search, status) {
   const haystack = `${session.studentName || ''} ${session.familyName || ''} ${session.classId || ''}`.toLowerCase();
@@ -266,7 +370,7 @@ async function runReport() {
   setNotice('Building monthly report…');
   elements.exportSummary.disabled = true; elements.exportAudit.disabled = true; elements.printAll.disabled = true;
   try {
-    state.report = await getAftercareReport({ mode: 'monthly', period: month });
+    state.report = normalizeReport(await getAftercareReport({ mode: 'monthly', period: month }));
     state.reportMonth = month;
     state.expandedAccount = null;
     renderReport();

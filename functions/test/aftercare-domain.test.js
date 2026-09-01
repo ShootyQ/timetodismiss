@@ -126,6 +126,28 @@ test('keeps truly unlinked students as individual billing accounts', () => {
   assert.equal(result.familyRows[0].familyName, 'Alex');
 });
 
+test('resolves a legacy student to an active family by exact configured name', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'legacy-a', studentName: 'Aguila, Ethan', serviceDate: '2026-08-04',
+    status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [{ id: 'aguila', name: 'Aguila', active: true, students: [{ studentId: 'current-a', name: 'Aguila, Ethan' }] }], rates);
+
+  assert.equal(result.familyRows[0].familyId, 'aguila');
+  assert.equal(result.familyRows[0].familyName, 'Aguila');
+  assert.equal(result.familyRows[0].accountType, 'family');
+});
+
+test('uses the canonical current mapping for a legacy session without a family', () => {
+  const result = aggregateAftercareReport([{
+    id: 'session-1', studentId: 'legacy-a', studentName: 'Aguila, Ethan', currentFamilyId: 'aguila', currentFamilyName: 'Aguila',
+    serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
+  }], [{ id: 'aguila', name: 'Aguila', active: true, studentIds: ['current-a'], students: [{ studentId: 'current-a', name: 'Aguila, Ethan' }] }], rates);
+
+  assert.equal(result.familyRows[0].familyId, 'aguila');
+  assert.equal(result.familyRows[0].familyName, 'Aguila');
+  assert.equal(result.sessionRows[0].assignmentSource, 'current-family-fallback');
+});
+
 test('separates configured roster from students billed in the period', () => {
   const result = aggregateAftercareReport([{
     id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'family', familyName: 'Example Family',

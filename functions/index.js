@@ -820,15 +820,20 @@ async function computeClaims(uid, email) {
     await requireAftercareManager(req, orgId, schoolId);
 
     const field = mode === 'daily' ? 'serviceDate' : 'billingMonth';
-    const [snapshot, familiesSnapshot] = await Promise.all([
+    const [snapshot, familiesSnapshot, mappingsSnapshot] = await Promise.all([
       db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).where(field, '==', period).get(),
       db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareFamilies`).get(),
+      db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareStudentFamilies`).get(),
     ]);
+    const currentFamilyByStudentId = new Map(mappingsSnapshot.docs.map((mappingSnap) => [mappingSnap.id, mappingSnap.data()]));
     const sessions = snapshot.docs.map((sessionSnap) => {
       const session = sessionSnap.data();
+      const currentFamily = currentFamilyByStudentId.get(session.studentId);
       return {
         id: sessionSnap.id,
         ...session,
+        currentFamilyId: currentFamily?.familyId || null,
+        currentFamilyName: currentFamily?.familyName || null,
         clockInAt: session.clockInAt?.toDate().toISOString() || null,
         clockOutAt: session.clockOutAt?.toDate().toISOString() || null,
         closedAt: session.closedAt?.toDate().toISOString() || null,

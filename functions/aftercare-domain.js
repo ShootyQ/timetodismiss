@@ -148,9 +148,17 @@ function formatDuration(milliseconds) {
 function aggregateAftercareReport(sessions, families, defaultRates) {
   const familyById = new Map((families || []).map((family) => [family.id, family]));
   const currentFamilyByStudentId = new Map();
+  const currentFamilyByStudentName = new Map();
+  const currentFamilyByName = new Map();
   for (const family of families || []) {
     if (family.active === false) continue;
-    for (const studentId of family.studentIds || []) currentFamilyByStudentId.set(studentId, family);
+    currentFamilyByName.set(String(family.name || '').trim().toLowerCase(), family);
+    const studentIds = family.studentIds || (family.students || []).map((student) => student.studentId || student.id);
+    for (const studentId of studentIds) if (studentId) currentFamilyByStudentId.set(studentId, family);
+    for (const student of family.students || []) {
+      const studentName = String(student.name || student.studentName || '').trim().toLowerCase();
+      if (studentName) currentFamilyByStudentName.set(studentName, family);
+    }
   }
   const groups = new Map();
   const sessionRows = [];
@@ -158,7 +166,8 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
   let autoClosedCount = 0;
 
   for (const source of sessions || []) {
-    const currentFamily = !source.familyId ? currentFamilyByStudentId.get(source.studentId) : null;
+    const mappedFamily = source.currentFamilyId ? familyById.get(source.currentFamilyId) || { id: source.currentFamilyId, name: source.currentFamilyName || source.currentFamilyId, active: true, students: [] } : null;
+    const currentFamily = !source.familyId ? mappedFamily || currentFamilyByStudentId.get(source.studentId) || currentFamilyByStudentName.get(String(source.studentName || '').trim().toLowerCase()) || currentFamilyByName.get(String(source.familyName || '').trim().toLowerCase()) : null;
     const familyId = source.familyId || currentFamily?.id || null;
     const accountType = familyId ? 'family' : 'student';
     const family = familyId ? familyById.get(familyId) : null;
