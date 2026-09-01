@@ -55,7 +55,7 @@ Aftercare reports are read-only. Billing groups students by the canonical curren
 
 The management page provides a one-row-per-account monthly summary CSV, a session-level audit CSV, and family statements through browser Print / Save as PDF. Viewing, exporting, and printing reports do not write Firestore data.
 
-For sibling billing, sessions from different students whose clock-in times are within five minutes and whose clock-out times are also within five minutes are billed as one family interval from the earliest check-in through the latest check-out. Each student's recorded attendance duration remains unchanged. Parent statements show the earliest check-in and latest check-out for every service day.
+For sibling billing, sessions from different students whose clock-in times are within five minutes and whose clock-out times are also within five minutes are billed as one family interval from the earliest check-in through the first recorded check-out. This intentionally removes small solo edge charges caused by checking siblings in or out one at a time. Each student's recorded attendance duration remains unchanged. Parent statements show the billed check-in and billed check-out for every service day.
 
 ### Hosting configuration
 

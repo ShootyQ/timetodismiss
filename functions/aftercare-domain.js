@@ -118,7 +118,7 @@ function calculateFamilyDay(sessions, rates) {
     if (latestStart - earliestStart > FAMILY_ENDPOINT_TOLERANCE_MS || latestEnd - earliestEnd > FAMILY_ENDPOINT_TOLERANCE_MS) continue;
     for (const item of group) {
       item.billingStart = earliestStart;
-      item.billingEnd = latestEnd;
+      item.billingEnd = earliestEnd;
     }
   }
 
@@ -312,6 +312,7 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
       billedStudents: students,
       sessionIds: group.sessionIds,
       firstClockInAt: new Date(Math.min(...group.sessions.map((session) => asMillis(session.clockInAt, 'clockInAt')))).toISOString(),
+      firstClockOutAt: new Date(Math.min(...group.sessions.map((session) => asMillis(session.clockOutAt, 'clockOutAt')))).toISOString(),
       lastClockOutAt: new Date(Math.max(...group.sessions.map((session) => asMillis(session.clockOutAt, 'clockOutAt')))).toISOString(),
     };
   }).sort((left, right) => left.serviceDate.localeCompare(right.serviceDate) || left.familyName.localeCompare(right.familyName));

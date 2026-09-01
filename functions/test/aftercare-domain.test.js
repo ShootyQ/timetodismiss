@@ -40,8 +40,8 @@ test('treats sibling endpoints within five minutes as one family interval', () =
   ], rates);
 
   assert.equal(result.singleMilliseconds, 0);
-  assert.equal(result.familyMilliseconds, 2 * hour);
-  assert.equal(result.familyAmountCents, 3200);
+  assert.equal(result.familyMilliseconds, 117 * minute);
+  assert.equal(result.familyAmountCents, 3120);
   assert.deepEqual(result.studentMilliseconds, { a: 2 * hour, b: 113 * minute });
 });
 
@@ -53,7 +53,7 @@ test('includes an exact five-minute endpoint difference in family billing', () =
   ], rates);
 
   assert.equal(result.singleMilliseconds, 0);
-  assert.equal(result.familyMilliseconds, 2 * hour);
+  assert.equal(result.familyMilliseconds, 115 * minute);
 });
 
 test('keeps solo edge time when sibling endpoints differ by more than five minutes', () => {
@@ -243,4 +243,15 @@ test('monthly account totals reconcile exactly to their daily rows', () => {
   assert.equal(result.familyRows[0].days, 2);
   assert.equal(result.familyRows[0].totalAmountCents, dailyTotal);
   assert.equal(dailyTotal, 3000);
+});
+
+test('report days expose actual earliest check-in and earliest check-out', () => {
+  const result = aggregateAftercareReport([
+    { id: 'one', studentId: 'a', studentName: 'Alex', familyId: 'family', familyName: 'Example Family', serviceDate: '2026-08-04', status: 'closed', clockInAt: '2026-08-04T20:00:00.000Z', clockOutAt: '2026-08-04T22:00:00.000Z' },
+    { id: 'two', studentId: 'b', studentName: 'Blair', familyId: 'family', familyName: 'Example Family', serviceDate: '2026-08-04', status: 'closed', clockInAt: '2026-08-04T20:04:00.000Z', clockOutAt: '2026-08-04T21:57:00.000Z' },
+  ], [{ id: 'family', name: 'Example Family', active: true, studentIds: ['a', 'b'] }], rates);
+
+  assert.equal(result.dayRows[0].firstClockInAt, '2026-08-04T20:00:00.000Z');
+  assert.equal(result.dayRows[0].firstClockOutAt, '2026-08-04T21:57:00.000Z');
+  assert.equal(result.dayRows[0].lastClockOutAt, '2026-08-04T22:00:00.000Z');
 });
