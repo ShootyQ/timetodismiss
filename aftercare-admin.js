@@ -75,6 +75,78 @@ function isOverdue(session) {
   return session.status === 'open' && session.autoCloseAt && new Date(session.autoCloseAt) < new Date();
 }
 
+function calculateClientDay(sessions) {
+  const tolerance = 5 * 60 * 1000;
+  const intervals = sessions.map((session) => ({
+    session,
+    studentId: session.studentId,
+    start: new Date(session.clockInAt).getTime(),
+    end: new Date(session.clockOutAt).getTime(),
+  })).filter((interval) => interval.studentId && Number.isFinite(interval.start) && Number.isFinite(interval.end) && interval.end > interval.start)
+    .map((interval) => ({ ...interval, billingStart: interval.start, billingEnd: interval.end }));
+  for (const interval of intervals) {
+    const matches = intervals.filter((candidate) => candidate !== interval && candidate.studentId !== interval.studentId && Math.abs(candidate.start - interval.start) <= tolerance && Math.abs(candidate.end - interval.end) <= tolerance);
+    if (!matches.length) continue;
+    const group = [interval, ...matches];
+    const starts = group.map((item) => item.start);
+    const ends = group.map((item) => item.end);
+    if (Math.max(...starts) - Math.min(...starts) > tolerance || Math.max(...ends) - Math.min(...ends) > tolerance) continue;
+    for (const item of group) { item.billingStart = Math.min(...starts); item.billingEnd = Math.min(...ends); }
+  }
+  const events = new Map();
+  for (const interval of intervals) {
+    const start = events.get(interval.billingStart) || { start: [], end: [] }; start.start.push(interval.studentId); events.set(interval.billingStart, start);
+    const end = events.get(interval.billingEnd) || { start: [], end: [] }; end.end.push(interval.studentId); events.set(interval.billingEnd, end);
+  }
+  const active = new Set();
+  let previous = null; let singleMilliseconds = 0; let familyMilliseconds = 0;
+  for (const time of Array.from(events.keys()).sort((left, right) => left - right)) {
+    if (previous !== null && active.size) { if (active.size === 1) singleMilliseconds += time - previous; else familyMilliseconds += time - previous; }
+    for (const studentId of events.get(time).end) active.delete(studentId);
+    for (const studentId of events.get(time).start) active.add(studentId);
+    previous = time;
+  }
+  const studentsById = new Map();
+  for (const interval of intervals) {
+    const student = studentsById.get(interval.studentId) || { studentId: interval.studentId, studentName: interval.session.studentName || interval.studentId, milliseconds: 0 };
+    student.milliseconds += interval.end - interval.start;
+    studentsById.set(interval.studentId, student);
+  }
+  const singleRateCents = Number(sessions[0]?.singleRateCents ?? state.settings.singleRateCents);
+  const familyRateCents = Number(sessions[0]?.familyRateCents ?? state.settings.familyRateCents);
+  const singleAmountCents = Math.round(singleMilliseconds * singleRateCents / 3600000);
+  const familyAmountCents = Math.round(familyMilliseconds * familyRateCents / 3600000);
+  return { intervals, students: Array.from(studentsById.values()).map((student) => ({ ...student, duration: durationLabel(student.milliseconds), decimalHours: student.milliseconds / 3600000 })), singleRateCents, familyRateCents, singleMilliseconds, familyMilliseconds, singleAmountCents, familyAmountCents, totalAmountCents: singleAmountCents + familyAmountCents };
+}
+
+async function rebuildLegacyReport(report) {
+  if (Number(report.reportSchemaVersion || 0) >= 4) return report;
+  const dates = Array.from(new Set((report.dayRows || []).map((day) => day.serviceDate).filter(Boolean)));
+  const familyByStudentId = new Map();
+  for (const family of state.families) for (const studentId of family.studentIds || (family.students || []).map((student) => student.studentId || student.id)) if (studentId) familyByStudentId.set(studentId, family);
+  const responses = await Promise.all(dates.map((date) => getAftercareDaySessions(date)));
+  const sessions = responses.flatMap((response, index) => (response.sessions || []).map((session) => ({ ...session, serviceDate: session.serviceDate || response.serviceDate || dates[index] }))).filter((session) => session.status !== 'open' && session.clockInAt && session.clockOutAt).map((session) => {
+    const family = familyByStudentId.get(session.studentId);
+    return { ...session, familyId: family?.id || session.familyId || null, familyName: family?.name || session.familyName || session.studentName, familyKey: family?.id || session.familyId || `student:${session.studentId}`, accountType: family || session.familyId ? 'family' : 'student', included: true };
+  });
+  const groups = new Map();
+  for (const session of sessions) { const key = `${session.serviceDate}|${session.familyKey}`; if (!groups.has(key)) groups.set(key, []); groups.get(key).push(session); }
+  const dayRows = [];
+  for (const groupedSessions of groups.values()) {
+    const first = groupedSessions[0];
+    const calculation = calculateClientDay(groupedSessions);
+    dayRows.push({ serviceDate: first.serviceDate, familyId: first.familyId, familyKey: first.familyKey, familyName: first.familyName, accountType: first.accountType, billedStudents: calculation.students, students: calculation.students, firstClockInAt: new Date(Math.min(...calculation.intervals.map((item) => item.start))).toISOString(), firstClockOutAt: new Date(Math.min(...calculation.intervals.map((item) => item.end))).toISOString(), singleMilliseconds: calculation.singleMilliseconds, familyMilliseconds: calculation.familyMilliseconds, singleDuration: durationLabel(calculation.singleMilliseconds), familyDuration: durationLabel(calculation.familyMilliseconds), singleAmountCents: calculation.singleAmountCents, familyAmountCents: calculation.familyAmountCents, totalAmountCents: calculation.totalAmountCents });
+  }
+  const accounts = new Map();
+  for (const day of dayRows) {
+    if (!accounts.has(day.familyKey)) accounts.set(day.familyKey, { ...day, days: 0, singleMilliseconds: 0, familyMilliseconds: 0, singleAmountCents: 0, familyAmountCents: 0, totalAmountCents: 0, studentsById: new Map() });
+    const account = accounts.get(day.familyKey); account.days++; account.singleMilliseconds += day.singleMilliseconds; account.familyMilliseconds += day.familyMilliseconds; account.singleAmountCents += day.singleAmountCents; account.familyAmountCents += day.familyAmountCents; account.totalAmountCents += day.totalAmountCents;
+    for (const student of day.billedStudents) { const existing = account.studentsById.get(student.studentId) || { ...student, milliseconds: 0, days: 0 }; existing.milliseconds += student.milliseconds; existing.days++; account.studentsById.set(student.studentId, existing); }
+  }
+  const familyRows = Array.from(accounts.values()).map(({ studentsById, ...account }) => { const students = Array.from(studentsById.values()).map((student) => ({ ...student, duration: durationLabel(student.milliseconds) })); const family = state.families.find((item) => item.id === account.familyId); return { ...account, students, billedStudents: students, configuredStudents: (family?.students || []).map((student) => ({ studentId: student.studentId || student.id, studentName: student.name || student.studentName })), singleDuration: durationLabel(account.singleMilliseconds), familyDuration: durationLabel(account.familyMilliseconds), singleDecimalHours: account.singleMilliseconds / 3600000, familyDecimalHours: account.familyMilliseconds / 3600000, exceptions: [] }; });
+  return { ...report, reportSchemaVersion: 4, dayRows, familyRows, sessionRows: sessions };
+}
+
 function normalizeReport(report) {
   const schemaVersion = Number(report.reportSchemaVersion || 0);
   if (schemaVersion >= 4) {
@@ -387,7 +459,8 @@ async function runReport() {
   setNotice('Building monthly report…');
   elements.exportSummary.disabled = true; elements.exportAudit.disabled = true; elements.downloadStatements.disabled = true; elements.printAll.disabled = true;
   try {
-    state.report = normalizeReport(await getAftercareReport({ mode: 'monthly', period: month }));
+    const report = await getAftercareReport({ mode: 'monthly', period: month });
+    state.report = normalizeReport(await rebuildLegacyReport(report));
     state.reportMonth = month;
     state.expandedAccount = null;
     renderReport();
