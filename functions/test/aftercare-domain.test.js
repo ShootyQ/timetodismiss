@@ -99,10 +99,11 @@ test('touching intervals do not create sibling overlap', () => {
 });
 
 test('rounds solo and family daily subtotals to cents', () => {
+  const sixMinutes = 6 * 60 * 1000;
   const result = calculateFamilyDay([
     { studentId: 'a', clockInAt: 0, clockOutAt: 1 },
     { studentId: 'b', clockInAt: 0, clockOutAt: 1 },
-    { studentId: 'a', clockInAt: 2, clockOutAt: 3 },
+    { studentId: 'a', clockInAt: sixMinutes, clockOutAt: sixMinutes + 1 },
   ], { singleRateCents: 1800000, familyRateCents: 1800000 });
   assert.equal(result.singleAmountCents, 1);
   assert.equal(result.familyAmountCents, 1);
@@ -128,7 +129,7 @@ test('reports use stored historical families when no current mapping exists', ()
     id: 'session-1', studentId: 'a', studentName: 'Alex', familyId: 'old', familyName: 'Old Family',
     serviceDate: '2026-08-04', status: 'closed', clockInAt: 0, clockOutAt: hour,
     singleRateCents: 1000, familyRateCents: 1600,
-  }], [{ id: 'new', name: 'New Family', students: [{ studentId: 'a', name: 'Alex' }] }], rates);
+  }], [{ id: 'new', name: 'New Family', students: [{ studentId: 'b', name: 'Blair' }] }], rates);
 
   assert.equal(result.familyRows.length, 1);
   assert.equal(result.familyRows[0].familyId, 'old');
