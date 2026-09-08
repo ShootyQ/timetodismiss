@@ -640,8 +640,9 @@ async function downloadAllStatements() {
     const [jsPDF, JSZip] = await Promise.all([ensureJSPDF(), ensureJSZip()]);
     const zip = new JSZip();
     const names = new Map();
+    const invoiceMonth = new Date(`${state.report.period}-01T12:00:00`).toLocaleDateString('en-US', { month: 'long' });
     for (const account of state.report.familyRows) {
-      const base = safeFileName(account);
+      const base = `${safeFileName(account)} - Aftercare Invoice - ${invoiceMonth}`;
       const count = (names.get(base.toLowerCase()) || 0) + 1;
       names.set(base.toLowerCase(), count);
       const fileName = `${base}${count > 1 ? `-${count}` : ''}.pdf`;
