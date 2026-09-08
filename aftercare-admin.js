@@ -22,9 +22,10 @@ const money = (cents) => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 const hours = (value) => Number(value || 0).toFixed(2);
 const durationLabel = (milliseconds) => { const minutes = Math.round(Number(milliseconds || 0) / 60000); return `${Math.floor(minutes / 60)} hr ${minutes % 60} min`; };
 const schoolName = () => window.SD?.schoolName || window.SD?.schoolId || 'School';
-const nameList = (students) => (students || []).map((student) => student.studentName || student.name || student.studentId).join(', ') || 'None';
+const nameList = (students) => (students || []).map((student) => student.studentName || student.name || student.studentId).join(' | ') || 'None';
 const billedStudents = (row) => row.billedStudents || row.students || [];
-const billedStudentDetails = (row) => billedStudents(row).map((student) => `${student.studentName || student.name || student.studentId}${student.duration ? ` (${student.duration})` : ''}`).join(', ') || 'None';
+const billedStudentDetails = (row) => billedStudents(row).map((student) => `${student.studentName || student.name || student.studentId}${student.duration ? ` (${student.duration})` : ''}`).join(' | ') || 'None';
+const billingExplanation = 'Single-child charge: $10.00 per hour when only one child in your family is checked in. Family charge: $16.00 per hour total when two or more children in your family are checked in at the same time—not per child. Both charges may appear when the number of children attending changes during a visit.';
 const reportDays = () => state.report?.dayRows || [];
 const reportSessions = () => state.report?.sessionRows || [];
 const daySessions = (day) => reportSessions().filter((session) => session.familyKey === day.familyKey && session.serviceDate === day.serviceDate && session.included !== false);
@@ -511,8 +512,9 @@ function buildReportDetail(account) {
     const item = document.createElement('div'); const heading = document.createElement('h4'); heading.textContent = title; const text = document.createElement('p'); text.textContent = value; item.append(heading, text); grid.append(item);
   }
   detail.append(grid);
+  detail.append(buildBillingExplanation());
   for (const issue of account.exceptions || []) { const warning = document.createElement('div'); warning.className = 'ac-callout'; warning.textContent = issue; detail.append(warning); }
-  const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Solo</th><th class="number">Sibling overlap</th><th class="number">Total</th></tr></thead>';
+  const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Single-child charge</th><th class="number">Family charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
   for (const day of reportDays().filter((item) => item.familyKey === account.familyKey)) {
     const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), cell(nameList(billedStudents(day))), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
@@ -580,10 +582,13 @@ function statementPdf(jsPDF, account) {
     y += 48; doc.setDrawColor(23, 33, 43); doc.setLineWidth(1.5); doc.line(margin, y, pageWidth - margin, y); y += 18;
   }
   function drawTableHeader() {
-    doc.setFillColor(240, 244, 243); doc.rect(margin, y, pageWidth - margin * 2, 22, 'F');
     doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(76, 90, 100);
-    ['DATE', 'IN', 'OUT', 'STUDENTS', 'SOLO', 'SIBLING', 'TOTAL'].forEach((label, index) => doc.text(label, columns[index] + 4, y + 14));
-    y += 22;
+    const labels = ['DATE', 'BILLED IN', 'BILLED OUT', 'STUDENTS', 'SINGLE-CHILD CHARGE', 'FAMILY CHARGE', 'TOTAL'];
+    const lines = labels.map((label, index) => doc.splitTextToSize(label, widths[index] - 8));
+    const headerHeight = Math.max(...lines.map((value) => value.length)) * 10 + 12;
+    doc.setFillColor(240, 244, 243); doc.rect(margin, y, pageWidth - margin * 2, headerHeight, 'F');
+    lines.forEach((label, index) => doc.text(label, columns[index] + 4, y + 13));
+    y += headerHeight;
   }
   function newPage() { doc.addPage('letter', 'portrait'); y = margin; drawHeader(true); drawTableHeader(); }
 
@@ -598,6 +603,11 @@ function statementPdf(jsPDF, account) {
   doc.setFont('helvetica', 'bold'); doc.text('TOTAL HOURS', margin, y + 39);
   doc.setFont('helvetica', 'normal'); doc.text(`${totalHours} hours`, margin, y + 53);
   y += Math.max(70, 34 + studentLines.length * 11);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.text('HOW CHARGES WORK', margin, y);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(76, 90, 100);
+  const explanationLines = doc.splitTextToSize(pdfText(billingExplanation), pageWidth - margin * 2);
+  doc.text(explanationLines, margin, y + 14);
+  y += 26 + explanationLines.length * 10;
   drawTableHeader();
 
   for (const day of days) {
@@ -606,14 +616,15 @@ function statementPdf(jsPDF, account) {
     const lines = values.map((value, index) => doc.splitTextToSize(pdfText(value), widths[index] - 8));
     const rowHeight = Math.max(24, Math.max(...lines.map((value) => value.length)) * 10 + 8);
     if (y + rowHeight > pageHeight - 90) newPage();
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 33, 43);
     lines.forEach((value, index) => doc.text(value, columns[index] + 4, y + 14));
     doc.setDrawColor(220, 226, 230); doc.setLineWidth(.5); doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight);
     y += rowHeight;
   }
   if (y + 70 > pageHeight - margin) newPage();
   y += 18; doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.setTextColor(23, 33, 43);
-  doc.text(`Solo ${money(account.singleAmountCents)}`, pageWidth - margin, y, { align: 'right' });
-  doc.text(`Sibling overlap ${money(account.familyAmountCents)}`, pageWidth - margin, y + 16, { align: 'right' });
+  doc.text(`Single-child charge ${money(account.singleAmountCents)}`, pageWidth - margin, y, { align: 'right' });
+  doc.text(`Family charge ${money(account.familyAmountCents)}`, pageWidth - margin, y + 16, { align: 'right' });
   doc.setFontSize(13); doc.text(`Total due ${money(account.totalAmountCents)}`, pageWidth - margin, y + 38, { align: 'right' });
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page++) { doc.setPage(page); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(110); doc.text(`Prepared ${new Date().toLocaleDateString()}  |  Page ${page} of ${pages}`, margin, pageHeight - 24); }
@@ -646,12 +657,12 @@ async function downloadAllStatements() {
   finally { elements.downloadStatements.disabled = false; elements.downloadStatements.textContent = originalLabel; }
 }
 function exportSummary() {
-  const headers = ['School', 'Month', 'Account type', 'Family or student', 'Students billed', 'Attendance days', 'Solo hours', 'Solo charge', 'Sibling overlap hours', 'Sibling charge', 'Total due'];
+  const headers = ['School', 'Month', 'Account type', 'Family or student', 'Students billed', 'Attendance days', 'Single-child hours', 'Single-child charge', 'Family hours', 'Family charge', 'Total due'];
   const rows = state.report.familyRows.map((row) => [schoolName(), state.report.period, row.accountType, row.familyName, nameList(billedStudents(row)), row.days, hours(row.singleDecimalHours), (row.singleAmountCents / 100).toFixed(2), hours(row.familyDecimalHours), (row.familyAmountCents / 100).toFixed(2), (row.totalAmountCents / 100).toFixed(2)]);
   downloadCsv(`aftercare-summary-${state.report.period}.csv`, headers, rows);
 }
 function exportAudit() {
-  const headers = ['School', 'Service date', 'Student', 'Account type', 'Historical family or student', 'Clock in', 'Clock out', 'Duration', 'Single rate', 'Sibling rate', 'Status', 'Close method', 'Included in totals', 'Review note'];
+  const headers = ['School', 'Service date', 'Student', 'Account type', 'Historical family or student', 'Clock in', 'Clock out', 'Duration', 'Single-child rate', 'Family rate', 'Status', 'Close method', 'Included in totals', 'Review note'];
   const rows = reportSessions().map((row) => [schoolName(), row.serviceDate, row.studentName, row.accountType, row.familyName, row.clockInAt, row.clockOutAt, row.duration || '', (row.singleRateCents / 100).toFixed(2), (row.familyRateCents / 100).toFixed(2), row.status, row.closeMethod || '', row.included ? 'Yes' : 'No', row.exclusionReason || '']);
   downloadCsv(`aftercare-audit-${state.report.period}.csv`, headers, rows);
 }
@@ -665,6 +676,12 @@ function printStatements(familyKey = null) {
   window.addEventListener('afterprint', finishPrinting, { once: true });
   window.print();
 }
+function buildBillingExplanation() {
+  const note = document.createElement('div'); note.className = 'ac-billing-explanation';
+  const heading = document.createElement('strong'); heading.textContent = 'How charges work';
+  const text = document.createElement('p'); text.textContent = billingExplanation;
+  note.append(heading, text); return note;
+}
 function buildStatement(account) {
   const statement = document.createElement('section'); statement.className = 'ac-statement';
   const head = document.createElement('header'); head.className = 'ac-statement-head';
@@ -672,12 +689,12 @@ function buildStatement(account) {
   const total = document.createElement('div'); total.className = 'ac-statement-total'; const label = document.createElement('span'); label.textContent = 'Total due'; const amount = document.createElement('strong'); amount.textContent = money(account.totalAmountCents); total.append(label, amount); head.append(identity, total);
   const meta = document.createElement('div'); meta.className = 'ac-statement-meta';
   for (const [labelText, value] of [['Billing account', account.familyName], ['Students billed', nameList(billedStudents(account))], ['Total hours', `${hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000)} hours`]]) { const block = document.createElement('div'); const labelNode = document.createElement('strong'); labelNode.textContent = labelText; const valueNode = document.createElement('div'); valueNode.textContent = value; block.append(labelNode, valueNode); meta.append(block); }
-  const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Solo charge</th><th class="number">Sibling charge</th><th class="number">Total</th></tr></thead>';
+  const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Single-child charge</th><th class="number">Family charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
   for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), cell(nameList(billedStudents(day))), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
   table.append(body);
-  const foot = document.createElement('div'); foot.className = 'ac-statement-foot'; foot.textContent = `Solo ${money(account.singleAmountCents)} · Sibling overlap ${money(account.familyAmountCents)} · Total ${money(account.totalAmountCents)}`;
-  statement.append(head, meta, table, foot); return statement;
+  const foot = document.createElement('div'); foot.className = 'ac-statement-foot'; foot.textContent = `Single-child charge ${money(account.singleAmountCents)} · Family charge ${money(account.familyAmountCents)} · Total ${money(account.totalAmountCents)}`;
+  statement.append(head, meta, buildBillingExplanation(), table, foot); return statement;
 }
 
 function fillSettings() {

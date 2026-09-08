@@ -77,6 +77,8 @@ button, input, select { font: inherit; }
 .ac-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
 .ac-detail h4 { margin: 0 0 5px; font-size: .83rem; text-transform: uppercase; }
 .ac-detail p { margin: 0; color: var(--ac-muted); }
+.ac-billing-explanation { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--ac-line); border-radius: 6px; font-size: .85rem; line-height: 1.45; break-inside: avoid; }
+.ac-billing-explanation p { margin: 4px 0 0; }
 .ac-settings { max-width: 850px; padding: 18px; border: 1px solid var(--ac-line); border-radius: var(--ac-radius); background: #fff; }
 .ac-settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
 .ac-dialog { width: min(620px, calc(100vw - 30px)); padding: 0; border: 0; border-radius: 8px; box-shadow: 0 24px 70px rgba(18, 34, 44, .28); }
@@ -112,6 +114,7 @@ button, input, select { font: inherit; }
   .ac-statement-total { text-align: right; }
   .ac-statement-total strong { display: block; font-size: 20pt; }
   .ac-statement-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 14px 0; }
+  .ac-statement .ac-billing-explanation { font-size: 8.5pt; }
   .ac-statement table { width: 100%; border-collapse: collapse; }
   .ac-statement th, .ac-statement td { padding: 6px; border-bottom: 1px solid #c9d1d6; text-align: left; }
   .ac-statement th { font-size: 8pt; text-transform: uppercase; }
