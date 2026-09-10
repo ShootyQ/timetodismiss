@@ -67,7 +67,10 @@
       <button id="acDialogClose" class="ac-button secondary" type="button" autofocus>Cancel</button>
     </header>
     <p id="acDialogContext" class="ac-hint"></p>
-    <button id="acEditTimes" class="ac-button" type="button">Edit today's IN / OUT times</button>
+    <div id="acActionConfirm" class="ac-action-confirm">
+      <button id="acConfirmClock" class="ac-button" type="button"></button>
+      <button id="acEditTimes" class="ac-button secondary" type="button">Edit times manually</button>
+    </div>
     <section id="acEditor" hidden aria-label="Today's visit editor">
       <p id="acEditorMessage" role="status" aria-live="polite" tabindex="-1"></p>
       <button id="acReloadVisits" class="ac-button secondary" type="button">Reload today's visits</button>
@@ -90,6 +93,6 @@
       </form>
     </section>
   </dialog>
-  <script type="module" src="/aftercare-operator.js?v=2026-09-10-1"></script>
+  <script type="module" src="/aftercare-operator.js?v=2026-09-10-3"></script>
 </body>
 </html>

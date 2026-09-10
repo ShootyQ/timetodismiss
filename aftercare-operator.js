@@ -138,14 +138,7 @@ function render() {
     }
     const top = element('div', 'ac-card-top');
     const heading = element('div');
-    const title = element('h2');
-    const nameButton = element('button', 'ac-name', nameOf(student));
-    nameButton.type = 'button';
-    nameButton.dataset.studentId = student.id;
-    nameButton.dataset.kind = 'name';
-    nameButton.setAttribute('aria-haspopup', 'dialog');
-    nameButton.addEventListener('click', () => openActions(student, nameButton));
-    title.append(nameButton);
+    const title = element('h2', 'ac-name', nameOf(student));
     heading.append(title, element('p', '', student.className || student.classId || ''));
     top.append(heading, element('span', 'ac-status', isIn ? 'Checked in' : isOut ? 'Checked out' : student.status || 'Ready'));
     card.append(times, top);
@@ -156,22 +149,18 @@ function render() {
     button.dataset.kind = 'clock';
     button.disabled = state.pending.has(student.id) || !state.attendanceReady;
     button.setAttribute('aria-label', `${button.textContent}: ${nameOf(student)}`);
-    button.addEventListener('click', () => clockStudent(student));
+    button.addEventListener('click', () => openActions(student, button));
     card.append(button);
     grid.append(card);
   }
   if (focused) (rosterButton(focused.dataset.studentId, focused.dataset.kind) || $('acSearch')).focus({ preventScroll: true });
 }
 
-async function clockStudent(student) {
+async function executeClockAction(student) {
   if (!activeKey || !state.attendanceReady || state.pending.has(student.id)) return;
-  if (refreshToday()) return; // A tap on a previous-day card must be reviewed again.
+  if (refreshToday()) return;
   const out = attendanceOf(student)?.status === 'in';
   const expectedSessionId = attendanceOf(student)?.openSessionId;
-  const repeat = attendanceOf(student)?.status === 'out';
-  const action = out ? 'Clock out' : repeat ? 'Check in again' : 'Clock in';
-  if (!confirm(`${action} ${nameOf(student)}?${repeat ? ' This starts a separate visit; the previous visit stays closed.' : ''}`)) return;
-  if (refreshToday() || !activeKey || !state.attendanceReady || state.pending.has(student.id)) return;
   const generation = lifecycle;
   const pending = {};
   state.pending.set(student.id, pending);
@@ -223,13 +212,38 @@ function closeEditor() {
   editor = null;
   if (dialog.open) dialog.close();
   if (previous) {
-    const target = rosterButton(previous.student.id, 'name') || (previous.returnFocus?.isConnected ? previous.returnFocus : $('acSearch'));
+    const target = (previous.returnFocus?.isConnected ? previous.returnFocus : rosterButton(previous.student.id, 'clock')) || $('acSearch');
     target.focus({ preventScroll: true });
   }
 }
 function updateActions(e) {
   const attendance = attendanceOf(e.student);
-  $('acDialogContext').textContent = `${state.serviceDate} · ${state.timezone} (school time). ${attendance ? 'Only today’s visits can be corrected.' : 'No attendance recorded today. Use Clock in on the student card to start a visit.'}`;
+  const isIn = attendance?.status === 'in';
+  const isOut = attendance?.status === 'out';
+  const firstName = nameParts(e.student).first || nameOf(e.student);
+
+  const actionLabel = isIn
+    ? `Clock out ${firstName}`
+    : isOut
+      ? `Check in ${firstName} again`
+      : `Clock in ${firstName}`;
+
+  $('acConfirmClock').textContent = actionLabel;
+  $('acConfirmClock').disabled = !state.attendanceReady || state.pending.has(e.student.id);
+  $('acConfirmClock').onclick = async () => {
+    closeEditor();
+    await executeClockAction(e.student);
+  };
+
+  let statusDesc = `${state.serviceDate} · ${state.timezone} (school time). `;
+  if (isIn) {
+    statusDesc += `Checked in since ${timeOf(attendance.clockedInAt, e.timezone)}.`;
+  } else if (isOut) {
+    statusDesc += `Completed visit at ${timeOf(attendance.clockedOutAt, e.timezone)}.`;
+  } else {
+    statusDesc += `Ready to clock in today.`;
+  }
+  $('acDialogContext').textContent = statusDesc;
   $('acEditTimes').disabled = !attendance || !state.attendanceReady || state.pending.has(e.student.id);
 }
 function openActions(student, returnFocus) {
@@ -241,7 +255,11 @@ function openActions(student, returnFocus) {
     request: 0, loading: false, saving: false, stale: false, sessions: [],
   };
   $('acDialogTitle').textContent = nameOf(student);
-  $('acEditTimes').hidden = false;
+  $('acActionConfirm').hidden = false;
+  $('acEditTimes').onclick = () => {
+    $('acActionConfirm').hidden = true;
+    if (editor) void loadVisits(editor);
+  };
   updateActions(editor);
   $('acEditor').hidden = true;
   form.hidden = true;
@@ -282,6 +300,7 @@ async function loadVisits(e, successMessage = '') {
   e.fingerprint = fingerprint;
   e.loading = true;
   e.stale = false;
+  $('acActionConfirm').hidden = true;
   $('acEditTimes').hidden = true;
   $('acEditor').hidden = false;
   message(successMessage ? `${successMessage} Refreshing visits…` : 'Loading today’s visits…');
