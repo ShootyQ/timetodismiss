@@ -45,20 +45,24 @@ if (Test-Path functions/package.json) {
 $indexPath = Join-Path functions 'index.js'
 if (-not (Test-Path $indexPath)) { Write-Error "functions/index.js missing"; exit 1 }
 $src = Get-Content $indexPath -Raw
-$exports = Select-String -InputObject $src -Pattern "exports\\.(\\w+)\s*=\s*onCall" -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+$exports = Select-String -InputObject $src -Pattern 'exports\.(\w+)\s*=\s*on(?:Call|Schedule)\s*\(' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
 Write-Host "Detected callable exports: $($exports -join ', ')" -ForegroundColor Gray
 
 $target = @(
   'setTeacherClasses','listSchoolClasses','listSchoolMembers',
   'getAftercareAdminData','saveAftercareSettings','saveAftercareFamily',
   'archiveAftercareFamily','clockInAftercareStudent','clockOutAftercareStudent',
+  'getAftercareStudentTodaySessions','updateAftercareStudentTodaySession',
   'getAftercareReport','getAftercareDaySessions','updateAftercareSession',
   'deleteAftercareSession','autoCloseAftercareSessions'
 )
 $present = $exports | Where-Object { $_ -in $target }
 
-if ($All -or $present.Count -eq 0) {
-  Write-Host "Deploying ALL functions (flag --All or missing target functions)." -ForegroundColor Yellow
+if (-not $All -and @($present).Count -eq 0) {
+  Write-Error "No targeted function exports were detected. Abort rather than deploying all functions."; exit 1
+}
+if ($All) {
+  Write-Host "Deploying ALL functions (explicit -All flag)." -ForegroundColor Yellow
   firebase deploy --only functions
 } else {
   $arg = 'functions:' + ($present -join ',functions:')
@@ -72,6 +76,6 @@ Write-Host "Deployment complete." -ForegroundColor Green
 
 # 7. Quick post-deploy verification: list functions
 Write-Host "Listing deployed functions (filtered)" -ForegroundColor Cyan
-firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers|getAftercareAdminData|saveAftercareSettings|saveAftercareFamily|archiveAftercareFamily|clockInAftercareStudent|clockOutAftercareStudent|getAftercareReport|getAftercareDaySessions|updateAftercareSession|deleteAftercareSession|autoCloseAftercareSessions"
+firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers|getAftercareAdminData|saveAftercareSettings|saveAftercareFamily|archiveAftercareFamily|clockInAftercareStudent|clockOutAftercareStudent|getAftercareStudentTodaySessions|updateAftercareStudentTodaySession|getAftercareReport|getAftercareDaySessions|updateAftercareSession|deleteAftercareSession|autoCloseAftercareSessions"
 
 Write-Host "If functions show as 'ACTIVE', you can hard reload the Roles page now." -ForegroundColor Green

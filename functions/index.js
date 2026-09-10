@@ -20,6 +20,7 @@ const {
   parseCutoff,
   validateTimezone,
 } = require('./aftercare-domain');
+const { createAftercareCorrectionHandlers } = require('./aftercare-corrections');
 
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
@@ -316,6 +317,17 @@ async function computeClaims(uid, email) {
   };
 
   // ───────────────── Callables ─────────────────
+
+  const aftercareCorrections = createAftercareCorrectionHandlers({
+    db, Timestamp, HttpsError, assertAuthed, cleanDocId, aftercarePath, actorFrom,
+    requireAftercareOperator, normalizeAftercareSettings, getServiceDay, ts,
+  });
+  exports.getAftercareStudentTodaySessions = onCall(
+    { region: 'us-central1', minInstances: 0 }, aftercareCorrections.getAftercareStudentTodaySessions
+  );
+  exports.updateAftercareStudentTodaySession = onCall(
+    { region: 'us-central1', minInstances: 0 }, aftercareCorrections.updateAftercareStudentTodaySession
+  );
 
   // Owner bootstrap (one-time)
   exports.ownerGrant = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
@@ -680,12 +692,12 @@ async function computeClaims(uid, email) {
     const studentId = cleanDocId(req.data?.studentId, 'studentId');
     await requireAftercareOperator(req, orgId, schoolId);
 
-    const now = new Date();
     const settingsRef = aftercarePath(orgId, schoolId, 'settings', 'aftercare');
     const studentRef = aftercarePath(orgId, schoolId, 'students', studentId);
     const mappingRef = aftercarePath(orgId, schoolId, 'aftercareStudentFamilies', studentId);
     const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
     const sessionRef = db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).doc();
+    let selectedServiceDate;
 
     const result = await db.runTransaction(async (tx) => {
       const [settingsSnap, studentSnap, mappingSnap, attendanceSnap] = await tx.getAll(
@@ -693,7 +705,12 @@ async function computeClaims(uid, email) {
       );
       if (!studentSnap.exists) throw new HttpsError('not-found', 'Student not found.');
       const settings = normalizeAftercareSettings(settingsSnap.data() || {});
-      const day = getServiceDay(now, settings.timezone, settings.cutoffLocalTime);
+      const day = getServiceDay(new Date(), settings.timezone, settings.cutoffLocalTime);
+      // Retries must not silently move this action to another service day.
+      if (selectedServiceDate && day.serviceDate !== selectedServiceDate) {
+        throw new HttpsError('failed-precondition', 'The aftercare service day changed. Reload and try again.');
+      }
+      selectedServiceDate = day.serviceDate;
       if (day.isAfterCutoff) throw new HttpsError('failed-precondition', 'Aftercare clock-in is closed for today.');
       if (attendanceSnap.get('serviceDate') === day.serviceDate && attendanceSnap.get('status') === 'in' && attendanceSnap.get('openSessionId')) {
         return { alreadyOpen: true, sessionId: attendanceSnap.get('openSessionId') };
@@ -708,11 +725,21 @@ async function computeClaims(uid, email) {
         const familySnap = await tx.get(aftercarePath(orgId, schoolId, 'aftercareFamilies', familyId));
         if (familySnap.exists && familySnap.get('active') !== false) familyName = familySnap.get('name') || familyName;
       }
+      // Sample after ALL reads on EVERY attempt, including day/family reads.
+      const clockInAt = Timestamp.now();
+      const currentDay = getServiceDay(clockInAt.toDate(), settings.timezone, settings.cutoffLocalTime);
+      if (currentDay.serviceDate !== selectedServiceDate) {
+        throw new HttpsError('failed-precondition', 'The aftercare service day changed. Reload and try again.');
+      }
+      if (currentDay.isAfterCutoff) throw new HttpsError('failed-precondition', 'Aftercare clock-in is closed for today.');
+      const latestOut = attendanceSnap.get('clockedOutAt');
+      if (latestOut && (!Number.isFinite(latestOut.toMillis?.()) || clockInAt.toMillis() < latestOut.toMillis())) {
+        throw new HttpsError('failed-precondition', 'Clock-in cannot precede the latest OUT. Reload and try again.');
+      }
       const student = studentSnap.data() || {};
       const studentName = student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || studentId;
       const actor = actorFrom(req);
       const cutoffAt = Timestamp.fromDate(day.cutoffAt);
-      const clockInAt = Timestamp.fromDate(now);
 
       if (!daySnap.exists) {
         tx.create(dayRef, {
@@ -767,22 +794,40 @@ async function computeClaims(uid, email) {
     const orgId = cleanDocId(req.data?.orgId, 'orgId');
     const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
     const studentId = cleanDocId(req.data?.studentId, 'studentId');
+    // Explicit card intent is optional; legacy calls pin their first observed open visit.
+    let intendedSessionId = Object.prototype.hasOwnProperty.call(req.data || {}, 'expectedSessionId')
+      ? cleanDocId(req.data.expectedSessionId, 'expectedSessionId') : null;
+    let intentPinned = intendedSessionId !== null;
     await requireAftercareOperator(req, orgId, schoolId);
     const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
-    const now = Timestamp.now();
 
     const result = await db.runTransaction(async (tx) => {
       const attendanceSnap = await tx.get(attendanceRef);
       const sessionId = attendanceSnap.get('openSessionId');
-      if (attendanceSnap.get('status') !== 'in' || !sessionId) return { alreadyClosed: true };
+      const isOpen = attendanceSnap.get('status') === 'in' && !!sessionId;
+      if (!intentPinned) {
+        // Pin absence too: a retry of an already-out tap must not close a new visit.
+        intendedSessionId = isOpen ? sessionId : null;
+        intentPinned = true;
+      }
+      if (!isOpen) return { alreadyClosed: true };
+      if (sessionId !== intendedSessionId) {
+        throw new HttpsError('aborted', 'The open aftercare session changed. Reload and try again.');
+      }
       const sessionRef = aftercarePath(orgId, schoolId, 'aftercareSessions', sessionId);
       const sessionSnap = await tx.get(sessionRef);
       if (!sessionSnap.exists || sessionSnap.get('status') !== 'open') {
         tx.set(attendanceRef, { status: 'out', openSessionId: null, updatedAt: ts() }, { merge: true });
         return { alreadyClosed: true, sessionId };
       }
+      // A retry may observe a corrected IN; never reuse a request-start timestamp.
+      const now = Timestamp.now();
       const cutoffAt = sessionSnap.get('autoCloseAt');
       const clockOutAt = cutoffAt && cutoffAt.toMillis() < now.toMillis() ? cutoffAt : now;
+      const clockInMillis = sessionSnap.get('clockInAt')?.toMillis?.();
+      if (!Number.isFinite(clockInMillis) || clockOutAt.toMillis() <= clockInMillis) {
+        throw new HttpsError('failed-precondition', 'Clock-out must be after the current IN. Reload and try again.');
+      }
       const closeMethod = clockOutAt.toMillis() < now.toMillis() ? 'cutoff' : 'manual';
       tx.update(sessionRef, {
         clockOutAt,

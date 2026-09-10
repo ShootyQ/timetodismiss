@@ -49,6 +49,19 @@ From GitHub Actions, run the `Deploy Aftercare Functions` workflow manually, ent
 
 For a local clone, the equivalent PowerShell command is `./deploy.ps1 -ProjectId dismissalcaller`. The repository targets the Node 22 Functions runtime.
 
+### Aftercare operator visits and time corrections
+
+- A checked-out student can **Check in again** before the daily cutoff. This creates a new visit and preserves the earlier closed visit; time away is not attendance.
+- Cards show the latest visit's **IN** and **OUT** in the school's timezone, plus the visit number for repeat attendance. OUT is blank (—) while checked in. Students with today's aftercare attendance remain available even if their dismissal status is already picked up.
+- Tap a student's name, then **Edit today's IN / OUT times**. Select any of today's visits and correct one visit at a time. The editor shows original times and a save preview. Cancel changes nothing.
+- The same active school staff authorized for check-in/out may correct **today only**. Blank OUT keeps an open visit open; entering OUT explicitly checks the student out after confirmation. A closed visit requires both times and cannot be reopened by clearing OUT—use **Check in again** instead.
+- The server enforces school-local today, student/school authorization, current revision, cutoff, nonfuture times, positive duration and nonoverlapping visits. Stale edits require a reload. Invalid existing records need manager review. Unchanged displayed minutes preserve timestamp precision and an unchanged save writes nothing.
+- Corrections update the matching attendance card atomically and record before/after times with the staff identity under the session's `corrections` subcollection. Earlier visits do not overwrite the active visit's card. Captured rates, family assignments and original check-in/out actors are preserved. Intentionally saved time corrections can change billing; viewing cards or the editor does not alter records. There is no migration or backfill.
+
+The editor requires the new `getAftercareStudentTodaySessions` and `updateAftercareStudentTodaySession` callables. Both explicit Functions deployment workflows and the local deploy helper include them. For backend-first rollout, manually deploy and verify Functions from the feature revision before publishing the frontend. The automatic live workflow still publishes Pages before Functions; if the backend deployment fails, the editor reports that time editing is unavailable while normal check-in/out remains usable. Do not broaden Firestore rules or substitute manager callables to bypass a missing deployment.
+
+Run `npm test --prefix functions` for billing and correction tests. Correction tests use injected Firestore transaction mocks (no production data). Before live use, verify with an authenticated development-school staff account: repeat visits, earlier/latest corrections, open-visit closure, denied prior-day changes, and concurrent checkout/auto-close. Mock tests do not replace deployment or authenticated smoke testing.
+
 ### Aftercare reporting semantics
 
 Aftercare reports are read-only. Billing groups students by the canonical current `aftercareStudentFamilies` mapping so linked siblings appear together and receive sibling-overlap billing. If no current mapping exists, the family stored on the session remains the fallback. Report generation never rewrites sessions or family mappings. Reports show the current configured roster separately from the students billed in the selected month and flag open or invalid sessions that were excluded from totals.

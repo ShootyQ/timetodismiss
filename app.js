@@ -222,14 +222,17 @@ export function onClassStudents(classId, cb) {
 // Realtime list for Master view (optionally filtered by class).
 export function onStudents(classIdOrNull, cb) {
   let unsub = () => {};
+  let stopped = false;
   (async () => {
     try {
       await waitForTenant();
+      if (stopped) return;
       const base = colPath('students');
       let classesCache = null;
       getClasses().then(c => classesCache = c).catch(() => {});
 
       const handle = (snap) => {
+        if (stopped) return;
         const rows = snap.docs.map(d => ({ ...d.data(), id: d.id }));
         try {
           if (rows.length && !rows[0].id) console.warn('[onStudents] first row missing id; check data.id overriding doc.id');
@@ -238,6 +241,7 @@ export function onStudents(classIdOrNull, cb) {
       };
 
       function startPrimary() {
+        if (stopped) return;
         try {
           const qy = classIdOrNull
             ? query(base, where('classId', '==', classIdOrNull), orderBy('name', 'asc'))
@@ -253,6 +257,7 @@ export function onStudents(classIdOrNull, cb) {
       }
 
       function startFallback() {
+        if (stopped) return;
         try { unsub(); } catch {}
         try {
           const qy = classIdOrNull ? query(base, where('classId', '==', classIdOrNull)) : base;
@@ -265,7 +270,7 @@ export function onStudents(classIdOrNull, cb) {
       startPrimary();
     } catch (e) { console.error('[onStudents] init failed:', e); }
   })();
-  return () => { try { unsub(); } catch {} };
+  return () => { stopped = true; try { unsub(); } catch {} };
 }
 
 // Single-student status update.
@@ -761,19 +766,25 @@ async function callAftercare(name, data = {}) {
   return result.data;
 }
 
-export function onAftercareAttendance(cb) {
+export function onAftercareAttendance(cb, onError = () => {}) {
   let unsub = () => {};
+  let stopped = false;
   (async () => {
     try {
       await waitForTenant();
+      if (stopped) return;
       unsub = onSnapshot(colPath('aftercareAttendance'), (snapshot) => {
-        cb(snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() })));
-      }, (error) => console.error('[aftercare] attendance listener failed:', error));
+        if (!stopped) cb(snapshot.docs.map((docSnap) => ({ ...docSnap.data(), id: docSnap.id })));
+      }, (error) => {
+        console.error('[aftercare] attendance listener failed:', error);
+        if (!stopped) onError(error);
+      });
     } catch (error) {
       console.error('[aftercare] attendance listener init failed:', error);
+      if (!stopped) onError(error);
     }
   })();
-  return () => { try { unsub(); } catch {} };
+  return () => { stopped = true; try { unsub(); } catch {} };
 }
 
 export async function getAftercareSettings() {
@@ -791,8 +802,14 @@ export async function getAftercareSettings() {
 export const clockInAftercareStudent = (studentId) =>
   callAftercare('clockInAftercareStudent', { studentId });
 
-export const clockOutAftercareStudent = (studentId) =>
-  callAftercare('clockOutAftercareStudent', { studentId });
+export const clockOutAftercareStudent = (studentId, expectedSessionId) =>
+  callAftercare('clockOutAftercareStudent', { studentId, ...(expectedSessionId ? { expectedSessionId } : {}) });
+
+export const getAftercareStudentTodaySessions = (studentId) =>
+  callAftercare('getAftercareStudentTodaySessions', { studentId });
+
+export const updateAftercareStudentTodaySession = ({ studentId, sessionId, expectedRevision, expectedServiceDate, clockInLocal, clockOutLocal }) =>
+  callAftercare('updateAftercareStudentTodaySession', { studentId, sessionId, expectedRevision, expectedServiceDate, clockInLocal, clockOutLocal });
 
 export const getAftercareAdminData = () =>
   callAftercare('getAftercareAdminData');
