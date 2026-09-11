@@ -323,10 +323,10 @@ async function computeClaims(uid, email) {
     requireAftercareOperator, normalizeAftercareSettings, getServiceDay, ts,
   });
   exports.getAftercareStudentTodaySessions = onCall(
-    { region: 'us-central1', minInstances: 0 }, aftercareCorrections.getAftercareStudentTodaySessions
+    { region: 'us-central1', cors: true, minInstances: 0 }, aftercareCorrections.getAftercareStudentTodaySessions
   );
   exports.updateAftercareStudentTodaySession = onCall(
-    { region: 'us-central1', minInstances: 0 }, aftercareCorrections.updateAftercareStudentTodaySession
+    { region: 'us-central1', cors: true, minInstances: 0 }, aftercareCorrections.updateAftercareStudentTodaySession
   );
 
   // Owner bootstrap (one-time)
