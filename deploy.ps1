@@ -53,8 +53,8 @@ $target = @(
   'getAftercareAdminData','saveAftercareSettings','saveAftercareFamily',
   'archiveAftercareFamily','clockInAftercareStudent','clockOutAftercareStudent',
   'getAftercareStudentTodaySessions','updateAftercareStudentTodaySession',
-  'getAftercareReport','getAftercareDaySessions','updateAftercareSession',
-  'deleteAftercareSession','autoCloseAftercareSessions'
+  'getAftercareReport','getAftercareDaySessions','getAftercareThirtyDayStats',
+  'updateAftercareSession','deleteAftercareSession','autoCloseAftercareSessions'
 )
 $present = $exports | Where-Object { $_ -in $target }
 
@@ -76,6 +76,6 @@ Write-Host "Deployment complete." -ForegroundColor Green
 
 # 7. Quick post-deploy verification: list functions
 Write-Host "Listing deployed functions (filtered)" -ForegroundColor Cyan
-firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers|getAftercareAdminData|saveAftercareSettings|saveAftercareFamily|archiveAftercareFamily|clockInAftercareStudent|clockOutAftercareStudent|getAftercareStudentTodaySessions|updateAftercareStudentTodaySession|getAftercareReport|getAftercareDaySessions|updateAftercareSession|deleteAftercareSession|autoCloseAftercareSessions"
+firebase functions:list | Select-String -Pattern "setTeacherClasses|listSchoolClasses|listSchoolMembers|getAftercareAdminData|saveAftercareSettings|saveAftercareFamily|archiveAftercareFamily|clockInAftercareStudent|clockOutAftercareStudent|getAftercareStudentTodaySessions|updateAftercareStudentTodaySession|getAftercareReport|getAftercareDaySessions|getAftercareThirtyDayStats|updateAftercareSession|deleteAftercareSession|autoCloseAftercareSessions"
 
 Write-Host "If functions show as 'ACTIVE', you can hard reload the Roles page now." -ForegroundColor Green

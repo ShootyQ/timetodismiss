@@ -325,6 +325,118 @@ export async function setStudentStatus(studentId, status) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Custom Dismissal Buttons API                                       */
+/* ------------------------------------------------------------------ */
+
+// Fetch custom dismissal buttons configured for the school.
+export async function getDismissalButtons() {
+  await waitForTenant();
+  try {
+    const snap = await getDoc(docPath('settings', 'dismissalButtons'));
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      return Array.isArray(data.buttons) ? data.buttons : [];
+    }
+  } catch (err) {
+    console.warn('[app] getDismissalButtons failed', err);
+  }
+  return [];
+}
+
+// Save custom dismissal buttons configured for the school (admin).
+export async function saveDismissalButtons(buttons = []) {
+  await waitForTenant();
+  const ref = docPath('settings', 'dismissalButtons');
+  await setDoc(ref, {
+    buttons: Array.isArray(buttons) ? buttons : [],
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+// Apply a custom dismissal button action to a student.
+export async function applyCustomButton(studentId, button) {
+  await waitForTenant();
+  const studentRef = docPath('students', studentId);
+  const customStatus = {
+    id: button.id || String(Date.now()),
+    label: button.label || 'Custom',
+    color: button.color || '#3b82f6',
+    textColor: button.textColor || '#ffffff',
+    actionType: button.actionType || 'status',
+    updatedAt: new Date().toISOString()
+  };
+
+  if (button.actionType === 'aftercare') {
+    // 1. Clock into Aftercare (moves student to top of Aftercare operator list)
+    try {
+      await clockInAftercareStudent(studentId);
+    } catch (e) {
+      console.warn('[app] clockInAftercareStudent failed during custom button apply', e);
+    }
+    // 2. Update student doc with customStatus and status: 'en_route'
+    await updateDoc(studentRef, {
+      customStatus,
+      status: 'en_route',
+      updatedAt: serverTimestamp()
+    });
+  } else if (button.actionType === 'absent') {
+    await updateDoc(studentRef, {
+      customStatus,
+      status: 'absent',
+      updatedAt: serverTimestamp()
+    });
+  } else {
+    // Standard custom status tag (e.g. Club, Walker)
+    const update = {
+      customStatus,
+      updatedAt: serverTimestamp()
+    };
+    if (button.dismissStudent) {
+      update.status = 'picked_up';
+    }
+    await updateDoc(studentRef, update);
+  }
+
+  // Analytics event log
+  try {
+    const evtCol = collection(studentRef, 'events');
+    const ctx = { orgId: globalThis.SD?.orgId || null, schoolId: globalThis.SD?.schoolId || null };
+    let classId = null; let studentName = '';
+    try {
+      const sSnap = await getDoc(studentRef);
+      if (sSnap.exists()) {
+        const sd = sSnap.data() || {};
+        classId = sd.classId || null;
+        studentName = sd.name || '';
+      }
+    } catch {}
+    await addDoc(evtCol, {
+      status: button.actionType === 'aftercare' ? 'aftercare' : (button.actionType === 'absent' ? 'absent' : (button.dismissStudent ? 'picked_up' : 'custom_status')),
+      customStatusLabel: button.label,
+      at: serverTimestamp(),
+      sessionId: ACTIVE_SESSION_ID || null,
+      orgId: ctx.orgId,
+      schoolId: ctx.schoolId,
+      studentId,
+      classId,
+      studentName
+    });
+  } catch (e) {
+    console.warn('[analytics] custom button event log failed', e);
+  }
+}
+
+// Clear a student's custom status.
+export async function clearStudentCustomStatus(studentId) {
+  await waitForTenant();
+  const studentRef = docPath('students', studentId);
+  await updateDoc(studentRef, {
+    customStatus: null,
+    updatedAt: serverTimestamp()
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Student Daily Stats Retrieval                                       */
 /* ------------------------------------------------------------------ */
 
@@ -828,6 +940,41 @@ export const getAftercareReport = ({ mode, period }) =>
 
 export const getAftercareDaySessions = (serviceDate) =>
   callAftercare('getAftercareDaySessions', { serviceDate });
+
+export async function getAftercareThirtyDayStats() {
+  try {
+    return await callAftercare('getAftercareThirtyDayStats');
+  } catch (err) {
+    console.warn('[app] callAftercare getAftercareThirtyDayStats failed, attempting fallback query', err);
+    try {
+      await waitForTenant();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const cutoffDateStr = thirtyDaysAgo.toISOString().slice(0, 10);
+      const coll = colPath('aftercareSessions');
+      const q = query(coll, where('serviceDate', '>=', cutoffDateStr));
+      const snap = await getDocs(q);
+      const nowMs = Date.now();
+      const durations = {};
+      snap.docs.forEach((docSnap) => {
+        const data = docSnap.data();
+        const studentId = data.studentId;
+        if (!studentId) return;
+        const inTime = data.clockInAt?.toMillis ? data.clockInAt.toMillis() : (data.clockInAt?.seconds ? data.clockInAt.seconds * 1000 : null);
+        if (!inTime) return;
+        let outTime = inTime;
+        if (data.clockOutAt?.toMillis) outTime = data.clockOutAt.toMillis();
+        else if (data.clockOutAt?.seconds) outTime = data.clockOutAt.seconds * 1000;
+        else if (data.status === 'open') outTime = nowMs;
+        const durMs = Math.max(0, outTime - inTime);
+        durations[studentId] = (durations[studentId] || 0) + durMs;
+      });
+      return { ok: true, cutoffDate: cutoffDateStr, durations };
+    } catch (fallbackErr) {
+      console.warn('[app] direct query fallback failed:', fallbackErr);
+      return { ok: false, durations: {} };
+    }
+  }
+}
 
 export const updateAftercareSession = ({ sessionId, clockInAt, clockOutAt }) =>
   callAftercare('updateAftercareSession', { sessionId, clockInAt, clockOutAt });

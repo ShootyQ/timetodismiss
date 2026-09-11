@@ -921,6 +921,50 @@ async function computeClaims(uid, email) {
     return { ok: true, serviceDate, sessions };
   });
 
+  exports.getAftercareThirtyDayStats = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    await requireAftercareOperator(req, orgId, schoolId);
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const cutoffDateStr = thirtyDaysAgo.toISOString().slice(0, 10);
+
+    const snapshot = await db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`)
+      .where('serviceDate', '>=', cutoffDateStr)
+      .get();
+
+    const nowMs = Date.now();
+    const durations = {}; // studentId -> total ms in last 30d
+    const sessionCounts = {};
+
+    snapshot.docs.forEach((docSnap) => {
+      const data = docSnap.data();
+      const studentId = data.studentId;
+      if (!studentId) return;
+
+      const inTime = data.clockInAt?.toMillis ? data.clockInAt.toMillis() : (data.clockInAt ? new Date(data.clockInAt).getTime() : null);
+      if (!inTime) return;
+
+      let outTime;
+      if (data.clockOutAt?.toMillis) {
+        outTime = data.clockOutAt.toMillis();
+      } else if (data.clockOutAt) {
+        outTime = new Date(data.clockOutAt).getTime();
+      } else if (data.status === 'open') {
+        outTime = nowMs;
+      } else {
+        outTime = inTime;
+      }
+
+      const durMs = Math.max(0, outTime - inTime);
+      durations[studentId] = (durations[studentId] || 0) + durMs;
+      sessionCounts[studentId] = (sessionCounts[studentId] || 0) + 1;
+    });
+
+    return { ok: true, cutoffDate: cutoffDateStr, durations, sessionCounts };
+  });
+
   exports.updateAftercareSession = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
     assertAuthed(req);
     const orgId = cleanDocId(req.data?.orgId, 'orgId');

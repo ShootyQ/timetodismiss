@@ -49,7 +49,14 @@
     .qa-sub{ color:var(--muted); font-size:.9rem; line-height:1.2; }
     @media (max-width: 480px){ .qa-title{ font-size:.98rem; } }
     /* Settings input polish */
-    .admin-main input[type="number"]{ padding:.6rem .65rem; border-radius:10px; border:1px solid #e5e7eb; }
+    .admin-main input[type="number"], .admin-main input[type="text"], .admin-main select{ padding:.6rem .65rem; border-radius:10px; border:1px solid #e5e7eb; }
+    /* Custom buttons manager styles */
+    .btn-preview-badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; font-weight:700; font-size:.85rem; }
+    .btn-item { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid #e5e7eb; border-radius:12px; background:#fff; margin-bottom:8px; }
+    .color-swatches { display:flex; gap:6px; flex-wrap:wrap; margin-top:4px; }
+    .color-swatch-btn { width:26px; height:26px; border-radius:50%; border:2px solid transparent; cursor:pointer; padding:0; transition:transform .1s ease; }
+    .color-swatch-btn:hover { transform:scale(1.15); }
+    .color-swatch-btn.selected { border-color:#0b132b; box-shadow:0 0 0 2px #fff inset; }
   </style>
   </head>
 <body class="sd-body">
@@ -131,6 +138,100 @@
             <span id="dismissalCfgStatus" class="small muted"></span>
           </div>
         </article>
+
+        <!-- Custom Dismissal Buttons Section -->
+        <article class="card pad" style="grid-column: 1 / -1;">
+          <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:8px;">
+            <div>
+              <h3 class="card-title" style="margin:0 0 4px;">Custom Dismissal Buttons</h3>
+              <p class="small muted" style="margin:0;">Create custom buttons for teachers to push during dismissal (e.g., Club, Aftercare, Sick/Absent).</p>
+            </div>
+            <button id="addCustomBtnBtn" class="btn btn-outline" type="button">+ New Button</button>
+          </div>
+
+          <!-- Existing buttons list -->
+          <div id="customButtonsList" style="margin-top:14px;">
+            <p class="small muted" id="customButtonsEmptyMsg">No custom buttons yet. Click "+ New Button" to add one.</p>
+          </div>
+
+          <!-- Edit/Add Modal or Drawer inside card -->
+          <div id="customBtnEditor" style="display:none; margin-top:16px; padding:16px; border:1px solid #c7d2fe; border-radius:12px; background:#f8fafc;">
+            <h4 id="customBtnEditorTitle" style="margin:0 0 12px; font-size:1rem; font-weight:800;">Add Custom Button</h4>
+            <input type="hidden" id="editBtnId" value="" />
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+              <div>
+                <label class="small" style="display:flex; flex-direction:column; gap:4px; font-weight:600;">
+                  <span>Button Label</span>
+                  <input id="btnLabelInput" type="text" placeholder="e.g., Chess Club, Aftercare, Sick" maxlength="30" />
+                </label>
+              </div>
+
+              <div>
+                <label class="small" style="display:flex; flex-direction:column; gap:4px; font-weight:600;">
+                  <span>Action Type</span>
+                  <select id="btnActionTypeSelect">
+                    <option value="status">Custom Status Tag (Badge on student card)</option>
+                    <option value="aftercare">Send to Aftercare (Auto clock-in to top of list)</option>
+                    <option value="absent">Mark Absent</option>
+                  </select>
+                </label>
+              </div>
+
+              <div>
+                <label class="small" style="display:flex; flex-direction:column; gap:4px; font-weight:600;">
+                  <span>Button Color</span>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <input id="btnColorInput" type="color" value="#3b82f6" style="width:42px; height:38px; padding:2px; border-radius:8px; border:1px solid #e5e7eb; cursor:pointer;" />
+                    <span id="btnColorHex" class="small muted" style="font-family:monospace;">#3b82f6</span>
+                  </div>
+                </label>
+                <!-- Preset color swatches -->
+                <div class="color-swatches" id="colorPresetSwatches">
+                  <button type="button" class="color-swatch-btn" data-color="#3b82f6" style="background:#3b82f6;" title="Blue"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#10b981" style="background:#10b981;" title="Emerald"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#8b5cf6" style="background:#8b5cf6;" title="Violet"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#f59e0b" style="background:#f59e0b;" title="Amber"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#ef4444" style="background:#ef4444;" title="Red"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#ec4899" style="background:#ec4899;" title="Pink"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#06b6d4" style="background:#06b6d4;" title="Cyan"></button>
+                  <button type="button" class="color-swatch-btn" data-color="#64748b" style="background:#64748b;" title="Slate"></button>
+                </div>
+              </div>
+
+              <div>
+                <label class="small" style="display:flex; flex-direction:column; gap:4px; font-weight:600;">
+                  <span>Text Color</span>
+                  <select id="btnTextColorSelect">
+                    <option value="#ffffff">White text</option>
+                    <option value="#0f172a">Dark text</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+
+            <div style="margin-top:12px; display:flex; gap:16px; flex-wrap:wrap;">
+              <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                <input type="checkbox" id="btnConfirmCheck" />
+                <span>Ask teacher for confirmation before applying</span>
+              </label>
+              <label id="dismissStudentOptionLabel" class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                <input type="checkbox" id="btnDismissCheck" />
+                <span>Mark student as Picked Up / Dismissed immediately</span>
+              </label>
+            </div>
+
+            <!-- Preview -->
+            <div style="margin-top:14px; padding:10px 14px; background:#fff; border-radius:10px; border:1px solid #e5e7eb; display:flex; align-items:center; gap:12px;">
+              <span class="small muted">Button Preview:</span>
+              <span id="customBtnPreviewBadge" class="btn-preview-badge" style="background:#3b82f6; color:#ffffff;">Preview Button</span>
+            </div>
+
+            <div class="row mt-12" style="justify-content:flex-end;">
+              <button id="cancelCustomBtnEdit" class="btn btn-outline" type="button">Cancel</button>
+              <button id="saveCustomBtnEdit" class="btn btn-primary" type="button">Save Button</button>
+            </div>
+          </div>
+        </article>
       </section>
 
       
@@ -184,10 +285,13 @@
           if (d.schoolName || d.schoolId) setText('schoolId', d.schoolName || d.schoolId);
         });
         loadDismissalSettings();
+        loadCustomButtons();
       }
     }
 
     document.addEventListener('DOMContentLoaded', requireAdmin);
+
+    let configuredButtons = [];
 
     async function loadDismissalSettings(){
       try {
@@ -201,7 +305,260 @@
       } catch(e){ console.warn('[admin] load dismissal settings failed', e); }
     }
 
+    async function loadCustomButtons(){
+      try {
+        if(!window.firebase?.firestore) return;
+        const db = firebase.firestore();
+        const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
+        if(!realOid || !realSid) return;
+        const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissalButtons');
+        const snap = await ref.get();
+        if(snap.exists){
+          const data = snap.data() || {};
+          configuredButtons = Array.isArray(data.buttons) ? data.buttons : [];
+        } else {
+          configuredButtons = [];
+        }
+        renderCustomButtons();
+      } catch(e){ console.warn('[admin] load custom buttons failed', e); }
+    }
+
+    function renderCustomButtons(){
+      const container = document.getElementById('customButtonsList');
+      if(!container) return;
+      if(!configuredButtons.length){
+        container.innerHTML = '<p class="small muted" id="customButtonsEmptyMsg">No custom buttons yet. Click "+ New Button" to add one.</p>';
+        return;
+      }
+
+      const typeLabels = {
+        status: 'Custom Status Tag',
+        aftercare: 'Send to Aftercare (Clock-in)',
+        absent: 'Mark Absent'
+      };
+
+      container.innerHTML = configuredButtons.map((btn, index) => {
+        const typeText = typeLabels[btn.actionType] || 'Custom Status';
+        const confirmBadge = btn.requiresConfirm ? '<span class="muted small" style="margin-left:6px; font-size:.75rem;">(Asks confirm)</span>' : '';
+        const dismissBadge = btn.dismissStudent ? '<span class="muted small" style="margin-left:6px; font-size:.75rem;">(Dismisses)</span>' : '';
+        return `
+          <div class="btn-item" data-id="${btn.id}">
+            <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+              <span class="btn-preview-badge" style="background:${btn.color || '#3b82f6'}; color:${btn.textColor || '#ffffff'};">
+                ${(btn.label || 'Button').replace(/</g,'&lt;')}
+              </span>
+              <div style="display:flex; flex-direction:column; gap:2px;">
+                <span class="small" style="font-weight:600;">${typeText}${confirmBadge}${dismissBadge}</span>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              ${index > 0 ? `<button class="btn btn-outline btn-xs" type="button" data-action="move-up" data-index="${index}" title="Move Up">↑</button>` : ''}
+              ${index < configuredButtons.length - 1 ? `<button class="btn btn-outline btn-xs" type="button" data-action="move-down" data-index="${index}" title="Move Down">↓</button>` : ''}
+              <button class="btn btn-outline btn-xs" type="button" data-action="edit-btn" data-id="${btn.id}">Edit</button>
+              <button class="btn btn-outline btn-xs btn-danger" type="button" data-action="delete-btn" data-id="${btn.id}">Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function persistCustomButtons(){
+      if(!window.firebase?.firestore) return;
+      const db = firebase.firestore();
+      const realOid = (window.SD && window.SD.orgId); const realSid = (window.SD && window.SD.schoolId);
+      if(!realOid || !realSid) throw new Error('Missing school context');
+      const ref = db.collection('orgs').doc(realOid).collection('schools').doc(realSid).collection('settings').doc('dismissalButtons');
+      await ref.set({
+        buttons: configuredButtons,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    function updatePreview(){
+      const preview = document.getElementById('customBtnPreviewBadge');
+      if(!preview) return;
+      const label = document.getElementById('btnLabelInput')?.value?.trim() || 'Preview Button';
+      const color = document.getElementById('btnColorInput')?.value || '#3b82f6';
+      const textColor = document.getElementById('btnTextColorSelect')?.value || '#ffffff';
+      preview.textContent = label;
+      preview.style.background = color;
+      preview.style.color = textColor;
+    }
+
+    function openEditor(btn = null){
+      const editor = document.getElementById('customBtnEditor');
+      const title = document.getElementById('customBtnEditorTitle');
+      const idInput = document.getElementById('editBtnId');
+      const labelInput = document.getElementById('btnLabelInput');
+      const actionSelect = document.getElementById('btnActionTypeSelect');
+      const colorInput = document.getElementById('btnColorInput');
+      const hexSpan = document.getElementById('btnColorHex');
+      const textSelect = document.getElementById('btnTextColorSelect');
+      const confirmCheck = document.getElementById('btnConfirmCheck');
+      const dismissCheck = document.getElementById('btnDismissCheck');
+      const dismissOption = document.getElementById('dismissStudentOptionLabel');
+
+      if(!editor) return;
+      if(btn){
+        title.textContent = 'Edit Custom Button';
+        idInput.value = btn.id;
+        labelInput.value = btn.label || '';
+        actionSelect.value = btn.actionType || 'status';
+        colorInput.value = btn.color || '#3b82f6';
+        hexSpan.textContent = btn.color || '#3b82f6';
+        textSelect.value = btn.textColor || '#ffffff';
+        confirmCheck.checked = !!btn.requiresConfirm;
+        dismissCheck.checked = !!btn.dismissStudent;
+      } else {
+        title.textContent = 'Add Custom Button';
+        idInput.value = '';
+        labelInput.value = '';
+        actionSelect.value = 'status';
+        colorInput.value = '#3b82f6';
+        hexSpan.textContent = '#3b82f6';
+        textSelect.value = '#ffffff';
+        confirmCheck.checked = false;
+        dismissCheck.checked = false;
+      }
+
+      if(dismissOption){
+        dismissOption.style.display = actionSelect.value === 'status' ? 'flex' : 'none';
+      }
+
+      editor.style.display = 'block';
+      updatePreview();
+      labelInput.focus();
+    }
+
+    function closeEditor(){
+      const editor = document.getElementById('customBtnEditor');
+      if(editor) editor.style.display = 'none';
+    }
+
+    // Swatches and live preview events
+    document.addEventListener('input', (e) => {
+      if(e.target.matches('#btnLabelInput, #btnColorInput, #btnTextColorSelect')){
+        if(e.target.id === 'btnColorInput'){
+          const hex = document.getElementById('btnColorHex');
+          if(hex) hex.textContent = e.target.value;
+        }
+        updatePreview();
+      }
+    });
+
+    document.addEventListener('change', (e) => {
+      if(e.target.id === 'btnActionTypeSelect'){
+        const dismissOption = document.getElementById('dismissStudentOptionLabel');
+        if(dismissOption){
+          dismissOption.style.display = e.target.value === 'status' ? 'flex' : 'none';
+        }
+        updatePreview();
+      }
+    });
+
     document.addEventListener('click', async (e) => {
+      // Swatch click
+      const swatch = e.target.closest('.color-swatch-btn');
+      if(swatch){
+        const color = swatch.dataset.color;
+        const colorInput = document.getElementById('btnColorInput');
+        const hex = document.getElementById('btnColorHex');
+        if(colorInput && color){
+          colorInput.value = color;
+          if(hex) hex.textContent = color;
+          updatePreview();
+        }
+        return;
+      }
+
+      // Add new button click
+      if(e.target.closest('#addCustomBtnBtn')){
+        openEditor(null);
+        return;
+      }
+
+      // Cancel button edit
+      if(e.target.closest('#cancelCustomBtnEdit')){
+        closeEditor();
+        return;
+      }
+
+      // Save button edit
+      if(e.target.closest('#saveCustomBtnEdit')){
+        const id = document.getElementById('editBtnId').value || ('btn_' + Date.now());
+        const label = document.getElementById('btnLabelInput').value.trim();
+        const actionType = document.getElementById('btnActionTypeSelect').value;
+        const color = document.getElementById('btnColorInput').value;
+        const textColor = document.getElementById('btnTextColorSelect').value;
+        const requiresConfirm = document.getElementById('btnConfirmCheck').checked;
+        const dismissStudent = actionType === 'status' && document.getElementById('btnDismissCheck').checked;
+
+        if(!label){
+          alert('Please enter a label for the button.');
+          return;
+        }
+
+        const buttonObj = {
+          id,
+          label,
+          actionType,
+          color,
+          textColor,
+          requiresConfirm,
+          dismissStudent
+        };
+
+        const existingIndex = configuredButtons.findIndex(b => b.id === id);
+        if(existingIndex >= 0){
+          configuredButtons[existingIndex] = buttonObj;
+        } else {
+          configuredButtons.push(buttonObj);
+        }
+
+        renderCustomButtons();
+        closeEditor();
+
+        try {
+          await persistCustomButtons();
+        } catch(err){
+          console.error(err);
+          alert('Failed to save custom buttons to server.');
+        }
+        return;
+      }
+
+      // Reorder or Delete or Edit inside custom buttons list
+      const actionBtn = e.target.closest('[data-action]');
+      if(actionBtn && actionBtn.closest('#customButtonsList')){
+        const act = actionBtn.dataset.action;
+        const id = actionBtn.dataset.id;
+        const index = parseInt(actionBtn.dataset.index, 10);
+
+        if(act === 'edit-btn'){
+          const btn = configuredButtons.find(b => b.id === id);
+          if(btn) openEditor(btn);
+        } else if(act === 'delete-btn'){
+          if(confirm('Delete this custom button?')){
+            configuredButtons = configuredButtons.filter(b => b.id !== id);
+            renderCustomButtons();
+            try { await persistCustomButtons(); } catch(err){ console.error(err); }
+          }
+        } else if(act === 'move-up' && !isNaN(index) && index > 0){
+          const temp = configuredButtons[index];
+          configuredButtons[index] = configuredButtons[index - 1];
+          configuredButtons[index - 1] = temp;
+          renderCustomButtons();
+          try { await persistCustomButtons(); } catch(err){ console.error(err); }
+        } else if(act === 'move-down' && !isNaN(index) && index < configuredButtons.length - 1){
+          const temp = configuredButtons[index];
+          configuredButtons[index] = configuredButtons[index + 1];
+          configuredButtons[index + 1] = temp;
+          renderCustomButtons();
+          try { await persistCustomButtons(); } catch(err){ console.error(err); }
+        }
+        return;
+      }
+
       const btn = e.target.closest('#saveDismissalCfg'); if(!btn) return;
       const statusEl = document.getElementById('dismissalCfgStatus');
       const val = parseInt(document.getElementById('autoEndMinutes').value, 10);

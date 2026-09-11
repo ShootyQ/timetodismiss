@@ -58,6 +58,64 @@
       .sheet .class-controls #filterBtn{ display:none !important; }
       .sheet .class-controls #chipSheet{ display:block !important; position:static !important; inset:auto !important; box-shadow:none !important; border:0 !important; transform:none !important; background:transparent !important; padding:0 !important; }
     }
+
+    /* Custom Dismissal Button Styles */
+    .custom-status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 700;
+      letter-spacing: .02em;
+      margin-left: 6px;
+      line-height: 1.2;
+    }
+    .custom-clear-btn {
+      background: none;
+      border: 0;
+      color: inherit;
+      cursor: pointer;
+      font-size: .85rem;
+      padding: 0 0 0 2px;
+      opacity: .8;
+      line-height: 1;
+    }
+    .custom-clear-btn:hover {
+      opacity: 1;
+    }
+    .custom-action-btn {
+      border: none;
+      border-radius: 999px;
+      font-size: .7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      cursor: pointer;
+      line-height: 1.2;
+      transition: transform .08s ease, filter .15s ease;
+      white-space: nowrap;
+    }
+    .custom-action-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+    .custom-action-btn:active {
+      transform: translateY(0);
+    }
+    .custom-actions-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+    /* Waiting list items action button visibility */
+    .student.waiting .waiting-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+    }
   </style>
 </head>
 <body class="sd-body">
@@ -160,6 +218,43 @@
     // Kick off loading immediately and also refresh once claims (and thus prefs path) are ready
     loadCallSoundPref();
     document.addEventListener('sd:claims-ready', () => { loadCallSoundPref(true); }, { once:true });
+
+    // Custom dismissal buttons for the school
+    let schoolCustomButtons = [];
+    async function loadSchoolCustomButtons(){
+      try {
+        const { getDismissalButtons } = await import('/app.js?v=23');
+        schoolCustomButtons = await getDismissalButtons();
+        // Trigger a re-render of currently displayed sections if any exist
+        sections.forEach((sec, classId) => {
+          // Re-render handled by regular flow or snapshot
+        });
+      } catch (e) {
+        console.warn('[class] loadSchoolCustomButtons failed', e);
+      }
+    }
+    loadSchoolCustomButtons();
+    document.addEventListener('sd:claims-ready', () => { loadSchoolCustomButtons(); });
+
+    // Helper to generate custom buttons HTML for a student
+    function renderCustomButtonsHtml(studentId, isCalled = false) {
+      if (!schoolCustomButtons || !schoolCustomButtons.length) return '';
+      return `<span class="custom-actions-wrap">${schoolCustomButtons.map(btn => `
+        <button type="button" class="custom-action-btn" data-act="custom-btn" data-id="${studentId}" data-btn-id="${btn.id}" style="background:${btn.color || '#3b82f6'}; color:${btn.textColor || '#ffffff'};" title="${(btn.label || '').replace(/"/g,'&quot;')}">
+          ${(btn.label || '').replace(/</g,'&lt;')}
+        </button>
+      `).join('')}</span>`;
+    }
+
+    // Helper to generate applied custom status badge HTML
+    function renderCustomBadgeHtml(student) {
+      if (!student || !student.customStatus || !student.customStatus.label) return '';
+      const cs = student.customStatus;
+      return `<span class="custom-status-badge" style="background:${cs.color || '#3b82f6'}; color:${cs.textColor || '#ffffff'};">
+        <span>${(cs.label || '').replace(/</g,'&lt;')}</span>
+        <button type="button" class="custom-clear-btn" data-act="clear-custom" data-id="${student.id}" title="Clear status">×</button>
+      </span>`;
+    }
 
     // --- params ---
     const params = new URLSearchParams(location.search);
@@ -610,10 +705,12 @@
         .sort((a,b) => (b.calledAtMs||0) - (a.calledAtMs||0) || (a.name||'').localeCompare(b.name||''));
       const html = rows.map(s => {
         const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
+        const customBadge = renderCustomBadgeHtml(s);
+        const customBtns = renderCustomButtonsHtml(s.id, true);
         const isPending = enrouteTimers.has(s.id);
         const actionHtml = isPending
-          ? `<button class=\"btn btn-outline btn-xs\" data-act=\"cancel-enroute\" data-id=\"${s.id}\">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`
-          : `<button class=\"btn btn-secondary btn-xs\" data-act=\"enroute\" data-id=\"${s.id}\">En Route</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button>`;
+          ? `<button class=\"btn btn-outline btn-xs\" data-act=\"cancel-enroute\" data-id=\"${s.id}\">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button> ${customBtns}`
+          : `<button class=\"btn btn-secondary btn-xs\" data-act=\"enroute\" data-id=\"${s.id}\">En Route</button> <button class=\"btn btn-outline btn-xs\" data-act=\"absent\" data-id=\"${s.id}\">Absent</button> ${customBtns}`;
         const barHtml = isPending
           ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
           : '';
@@ -623,6 +720,7 @@
           <li class="student called" data-id="${s.id}" data-status="called">
             <span class="name">${s.name}</span>
             ${tag}
+            ${customBadge}
             <span class="status">Called</span>
             ${cls}
             <span class="inline-actions">${actionHtml}</span>
@@ -868,10 +966,12 @@
             const before = prevStatus.get(s.id);
             const enter = before && before !== 'called' ? ' enter' : '';
             const tag = s.carTag ? `<span class="car-tag">${s.carTag}</span>` : '';
+            const customBadge = renderCustomBadgeHtml(s);
+            const customBtns = renderCustomButtonsHtml(s.id, true);
             const isPending = enrouteTimers.has(s.id);
             const actionHtml = isPending
-              ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`
-              : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button>`;
+              ? `<button class="btn btn-outline btn-xs" data-act="cancel-enroute" data-id="${s.id}">Cancel (${pendingRemainSec(s.id) || 5})</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button> ${customBtns}`
+              : `<button class="btn btn-secondary btn-xs" data-act="enroute" data-id="${s.id}">En Route</button> <button class="btn btn-outline btn-xs" data-act="absent" data-id="${s.id}">Absent</button> ${customBtns}`;
             const barHtml = isPending
               ? `<div class="enroute-bar" role="progressbar" aria-label="En route countdown"><div class="fill" style="animation-duration:5s"></div><span class="enroute-label">En Route</span></div>`
               : '';
@@ -879,6 +979,7 @@
               <li class="student called${enter}" data-id="${s.id}" data-status="called">
                 <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/"/g,'&quot;')}">${s.displayName || s.name}</span>
                 ${tag}
+                ${customBadge}
                 <span class="status">Called</span>
                 <span class="inline-actions">${actionHtml}</span>
                 ${barHtml}
@@ -897,12 +998,16 @@
               const statusClass =
                 s.status === 'picked_up' ? 'picked picked_up' : (s.status === 'en_route' ? 'waiting en_route' : (s.status === 'absent' ? 'waiting absent' : 'waiting'));
               const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+              const customBadge = renderCustomBadgeHtml(s);
+              const customBtns = renderCustomButtonsHtml(s.id, false);
               const statusLabel = s.status === 'picked_up' ? 'Picked Up' : (s.status === 'en_route' ? 'En Route' : 'Waiting');
               return `
                 <li class="student ${statusClass}" data-id="${s.id}" data-status="${s.status}">
                   <span class="name" data-base-name="${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}">${s.displayName || s.name}</span>
                   ${tag}
+                  ${customBadge}
                   <span class="status">${statusLabel}</span>
+                  <span class="waiting-actions">${customBtns}</span>
                 </li>`;
             }).join('');
 
@@ -911,10 +1016,12 @@
               absents.sort(byName);
               const html = absents.map(s => {
                 const tag = s.carTag ? `<span class=\"car-tag\">${s.carTag}</span>` : '';
+                const customBadge = renderCustomBadgeHtml(s);
                 return `
                   <li class=\"student waiting absent\" data-id=\"${s.id}\" data-status=\"absent\"> 
                     <span class=\"name\" data-base-name=\"${(s._preferred || s.name || '').replace(/\"/g,'&quot;')}\">${s.displayName || s.name}</span>
                     ${tag}
+                    ${customBadge}
                     <span class=\"status\">Absent</span>
                   </li>`;
               }).join('');
@@ -1020,6 +1127,37 @@
             try { host.querySelector(`.student.called[data-id="${CSS.escape(id)}"]`)?.remove(); } catch{}
             try { await setStudentStatus(id, 'absent'); }
             catch(e){ console.warn('[class] absent update failed', e); try{ showToast('Not allowed to mark absent'); }catch{} }
+          })();
+        } else if (act === 'custom-btn') {
+          const btnId = btn.getAttribute('data-btn-id');
+          const customBtnDef = schoolCustomButtons.find(b => b.id === btnId);
+          if (!customBtnDef) return;
+          (async () => {
+            if (customBtnDef.requiresConfirm) {
+              const nm = host.querySelector(`.student[data-id="${CSS.escape(id)}"] .name`)?.textContent?.trim();
+              const msg = nm ? `Apply "${customBtnDef.label}" to ${nm}?` : `Apply "${customBtnDef.label}"?`;
+              if (!window.confirm(msg)) return;
+            }
+            try { cancelEnrouteCountdown(id, false); } catch {}
+            try {
+              const { applyCustomButton } = await import('/app.js?v=23');
+              await applyCustomButton(id, customBtnDef);
+              showToast(`${customBtnDef.label} applied`);
+            } catch (err) {
+              console.error('[class] apply custom button error', err);
+              showToast(`Failed to apply ${customBtnDef.label}`);
+            }
+          })();
+        } else if (act === 'clear-custom') {
+          (async () => {
+            try {
+              const { clearStudentCustomStatus } = await import('/app.js?v=23');
+              await clearStudentCustomStatus(id);
+              showToast('Custom status cleared');
+            } catch (err) {
+              console.error('[class] clear custom status error', err);
+              showToast('Failed to clear status');
+            }
           })();
         }
       });

@@ -97,6 +97,13 @@ service cloud.firestore {
              request.resource.data.status == 'absent';
     }
 
+    // Allow a classroom teacher to update custom dismissal status/buttons (and optional status like en_route/absent/waiting)
+    function canTeacherUpdateCustomDismissal(orgId, schoolId) {
+      return isAuthed() && inSchool(orgId, schoolId) &&
+             get(/databases/$(database)/documents/orgs/$(orgId)/schools/$(schoolId)/members/$(request.auth.uid)).data.teacher.classIds.hasAny([resource.data.classId]) &&
+             request.resource.data.diff(resource.data).changedKeys().hasOnly(['customStatus','status','updatedAt']);
+    }
+
     // ───────────── Orgs & Schools ─────────────
     match /orgs/{orgId} {
       // Owner can always see; others must be scoped to the org
@@ -171,8 +178,8 @@ service cloud.firestore {
           allow get:  if isAuthed() && (inSchool(orgId, schoolId) || isGuardianOfStudent(orgId, schoolId, studentId));
           // Listing restricted to staff scoped to school
           allow list: if isAuthed() && inSchool(orgId, schoolId);
-          // Update allowed for callers/admins (full status changes), viewers limited flip, and teachers limited to preferredName/callSound.
-          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId) || canTeacherMarkAbsent(orgId, schoolId));
+          // Update allowed for callers/admins (full status changes), viewers limited flip, teachers limited to preferredName/callSound, absent, or custom dismissal.
+          allow update: if isAuthed() && inSchool(orgId, schoolId) && (isAtLeastCaller() || canViewerFlipToEnRoute() || isTeacherForStudent(orgId, schoolId) || canTeacherMarkAbsent(orgId, schoolId) || canTeacherUpdateCustomDismissal(orgId, schoolId));
           allow create, delete: if isAuthed() && inSchool(orgId, schoolId) && isAtLeastCaller();
 
           // Per-student events subcollection used for analytics (collectionGroup queries)

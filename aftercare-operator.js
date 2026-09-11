@@ -2,6 +2,7 @@ import {
   init, onStudents, getClasses, onAftercareAttendance, getAftercareSettings,
   clockInAftercareStudent, clockOutAftercareStudent,
   getAftercareStudentTodaySessions, updateAftercareStudentTodaySession,
+  getAftercareThirtyDayStats,
 } from '/app.js?v=2026-09-10-operator-1';
 
 const $ = (id) => document.getElementById(id);
@@ -17,6 +18,7 @@ const state = {
   students: [], attendance: new Map(), pending: new Map(), classOrder: new Map(),
   query: '', classId: '', view: 'all', sort: 'last', timezone: 'America/Chicago',
   serviceDate: '', clockOffset: 0, attendanceReady: false,
+  durations30d: new Map(), loading30d: false,
 };
 let lifecycle = 0;
 let activeKey = '';
@@ -93,9 +95,44 @@ function compareNames(a, b, primary = 'last') {
   const second = first === 'first' ? 'last' : 'first';
   return left[first].localeCompare(right[first]) || left[second].localeCompare(right[second]) || nameOf(a).localeCompare(nameOf(b));
 }
+
+function formatDuration(ms) {
+  if (!ms || ms <= 0) return '0m';
+  const totalMin = Math.round(ms / 60000);
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  if (hours === 0) return `${mins}m`;
+  return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+}
+
+async function load30DayStats() {
+  if (state.loading30d) return;
+  state.loading30d = true;
+  try {
+    const res = await getAftercareThirtyDayStats();
+    if (res && res.durations) {
+      state.durations30d.clear();
+      for (const [sid, ms] of Object.entries(res.durations)) {
+        state.durations30d.set(sid, ms);
+      }
+      render();
+    }
+  } catch (err) {
+    console.warn('[aftercare] load30DayStats failed', err);
+  } finally {
+    state.loading30d = false;
+  }
+}
+
 function sortRows(a, b) {
+  if (state.sort === 'time30d') {
+    const durA = state.durations30d.get(a.id) || 0;
+    const durB = state.durations30d.get(b.id) || 0;
+    if (durB !== durA) return durB - durA; // Most time in aftercare first
+    return compareNames(a, b, 'last');
+  }
   if (state.view === 'all') {
-    const difference = Number(attendanceOf(a)?.status === 'in') - Number(attendanceOf(b)?.status === 'in');
+    const difference = Number(attendanceOf(b)?.status === 'in') - Number(attendanceOf(a)?.status === 'in');
     if (difference) return difference;
   }
   if (state.sort === 'grade') {
@@ -117,12 +154,15 @@ function render() {
   if (editor && editor.fingerprint === undefined) updateActions(editor);
   const focused = grid.contains(document.activeElement) ? document.activeElement : null;
   const query = state.query.toLowerCase();
-  const rows = state.students.filter((student) =>
-    (!state.classId || student.classId === state.classId)
-    && (!query || nameOf(student).toLowerCase().includes(query))
-    && (attendanceOf(student) || !['picked_up', 'absent', 'dismissed', 'home'].includes(student.status))
-    && (state.view !== 'checked-in' || attendanceOf(student)?.status === 'in')
-  ).sort(sortRows);
+  const rows = state.students.filter((student) => {
+    if (state.classId && student.classId !== state.classId) return false;
+    if (query && !nameOf(student).toLowerCase().includes(query)) return false;
+    const att = attendanceOf(student);
+    if (!att && ['picked_up', 'absent', 'dismissed', 'home'].includes(student.status)) return false;
+    if (state.view === 'checked-in') return att?.status === 'in';
+    if (state.view === 'checked-out') return att?.status === 'out';
+    return true;
+  }).sort(sortRows);
   grid.replaceChildren();
   if (!rows.length) grid.append(element('div', 'ac-empty', 'No students match the current view.'));
   for (const student of rows) {
@@ -142,7 +182,17 @@ function render() {
     heading.append(title, element('p', '', student.className || student.classId || ''));
     top.append(heading, element('span', 'ac-status', isIn ? 'Checked in' : isOut ? 'Checked out' : student.status || 'Ready'));
     card.append(times, top);
-    if (Number(attendance?.intervalCount) > 1) card.append(element('span', 'ac-visit-count', `Visit ${attendance.intervalCount}`));
+
+    const metaRow = element('div', 'ac-meta-row');
+    if (Number(attendance?.intervalCount) > 1) metaRow.append(element('span', 'ac-visit-count', `Visit ${attendance.intervalCount}`));
+    const dur30d = state.durations30d.get(student.id);
+    if (dur30d !== undefined && dur30d > 0) {
+      metaRow.append(element('span', 'ac-duration-tag', `⏱️ ${formatDuration(dur30d)} (30d)`));
+    } else if (state.sort === 'time30d') {
+      metaRow.append(element('span', 'ac-duration-tag', '⏱️ 0m (30d)'));
+    }
+    if (metaRow.children.length > 0) card.append(metaRow);
+
     const button = element('button', 'ac-button', state.pending.has(student.id) ? 'Please wait…' : isIn ? 'Clock out' : isOut ? 'Check in again' : 'Clock in');
     button.type = 'button';
     button.dataset.studentId = student.id;
@@ -477,6 +527,8 @@ function stop() {
   closeEditor();
   state.pending.clear();
   state.attendanceReady = false;
+  state.durations30d.clear();
+  state.loading30d = false;
 }
 async function bootstrap(claims) {
   if (suspended) return;
@@ -534,6 +586,8 @@ async function bootstrap(claims) {
       render();
     }));
     dayTimer = setInterval(refreshToday, 30000);
+    // Proactively fetch 30-day stats for sorting/badges
+    void load30DayStats();
   } catch (error) {
     if (generation !== lifecycle) return;
     stop();
@@ -543,12 +597,19 @@ async function bootstrap(claims) {
 }
 $('acSearch').addEventListener('input', () => { state.query = $('acSearch').value.trim(); render(); });
 $('acClass').addEventListener('change', () => { state.classId = $('acClass').value; render(); });
-$('acSort').addEventListener('change', () => { state.sort = $('acSort').value; render(); });
-for (const [id, view] of [['acViewAll', 'all'], ['acViewCheckedIn', 'checked-in']]) {
-  $(id).addEventListener('click', () => {
+$('acSort').addEventListener('change', () => {
+  state.sort = $('acSort').value;
+  if (state.sort === 'time30d' && state.durations30d.size === 0) {
+    void load30DayStats();
+  }
+  render();
+});
+for (const [id, view] of [['acViewAll', 'all'], ['acViewCheckedIn', 'checked-in'], ['acViewCheckedOut', 'checked-out']]) {
+  $(id)?.addEventListener('click', () => {
     state.view = view;
-    $('acViewAll').setAttribute('aria-pressed', String(view === 'all'));
-    $('acViewCheckedIn').setAttribute('aria-pressed', String(view === 'checked-in'));
+    $('acViewAll')?.setAttribute('aria-pressed', String(view === 'all'));
+    $('acViewCheckedIn')?.setAttribute('aria-pressed', String(view === 'checked-in'));
+    $('acViewCheckedOut')?.setAttribute('aria-pressed', String(view === 'checked-out'));
     render();
   });
 }

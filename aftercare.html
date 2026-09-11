@@ -8,7 +8,21 @@
   <link rel="stylesheet" href="/aftercare-operator.css?v=2026-09-10-1">
   <script src="/site-header.js?v=2026-08-20-HDR8" defer></script>
   <style>
-    :root { --ac-ink:#17212b; --ac-muted:#66727d; --ac-line:#d9e0e5; --ac-blue:#1769aa; --ac-green:#e4f5ed; --ac-yellow:#fff4d6; --ac-gray:#f4f6f7; --ac-checkedin:#eee9ff; --ac-checkedin-border:#6d4aff; --ac-checkedin-ink:#4a2ea3; }
+    :root {
+      --ac-ink:#17212b;
+      --ac-muted:#66727d;
+      --ac-line:#d9e0e5;
+      --ac-blue:#1769aa;
+      --ac-green:#e4f5ed;
+      --ac-yellow:#fff4d6;
+      --ac-gray:#f4f6f7;
+      --ac-checkedin:#eee9ff;
+      --ac-checkedin-border:#6d4aff;
+      --ac-checkedin-ink:#4a2ea3;
+      --ac-checkedout:#f5efff;
+      --ac-checkedout-border:#9333ea;
+      --ac-checkedout-ink:#581c87;
+    }
     body { background:#f7f9fa; color:var(--ac-ink); }
     .ac-shell { max-width:1180px; margin:0 auto; padding:24px 16px 48px; }
     .ac-head { display:flex; justify-content:space-between; gap:16px; align-items:end; margin-bottom:20px; }
@@ -18,9 +32,13 @@
     .ac-tools input, .ac-tools select { min-height:42px; padding:8px 10px; border:1px solid var(--ac-line); border-radius:8px; background:#fff; font-size:1rem; }
     .ac-tools input { min-width:220px; }
     .ac-view { display:inline-flex; min-height:42px; border:1px solid var(--ac-line); border-radius:8px; overflow:hidden; background:#fff; }
-    .ac-view button { padding:8px 12px; border:0; border-right:1px solid var(--ac-line); background:#fff; color:var(--ac-ink); font:inherit; font-weight:700; cursor:pointer; }
+    .ac-view button { padding:8px 12px; border:0; border-right:1px solid var(--ac-line); background:#fff; color:var(--ac-ink); font:inherit; font-weight:700; cursor:pointer; transition:background-color .15s ease, color .15s ease; }
     .ac-view button:last-child { border-right:0; }
     .ac-view button[aria-pressed="true"] { background:var(--ac-blue); color:#fff; }
+    #acViewCheckedIn[aria-pressed="true"] { background:var(--ac-checkedin-border); color:#fff; }
+    #acViewCheckedOut[aria-pressed="true"] { background:var(--ac-checkedout-border); color:#fff; }
+    #acViewCheckedIn:hover:not([aria-pressed="true"]) { background:var(--ac-checkedin); color:var(--ac-checkedin-ink); }
+    #acViewCheckedOut:hover:not([aria-pressed="true"]) { background:var(--ac-checkedout); color:var(--ac-checkedout-ink); }
     .ac-link, .ac-button { display:inline-flex; align-items:center; justify-content:center; min-height:42px; padding:8px 14px; border:1px solid var(--ac-blue); border-radius:8px; background:var(--ac-blue); color:#fff; text-decoration:none; font-weight:700; cursor:pointer; }
     .ac-link.secondary, .ac-button.secondary { background:#fff; color:var(--ac-blue); }
     .ac-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
@@ -30,7 +48,12 @@
     .ac-card.in { border:2px solid var(--ac-checkedin-border); background:var(--ac-checkedin); box-shadow:0 3px 12px rgba(109,74,255,.18); }
     .ac-card.in .ac-status { color:var(--ac-checkedin-ink); }
     .ac-card.called { background:var(--ac-yellow); }
-    .ac-card.done { background:var(--ac-gray); }
+    .ac-card.done { border:2px solid var(--ac-checkedout-border); background:var(--ac-checkedout); box-shadow:0 3px 12px rgba(147,51,234,.12); }
+    .ac-card.done .ac-status { color:var(--ac-checkedout-ink); }
+    .ac-card.in > .ac-button { background:var(--ac-checkedin-border); border-color:var(--ac-checkedin-border); }
+    .ac-card.in > .ac-button:hover:not(:disabled) { filter:brightness(1.1); }
+    .ac-card.done > .ac-button { background:var(--ac-checkedout-border); border-color:var(--ac-checkedout-border); }
+    .ac-card.done > .ac-button:hover:not(:disabled) { filter:brightness(1.1); }
     .ac-card-top { display:flex; justify-content:space-between; gap:10px; align-items:start; }
     .ac-status { font-size:.78rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:var(--ac-muted); }
     .ac-card > .ac-button { width:100%; margin-top:14px; }
@@ -51,11 +74,13 @@
       <div class="ac-view" aria-label="Roster view">
         <button id="acViewAll" type="button" aria-pressed="true">See all</button>
         <button id="acViewCheckedIn" type="button" aria-pressed="false">Checked in</button>
+        <button id="acViewCheckedOut" type="button" aria-pressed="false">Checked out</button>
       </div>
       <select id="acSort" aria-label="Sort students">
         <option value="last">Last name</option>
         <option value="first">First name</option>
         <option value="grade">Grade</option>
+        <option value="time30d">Most time in aftercare (30 days)</option>
       </select>
     </div>
     <p id="acNotice" role="status" aria-live="polite"></p>
