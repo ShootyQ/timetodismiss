@@ -2,7 +2,7 @@ name: Deploy dev preview to Firebase Hosting
 
 on:
   push:
-    branches: [ "dev" ]
+    branches: [ "dev", "0.7-Backup---Dev" ]
   workflow_dispatch:
     inputs:
       channelId:
