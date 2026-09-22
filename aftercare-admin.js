@@ -28,9 +28,53 @@ const billedStudentDetails = (row) => billedStudents(row).map((student) => `${st
 const billingExplanation = 'Single-child charge: $10.00 per hour when only one child in your family is checked in. Family charge: $16.00 per hour total when two or more children in your family are checked in at the same time—not per child. Both charges may appear when the number of children attending changes during a visit.';
 const reportDays = () => state.report?.dayRows || [];
 const reportSessions = () => state.report?.sessionRows || [];
-const daySessions = (day) => reportSessions().filter((session) => session.familyKey === day.familyKey && session.serviceDate === day.serviceDate && session.included !== false);
+const daySessions = (day) => reportSessions().filter((session) => (session.familyKey === day.familyKey || (day.familyId && session.familyId === day.familyId)) && session.serviceDate === day.serviceDate && session.included !== false);
 const dayFirstIn = (day) => day.firstClockInAt || daySessions(day).map((session) => session.clockInAt).filter(Boolean).sort()[0] || null;
-const dayBilledOut = (day) => day.firstClockOutAt || daySessions(day).map((session) => session.clockOutAt).filter(Boolean).sort()[0] || null;
+const dayBilledOut = (day) => day.lastClockOutAt || daySessions(day).map((session) => session.clockOutAt).filter(Boolean).sort().slice(-1)[0] || day.firstClockOutAt || null;
+const studentDayTimes = (day, student) => {
+  const sessions = daySessions(day).filter((session) => (session.studentId === student.studentId || session.studentName === (student.studentName || student.name)) && session.clockInAt && session.clockOutAt);
+  const inAt = student.firstClockInAt || student.clockInAt || sessions.map((s) => s.clockInAt).filter(Boolean).sort()[0] || dayFirstIn(day);
+  const outAt = student.lastClockOutAt || student.clockOutAt || sessions.map((s) => s.clockOutAt).filter(Boolean).sort().slice(-1)[0] || dayBilledOut(day);
+  return { sessions, inAt, outAt };
+};
+const studentDayTimeString = (day, student) => {
+  const name = student.studentName || student.name || student.studentId;
+  const { sessions, inAt, outAt } = studentDayTimes(day, student);
+  if (sessions.length > 1) {
+    const formattedSessions = sessions.map((s) => `${formatTime(s.clockInAt)}–${formatTime(s.clockOutAt)}`).join(', ');
+    return `${name} (${formattedSessions})`;
+  }
+  if (inAt && outAt) {
+    return `${name} (${formatTime(inAt)}–${formatTime(outAt)})`;
+  }
+  return name;
+};
+const dayStudentsLabel = (day, multiline = false) => {
+  const students = billedStudents(day);
+  if (!students.length) return 'None';
+  if (students.length === 1) {
+    return students[0].studentName || students[0].name || students[0].studentId || 'None';
+  }
+  return students.map((student) => studentDayTimeString(day, student)).join(multiline ? '\n' : ' | ');
+};
+const dayStudentsCell = (day) => {
+  const td = document.createElement('td');
+  const students = billedStudents(day);
+  if (!students.length) {
+    td.textContent = 'None';
+    return td;
+  }
+  if (students.length === 1) {
+    td.textContent = students[0].studentName || students[0].name || students[0].studentId || 'None';
+    return td;
+  }
+  for (const student of students) {
+    const item = document.createElement('div');
+    item.textContent = studentDayTimeString(day, student);
+    td.append(item);
+  }
+  return td;
+};
 const localInputValue = (iso) => {
   if (!iso) return '';
   const date = new Date(iso);
@@ -109,15 +153,39 @@ function calculateClientDay(sessions) {
   }
   const studentsById = new Map();
   for (const interval of intervals) {
-    const student = studentsById.get(interval.studentId) || { studentId: interval.studentId, studentName: interval.session.studentName || interval.studentId, milliseconds: 0 };
+    const student = studentsById.get(interval.studentId) || {
+      studentId: interval.studentId,
+      studentName: interval.session.studentName || interval.studentId,
+      milliseconds: 0,
+      firstClockInAt: interval.session.clockInAt,
+      lastClockOutAt: interval.session.clockOutAt,
+    };
     student.milliseconds += interval.end - interval.start;
+    if (new Date(interval.session.clockInAt).getTime() < new Date(student.firstClockInAt).getTime()) student.firstClockInAt = interval.session.clockInAt;
+    if (new Date(interval.session.clockOutAt).getTime() > new Date(student.lastClockOutAt).getTime()) student.lastClockOutAt = interval.session.clockOutAt;
     studentsById.set(interval.studentId, student);
   }
   const singleRateCents = Number(sessions[0]?.singleRateCents ?? state.settings.singleRateCents);
   const familyRateCents = Number(sessions[0]?.familyRateCents ?? state.settings.familyRateCents);
   const singleAmountCents = Math.round(singleMilliseconds * singleRateCents / 3600000);
   const familyAmountCents = Math.round(familyMilliseconds * familyRateCents / 3600000);
-  return { intervals, students: Array.from(studentsById.values()).map((student) => ({ ...student, duration: durationLabel(student.milliseconds), decimalHours: student.milliseconds / 3600000 })), singleRateCents, familyRateCents, singleMilliseconds, familyMilliseconds, singleAmountCents, familyAmountCents, totalAmountCents: singleAmountCents + familyAmountCents };
+  return {
+    intervals,
+    students: Array.from(studentsById.values()).map((student) => ({
+      ...student,
+      duration: durationLabel(student.milliseconds),
+      decimalHours: student.milliseconds / 3600000,
+      clockInAt: student.firstClockInAt,
+      clockOutAt: student.lastClockOutAt,
+    })),
+    singleRateCents,
+    familyRateCents,
+    singleMilliseconds,
+    familyMilliseconds,
+    singleAmountCents,
+    familyAmountCents,
+    totalAmountCents: singleAmountCents + familyAmountCents
+  };
 }
 
 async function rebuildLegacyReport(report) {
@@ -136,7 +204,25 @@ async function rebuildLegacyReport(report) {
   for (const groupedSessions of groups.values()) {
     const first = groupedSessions[0];
     const calculation = calculateClientDay(groupedSessions);
-    dayRows.push({ serviceDate: first.serviceDate, familyId: first.familyId, familyKey: first.familyKey, familyName: first.familyName, accountType: first.accountType, billedStudents: calculation.students, students: calculation.students, firstClockInAt: new Date(Math.min(...calculation.intervals.map((item) => item.start))).toISOString(), firstClockOutAt: new Date(Math.min(...calculation.intervals.map((item) => item.end))).toISOString(), singleMilliseconds: calculation.singleMilliseconds, familyMilliseconds: calculation.familyMilliseconds, singleDuration: durationLabel(calculation.singleMilliseconds), familyDuration: durationLabel(calculation.familyMilliseconds), singleAmountCents: calculation.singleAmountCents, familyAmountCents: calculation.familyAmountCents, totalAmountCents: calculation.totalAmountCents });
+    dayRows.push({
+      serviceDate: first.serviceDate,
+      familyId: first.familyId,
+      familyKey: first.familyKey,
+      familyName: first.familyName,
+      accountType: first.accountType,
+      billedStudents: calculation.students,
+      students: calculation.students,
+      firstClockInAt: new Date(Math.min(...calculation.intervals.map((item) => item.start))).toISOString(),
+      firstClockOutAt: new Date(Math.min(...calculation.intervals.map((item) => item.end))).toISOString(),
+      lastClockOutAt: new Date(Math.max(...calculation.intervals.map((item) => item.end))).toISOString(),
+      singleMilliseconds: calculation.singleMilliseconds,
+      familyMilliseconds: calculation.familyMilliseconds,
+      singleDuration: durationLabel(calculation.singleMilliseconds),
+      familyDuration: durationLabel(calculation.familyMilliseconds),
+      singleAmountCents: calculation.singleAmountCents,
+      familyAmountCents: calculation.familyAmountCents,
+      totalAmountCents: calculation.totalAmountCents
+    });
   }
   const accounts = new Map();
   for (const day of dayRows) {
@@ -159,7 +245,12 @@ function normalizeReport(report) {
       const sessions = sessionRows.filter((session) => session.familyKey === day.familyKey && session.serviceDate === day.serviceDate && session.included !== false);
       const clockIns = sessions.map((session) => session.clockInAt).filter(Boolean).sort();
       const clockOuts = sessions.map((session) => session.clockOutAt).filter(Boolean).sort();
-      return { ...day, firstClockInAt: day.firstClockInAt || clockIns[0] || null, firstClockOutAt: day.firstClockOutAt || clockOuts[0] || null };
+      return {
+        ...day,
+        firstClockInAt: day.firstClockInAt || clockIns[0] || null,
+        firstClockOutAt: day.firstClockOutAt || clockOuts[0] || null,
+        lastClockOutAt: day.lastClockOutAt || clockOuts.slice(-1)[0] || null
+      };
     });
     return { ...report, dayRows, familyRows: report.familyRows || [], sessionRows, exceptionCount: report.exceptionCount || 0 };
   }
@@ -517,7 +608,7 @@ function buildReportDetail(account) {
   const table = document.createElement('table'); table.className = 'ac-table'; table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Single-child charge</th><th class="number">Family charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
   for (const day of reportDays().filter((item) => item.familyKey === account.familyKey)) {
-    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), cell(nameList(billedStudents(day))), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
+    const dayRow = document.createElement('tr'); dayRow.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), dayStudentsCell(day), cell(`${day.singleDuration} · ${money(day.singleAmountCents)}`, 'number'), cell(`${day.familyDuration} · ${money(day.familyAmountCents)}`, 'number'), cell(money(day.totalAmountCents), 'number')); body.append(dayRow);
   }
   table.append(body); detail.append(table);
   const auditHeading = document.createElement('h4'); auditHeading.textContent = 'Session audit'; detail.append(auditHeading);
@@ -612,7 +703,7 @@ function statementPdf(jsPDF, account) {
 
   for (const day of days) {
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8.5); doc.setTextColor(23, 33, 43);
-    const values = [formatDate(day.serviceDate), formatTime(dayFirstIn(day)), formatTime(dayBilledOut(day)), nameList(billedStudents(day)), money(day.singleAmountCents), money(day.familyAmountCents), money(day.totalAmountCents)];
+    const values = [formatDate(day.serviceDate), formatTime(dayFirstIn(day)), formatTime(dayBilledOut(day)), dayStudentsLabel(day, true), money(day.singleAmountCents), money(day.familyAmountCents), money(day.totalAmountCents)];
     const lines = values.map((value, index) => doc.splitTextToSize(pdfText(value), widths[index] - 8));
     const rowHeight = Math.max(24, Math.max(...lines.map((value) => value.length)) * 10 + 8);
     if (y + rowHeight > pageHeight - 90) newPage();
@@ -692,7 +783,7 @@ function buildStatement(account) {
   for (const [labelText, value] of [['Billing account', account.familyName], ['Students billed', nameList(billedStudents(account))], ['Total hours', `${hours((Number(account.singleMilliseconds || 0) + Number(account.familyMilliseconds || 0)) / 3600000)} hours`]]) { const block = document.createElement('div'); const labelNode = document.createElement('strong'); labelNode.textContent = labelText; const valueNode = document.createElement('div'); valueNode.textContent = value; block.append(labelNode, valueNode); meta.append(block); }
   const table = document.createElement('table'); table.innerHTML = '<thead><tr><th>Date</th><th>Billed in</th><th>Billed out</th><th>Students</th><th class="number">Single-child charge</th><th class="number">Family charge</th><th class="number">Total</th></tr></thead>';
   const body = document.createElement('tbody');
-  for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), cell(nameList(billedStudents(day))), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
+  for (const day of reportDays().filter((row) => row.familyKey === account.familyKey)) { const row = document.createElement('tr'); row.append(cell(formatDate(day.serviceDate)), cell(formatTime(dayFirstIn(day))), cell(formatTime(dayBilledOut(day))), dayStudentsCell(day), cell(money(day.singleAmountCents), 'number'), cell(money(day.familyAmountCents), 'number'), cell(money(day.totalAmountCents), 'number')); body.append(row); }
   table.append(body);
   const foot = document.createElement('div'); foot.className = 'ac-statement-foot'; foot.textContent = `Single-child charge ${money(account.singleAmountCents)} · Family charge ${money(account.familyAmountCents)} · Total ${money(account.totalAmountCents)}`;
   statement.append(head, meta, buildBillingExplanation(), table, foot); return statement;

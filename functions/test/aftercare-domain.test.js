@@ -255,4 +255,10 @@ test('report days expose actual earliest check-in and earliest check-out', () =>
   assert.equal(result.dayRows[0].firstClockInAt, '2026-08-04T20:00:00.000Z');
   assert.equal(result.dayRows[0].firstClockOutAt, '2026-08-04T21:57:00.000Z');
   assert.equal(result.dayRows[0].lastClockOutAt, '2026-08-04T22:00:00.000Z');
+  assert.equal(result.dayRows[0].students[0].studentName, 'Alex');
+  assert.equal(result.dayRows[0].students[0].firstClockInAt, '2026-08-04T20:00:00.000Z');
+  assert.equal(result.dayRows[0].students[0].lastClockOutAt, '2026-08-04T22:00:00.000Z');
+  assert.equal(result.dayRows[0].students[1].studentName, 'Blair');
+  assert.equal(result.dayRows[0].students[1].firstClockInAt, '2026-08-04T20:04:00.000Z');
+  assert.equal(result.dayRows[0].students[1].lastClockOutAt, '2026-08-04T21:57:00.000Z');
 });

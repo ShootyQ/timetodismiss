@@ -116,7 +116,7 @@ button, input, select { font: inherit; }
   .ac-statement-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 14px 0; }
   .ac-statement .ac-billing-explanation { font-size: 8.5pt; }
   .ac-statement table { width: 100%; border-collapse: collapse; }
-  .ac-statement th, .ac-statement td { padding: 6px; border-bottom: 1px solid #c9d1d6; text-align: left; }
+  .ac-statement th, .ac-statement td { padding: 6px; border-bottom: 1px solid #c9d1d6; text-align: left; vertical-align: top; }
   .ac-statement th { font-size: 8pt; text-transform: uppercase; }
   .ac-statement thead { display: table-header-group; }
   .ac-statement tr { break-inside: avoid; page-break-inside: avoid; }

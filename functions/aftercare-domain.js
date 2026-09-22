@@ -282,13 +282,24 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
 
   const dayRows = Array.from(groups.values()).map((group) => {
     const calculation = calculateFamilyDay(group.sessions, group);
-    const students = Object.entries(calculation.studentMilliseconds).map(([studentId, milliseconds]) => ({
-      studentId,
-      studentName: group.studentNames[studentId] || studentId,
-      milliseconds,
-      duration: formatDuration(milliseconds),
-      decimalHours: decimalHours(milliseconds),
-    })).sort((left, right) => left.studentName.localeCompare(right.studentName));
+    const students = Object.entries(calculation.studentMilliseconds).map(([studentId, milliseconds]) => {
+      const studentSessions = group.sessions.filter((session) => session.studentId === studentId && session.clockInAt && session.clockOutAt);
+      const clockIns = studentSessions.map((session) => asMillis(session.clockInAt, 'clockInAt'));
+      const clockOuts = studentSessions.map((session) => asMillis(session.clockOutAt, 'clockOutAt'));
+      const firstClockInAt = clockIns.length ? new Date(Math.min(...clockIns)).toISOString() : null;
+      const lastClockOutAt = clockOuts.length ? new Date(Math.max(...clockOuts)).toISOString() : null;
+      return {
+        studentId,
+        studentName: group.studentNames[studentId] || studentId,
+        milliseconds,
+        duration: formatDuration(milliseconds),
+        decimalHours: decimalHours(milliseconds),
+        firstClockInAt,
+        lastClockOutAt,
+        clockInAt: firstClockInAt,
+        clockOutAt: lastClockOutAt,
+      };
+    }).sort((left, right) => left.studentName.localeCompare(right.studentName));
     return {
       serviceDate: group.serviceDate,
       familyId: group.familyId,
@@ -342,7 +353,12 @@ function aggregateAftercareReport(sessions, families, defaultRates) {
     total.totalAmountCents += row.totalAmountCents;
     total.days++;
     for (const student of row.students) {
-      const existing = total.studentsById.get(student.studentId) || { ...student, milliseconds: 0, days: 0 };
+      const existing = total.studentsById.get(student.studentId) || {
+        studentId: student.studentId,
+        studentName: student.studentName,
+        milliseconds: 0,
+        days: 0,
+      };
       existing.milliseconds += student.milliseconds;
       existing.days++;
       total.studentsById.set(student.studentId, existing);
