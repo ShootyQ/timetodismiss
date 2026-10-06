@@ -9,7 +9,8 @@ import {
   getAftercareDaySessions,
   updateAftercareSession,
   deleteAftercareSession,
-} from '/app.js?v=aftercare-3';
+  addAftercareSession,
+} from '/app.js?v=aftercare-4';
 
 await init();
 
@@ -492,11 +493,72 @@ async function removeSession(session) {
   } catch (error) { setNotice(error?.message || 'Could not delete session.', true); }
 }
 
+function renderQuickAddStudentOptions() {
+  if (!elements.quickAddStudent) return;
+  clear(elements.quickAddStudent);
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select student…';
+  elements.quickAddStudent.append(placeholder);
+  const sorted = state.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  for (const student of sorted) {
+    const option = document.createElement('option');
+    option.value = student.id;
+    const className = student.className || student.classId;
+    option.textContent = className ? `${student.name || student.id} (${className})` : (student.name || student.id);
+    elements.quickAddStudent.append(option);
+  }
+}
+
 function renderStudentOptions(selectedIds = []) {
+  renderQuickAddStudentOptions();
   clear(elements.familyStudents);
   for (const student of state.students.slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''))) {
     const option = document.createElement('option'); option.value = student.id; option.textContent = student.name || student.id; option.selected = selectedIds.includes(student.id);
     elements.familyStudents.append(option);
+  }
+}
+
+function openQuickAddDialog() {
+  renderQuickAddStudentOptions();
+  elements.quickAddStudent.value = '';
+  elements.quickAddDate.value = elements.sessionDate.value || state.serviceDate || new Date().toISOString().slice(0, 10);
+  elements.quickAddClockIn.value = '15:00';
+  elements.quickAddClockOut.value = '17:00';
+  elements.quickAddTimezone.textContent = `Times are recorded in school time (${state.settings?.timezone || 'school timezone'}).`;
+  elements.quickAddDialog.showModal();
+}
+
+async function submitQuickAdd(event) {
+  event.preventDefault();
+  const studentId = elements.quickAddStudent.value;
+  const serviceDate = elements.quickAddDate.value;
+  const clockInLocal = elements.quickAddClockIn.value;
+  const clockOutLocal = elements.quickAddClockOut.value;
+  if (!studentId) return setNotice('Please select a student.', true);
+  if (!serviceDate) return setNotice('Service date is required.', true);
+  if (!clockInLocal || !clockOutLocal) return setNotice('Both Clock In and Clock Out times are required.', true);
+  if (clockOutLocal <= clockInLocal) return setNotice('Clock out time must be after clock in time.', true);
+
+  elements.submitQuickAdd.disabled = true;
+  elements.submitQuickAdd.textContent = 'Adding…';
+  try {
+    await addAftercareSession({
+      studentId,
+      serviceDate,
+      clockInLocal,
+      clockOutLocal,
+    });
+    elements.quickAddDialog.close();
+    setNotice('Student added to session.');
+    elements.sessionDate.value = serviceDate;
+    await loadSessionDate();
+    if (serviceDate === state.serviceDate) await loadOverview();
+  } catch (error) {
+    setNotice(error?.message || 'Could not add student session.', true);
+  } finally {
+    elements.submitQuickAdd.disabled = false;
+    elements.submitQuickAdd.textContent = 'Add student';
   }
 }
 
@@ -818,6 +880,10 @@ function bindEvents() {
   elements.overviewSearch.addEventListener('input', renderOverviewRows);
   elements.overviewStatus.addEventListener('change', renderOverviewRows);
   elements.loadSessions.addEventListener('click', loadSessionDate);
+  elements.quickAddSession.addEventListener('click', openQuickAddDialog);
+  elements.quickAddForm.addEventListener('submit', submitQuickAdd);
+  elements.closeQuickAddDialog.addEventListener('click', () => elements.quickAddDialog.close());
+  elements.cancelQuickAdd.addEventListener('click', () => elements.quickAddDialog.close());
   elements.sessionSearch.addEventListener('input', renderSessionReview);
   elements.sessionStatus.addEventListener('change', renderSessionReview);
   elements.sessionForm.addEventListener('submit', saveSession);
@@ -849,6 +915,14 @@ async function bootstrap(claims) {
     onStudents(null, (students) => { state.students = students; renderStudentOptions(); });
     await loadAdmin();
     await loadOverview();
+    const hashView = (location.hash || '').replace(/^#/, '');
+    if (['overview', 'sessions', 'families', 'reports', 'settings'].includes(hashView)) {
+      activateView(hashView);
+      if (hashView === 'sessions' && !elements.sessionDate.value && state.serviceDate) {
+        elements.sessionDate.value = state.serviceDate;
+        await loadSessionDate();
+      }
+    }
     setInterval(() => { if (!document.hidden) loadOverview(); }, 60000);
   } catch (error) { setNotice(error?.message || 'Aftercare management could not be loaded.', true); }
 }

@@ -21,6 +21,7 @@ const {
   validateTimezone,
 } = require('./aftercare-domain');
 const { createAftercareCorrectionHandlers } = require('./aftercare-corrections');
+const { DateTime } = require('luxon');
 
 try { initializeApp(); } catch (_) {}
 const auth = getAuth();
@@ -981,6 +982,154 @@ async function computeClaims(uid, email) {
       }
     });
     return { ok: true };
+  });
+
+  exports.addAftercareSession = onCall({ region: 'us-central1', minInstances: 0 }, async (req) => {
+    assertAuthed(req);
+    const orgId = cleanDocId(req.data?.orgId, 'orgId');
+    const schoolId = cleanDocId(req.data?.schoolId, 'schoolId');
+    const studentId = cleanDocId(req.data?.studentId, 'studentId');
+    const serviceDate = String(req.data?.serviceDate || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) throw new HttpsError('invalid-argument', 'serviceDate must match YYYY-MM-DD.');
+    await requireAftercareManager(req, orgId, schoolId);
+
+    const studentRef = aftercarePath(orgId, schoolId, 'students', studentId);
+    const studentSnap = await studentRef.get();
+    if (!studentSnap.exists) throw new HttpsError('not-found', 'Student not found.');
+    const student = studentSnap.data() || {};
+    const studentName = student.name || [student.firstName, student.lastName].filter(Boolean).join(' ') || studentId;
+
+    const settingsRef = aftercarePath(orgId, schoolId, 'settings', 'aftercare');
+    const settingsSnap = await settingsRef.get();
+    const settings = normalizeAftercareSettings(settingsSnap.data() || {});
+
+    const dayRef = aftercarePath(orgId, schoolId, 'aftercareServiceDays', serviceDate);
+    const daySnap = await dayRef.get();
+    const daySettings = daySnap.exists ? normalizeAftercareSettings(daySnap.data()) : settings;
+
+    let clockIn;
+    let clockOut;
+    const clockInLocal = req.data?.clockInLocal ? String(req.data.clockInLocal).trim() : null;
+    const clockOutLocal = req.data?.clockOutLocal ? String(req.data.clockOutLocal).trim() : null;
+
+    if (clockInLocal && clockOutLocal) {
+      const startDt = DateTime.fromISO(`${serviceDate}T${clockInLocal}:00`, { zone: daySettings.timezone });
+      const endDt = DateTime.fromISO(`${serviceDate}T${clockOutLocal}:00`, { zone: daySettings.timezone });
+      if (!startDt.isValid || !endDt.isValid) throw new HttpsError('invalid-argument', 'Clock-in and clock-out times must be valid.');
+      clockIn = startDt.toJSDate();
+      clockOut = endDt.toJSDate();
+    } else {
+      clockIn = new Date(req.data?.clockInAt);
+      clockOut = new Date(req.data?.clockOutAt);
+    }
+
+    if (Number.isNaN(clockIn.getTime()) || Number.isNaN(clockOut.getTime()) || clockOut <= clockIn) {
+      throw new HttpsError('invalid-argument', 'Clock-out time must be after clock-in time.');
+    }
+
+    // Check for overlap with existing sessions for this student on this date
+    const existingSnap = await db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`)
+      .where('studentId', '==', studentId)
+      .where('serviceDate', '==', serviceDate)
+      .get();
+    const clockInMs = clockIn.getTime();
+    const clockOutMs = clockOut.getTime();
+    for (const doc of existingSnap.docs) {
+      const data = doc.data();
+      const sIn = data.clockInAt?.toDate?.()?.getTime();
+      const sOut = data.clockOutAt?.toDate?.()?.getTime();
+      if (sIn && sOut) {
+        if (clockInMs < sOut && clockOutMs > sIn) {
+          throw new HttpsError('invalid-argument', 'This session overlaps an existing session for this student on that date.');
+        }
+      }
+    }
+
+    const mappingRef = aftercarePath(orgId, schoolId, 'aftercareStudentFamilies', studentId);
+    const mappingSnap = await mappingRef.get();
+    const familyId = mappingSnap.get('familyId') || null;
+    let familyName = mappingSnap.get('familyName') || null;
+    if (familyId) {
+      const familySnap = await aftercarePath(orgId, schoolId, 'aftercareFamilies', familyId).get();
+      if (familySnap.exists && familySnap.get('active') !== false) {
+        familyName = familySnap.get('name') || familyName;
+      }
+    }
+
+    const dayCutoff = DateTime.fromISO(`${serviceDate}T${daySettings.cutoffLocalTime}:00`, { zone: daySettings.timezone });
+    const autoCloseAt = dayCutoff.isValid ? Timestamp.fromDate(dayCutoff.toJSDate()) : null;
+    const billingMonth = serviceDate.slice(0, 7);
+    const actor = actorFrom(req);
+    const sessionRef = db.collection(`orgs/${orgId}/schools/${schoolId}/aftercareSessions`).doc();
+
+    await sessionRef.set({
+      studentId,
+      studentName,
+      classId: student.classId || null,
+      familyId,
+      familyName,
+      serviceDate,
+      billingMonth,
+      status: 'closed',
+      closeMethod: 'manual',
+      closedAt: ts(),
+      closedBy: actor,
+      correctedAt: null,
+      correctedBy: null,
+      timezone: daySettings.timezone,
+      cutoffLocalTime: daySettings.cutoffLocalTime,
+      autoCloseAt,
+      singleRateCents: daySettings.singleRateCents,
+      familyRateCents: daySettings.familyRateCents,
+      clockInAt: Timestamp.fromDate(clockIn),
+      clockOutAt: Timestamp.fromDate(clockOut),
+      clockedInBy: actor,
+      clockedOutBy: actor,
+      createdAt: ts(),
+      createdBy: actor,
+      updatedAt: ts(),
+      updatedBy: actor,
+    });
+
+    const currentDay = getServiceDay(new Date(), settings.timezone, settings.cutoffLocalTime);
+    if (serviceDate === currentDay.serviceDate) {
+      const attendanceRef = aftercarePath(orgId, schoolId, 'aftercareAttendance', studentId);
+      await db.runTransaction(async (tx) => {
+        const attendanceSnap = await tx.get(attendanceRef);
+        if (!attendanceSnap.exists || attendanceSnap.get('status') !== 'in') {
+          const currentOut = attendanceSnap.get('clockedOutAt');
+          const currentOutMillis = currentOut?.toMillis ? currentOut.toMillis() : 0;
+          if (clockOut.getTime() >= currentOutMillis) {
+            tx.set(attendanceRef, {
+              studentId,
+              studentName,
+              classId: student.classId || null,
+              serviceDate,
+              status: 'out',
+              openSessionId: null,
+              lastSessionId: sessionRef.id,
+              clockedInAt: Timestamp.fromDate(clockIn),
+              clockedOutAt: Timestamp.fromDate(clockOut),
+              updatedAt: ts(),
+              updatedBy: actor,
+            }, { merge: true });
+          }
+        }
+      });
+    }
+
+    return {
+      ok: true,
+      sessionId: sessionRef.id,
+      session: {
+        id: sessionRef.id,
+        studentId,
+        studentName,
+        serviceDate,
+        clockInAt: clockIn.toISOString(),
+        clockOutAt: clockOut.toISOString(),
+      },
+    };
   });
 
   exports.autoCloseAftercareSessions = onSchedule({

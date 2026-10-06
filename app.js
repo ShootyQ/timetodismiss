@@ -835,6 +835,9 @@ export const updateAftercareSession = ({ sessionId, clockInAt, clockOutAt }) =>
 export const deleteAftercareSession = (sessionId) =>
   callAftercare('deleteAftercareSession', { sessionId });
 
+export const addAftercareSession = ({ studentId, serviceDate, clockInAt, clockOutAt, clockInLocal, clockOutLocal }) =>
+  callAftercare('addAftercareSession', { studentId, serviceDate, clockInAt, clockOutAt, clockInLocal, clockOutLocal });
+
 /* ------------------------------------------------------------------ */
 /* (Optional) Demo seeding                                             */
 /* ------------------------------------------------------------------ */

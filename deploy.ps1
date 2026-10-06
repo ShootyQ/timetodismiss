@@ -54,7 +54,7 @@ $target = @(
   'archiveAftercareFamily','clockInAftercareStudent','clockOutAftercareStudent',
   'getAftercareStudentTodaySessions','updateAftercareStudentTodaySession',
   'getAftercareReport','getAftercareDaySessions','updateAftercareSession',
-  'deleteAftercareSession','autoCloseAftercareSessions'
+  'deleteAftercareSession','addAftercareSession','autoCloseAftercareSessions'
 )
 $present = $exports | Where-Object { $_ -in $target }
 

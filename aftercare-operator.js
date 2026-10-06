@@ -120,7 +120,7 @@ function render() {
   const rows = state.students.filter((student) =>
     (!state.classId || student.classId === state.classId)
     && (!query || nameOf(student).toLowerCase().includes(query))
-    && (attendanceOf(student) || !['picked_up', 'absent', 'dismissed', 'home'].includes(student.status))
+    && (query || attendanceOf(student) || !['picked_up', 'absent', 'dismissed', 'home'].includes(student.status))
     && (state.view !== 'checked-in' || attendanceOf(student)?.status === 'in')
   ).sort(sortRows);
   grid.replaceChildren();
