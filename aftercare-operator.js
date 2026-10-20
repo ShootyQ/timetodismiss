@@ -140,10 +140,12 @@ function render() {
     const heading = element('div');
     const title = element('h2', 'ac-name', nameOf(student));
     heading.append(title, element('p', '', student.className || student.classId || ''));
-    top.append(heading, element('span', 'ac-status', isIn ? 'Checked in' : isOut ? 'Checked out' : student.status || 'Ready'));
+    const pending = state.pending.get(student.id);
+    card.setAttribute('aria-busy', String(!!pending));
+    top.append(heading, element('span', 'ac-status', pending?.label || (isIn ? 'Checked in' : isOut ? 'Checked out' : student.status || 'Ready')));
     card.append(times, top);
     if (Number(attendance?.intervalCount) > 1) card.append(element('span', 'ac-visit-count', `Visit ${attendance.intervalCount}`));
-    const button = element('button', 'ac-button', state.pending.has(student.id) ? 'Please wait…' : isIn ? 'Clock out' : isOut ? 'Check in again' : 'Clock in');
+    const button = element('button', 'ac-button', pending?.label || (state.pending.has(student.id) ? 'Please wait…' : isIn ? 'Clock out' : isOut ? 'Check in again' : 'Clock in'));
     button.type = 'button';
     button.dataset.studentId = student.id;
     button.dataset.kind = 'clock';
@@ -156,13 +158,25 @@ function render() {
   if (focused) (rosterButton(focused.dataset.studentId, focused.dataset.kind) || $('acSearch')).focus({ preventScroll: true });
 }
 
+function clockActionReflected(student, pending) {
+  const row = attendanceOf(student);
+  return row?.status === (pending.out ? 'out' : 'in')
+    && (pending.out || !pending.sessionId || row.openSessionId === pending.sessionId);
+}
+
 async function executeClockAction(student) {
   if (!activeKey || !state.attendanceReady || state.pending.has(student.id)) return;
   if (refreshToday()) return;
   const out = attendanceOf(student)?.status === 'in';
   const expectedSessionId = attendanceOf(student)?.openSessionId;
   const generation = lifecycle;
-  const pending = {};
+  const pending = { label: out ? 'Clocking out…' : 'Checking in…', out };
+  pending.timer = setTimeout(() => {
+    if (generation !== lifecycle || state.pending.get(student.id) !== pending) return;
+    pending.label = 'Still waiting — don’t tap again';
+    notice.textContent = `${nameOf(student)}: attendance is taking longer than usual. Keep this page open, or reload to check the saved status before retrying.`;
+    render();
+  }, 15000);
   state.pending.set(student.id, pending);
   render();
   notice.textContent = `${out ? 'Clocking out' : 'Checking in'} ${nameOf(student)}…`;
@@ -170,14 +184,24 @@ async function executeClockAction(student) {
     const result = await (out ? clockOutAftercareStudent(student.id, expectedSessionId) : clockInAftercareStudent(student.id));
     if (generation !== lifecycle) return;
     if (!result?.ok) throw new Error('The server did not confirm the action. Check attendance before retrying.');
+    pending.confirmed = true;
+    pending.sessionId = result.sessionId;
+    pending.label = 'Saved — updating card…';
+    if (clockActionReflected(student, pending)) {
+      clearTimeout(pending.timer);
+      state.pending.delete(student.id);
+    }
     notice.textContent = result.alreadyOpen ? `${nameOf(student)} is already checked in. No new visit was created.`
       : result.alreadyClosed ? `${nameOf(student)} is already checked out. No new checkout was recorded.`
         : `${nameOf(student)} was ${out ? 'clocked out' : 'checked in'}.`;
   } catch (error) {
     if (generation === lifecycle) notice.textContent = error?.message || 'The action could not be confirmed. Check attendance before retrying.';
   } finally {
-    if (generation === lifecycle && state.pending.get(student.id) === pending) {
-      state.pending.delete(student.id);
+    if (generation === lifecycle) {
+      if (!pending.confirmed && state.pending.get(student.id) === pending) {
+        clearTimeout(pending.timer);
+        state.pending.delete(student.id);
+      }
       render();
     }
   }
@@ -458,6 +482,12 @@ dialog.addEventListener('cancel', (event) => { event.preventDefault(); if (!edit
 function attendanceChanged(rows) {
   state.attendance = new Map(rows.map((row) => [row.id, row]));
   state.attendanceReady = true;
+  for (const [studentId, pending] of state.pending) {
+    if (pending.confirmed && clockActionReflected({ id: studentId }, pending)) {
+      clearTimeout(pending.timer);
+      state.pending.delete(studentId);
+    }
+  }
   refreshToday();
   const e = editor;
   if (e && !e.saving && e.fingerprint !== undefined && attendanceFingerprint(e.student) !== e.fingerprint) {
@@ -475,6 +505,7 @@ function stop() {
   subscriptions = [];
   clearInterval(dayTimer);
   closeEditor();
+  for (const pending of state.pending.values()) clearTimeout(pending.timer);
   state.pending.clear();
   state.attendanceReady = false;
 }
